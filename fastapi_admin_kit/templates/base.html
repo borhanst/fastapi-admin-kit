@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ 'dark' if admin_config.dark_mode_default else 'light' }}"
+      data-preset="{{ theme_preset | default('editorial') }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ title | default("Admin") }}{% endblock %}</title>
+  <meta name="csrf-token" content="{{ get_csrf_token(request) }}">
+
+  {% if admin_config.favicon_url %}
+  <link rel="icon" href="{{ admin_config.favicon_url }}">
+  {% endif %}
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  {% if theme_font_import_url | default('') %}
+  <link href="{{ theme_font_import_url }}" rel="stylesheet">
+  {% else %}
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  {% endif %}
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&display=block" rel="stylesheet">
+
+  <link rel="stylesheet" href="/static/css/tokens.css?v={{ static_version }}">
+  <link rel="stylesheet" href="/static/css/presets.css?v={{ static_version }}">
+  <link rel="stylesheet" href="/static/css/admin.css?v={{ static_version }}">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+  {% if theme_css | default('') %}
+  <style>{{ theme_css }}</style>
+  {% endif %}
+
+  <style>
+    :root {
+      --primary-500: {{ admin_config.primary_color | default('#10B981') }};
+      --primary-600: {{ admin_config.primary_color_dark | default('#059669') }};
+    }
+  </style>
+
+  {% set _ui = ui_config | default({}) %}
+  {% if _ui.custom_css_url | default('') %}
+  <link rel="stylesheet" href="{{ _ui.custom_css_url }}">
+  {% endif %}
+  {% if _ui.custom_css | default('') %}
+  <style>{{ _ui.custom_css }}</style>
+  {% endif %}
+
+  {% block head_extra %}{% endblock %}
+
+  {% for css_url in extra_css | default([]) %}
+  <link rel="stylesheet" href="{{ css_url }}">
+  {% endfor %}
+  {% for js_url in extra_js | default([]) %}
+  <script src="{{ js_url }}"></script>
+  {% endfor %}
+  {% if extra_css_inline | default('') %}
+  <style>{{ extra_css_inline }}</style>
+  {% endif %}
+  {% if extra_js_inline | default('') %}
+  <script>{{ extra_js_inline }}</script>
+  {% endif %}
+</head>
+<body x-data="{
+        sidebarOpen: false,
+        sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === 'true',
+        init() {
+          if (window.innerWidth < 1024) { this.sidebarCollapsed = true; }
+          window.addEventListener('resize', () => {
+            if (window.innerWidth < 1024) { this.sidebarCollapsed = true; this.sidebarOpen = false; }
+          });
+          this.$watch('sidebarCollapsed', val => { localStorage.setItem('sidebarCollapsed', val); });
+        },
+        toggleMobileSidebar() { this.sidebarOpen = !this.sidebarOpen; }
+      }"
+      class="font-sans antialiased"
+      style="color: var(--text-primary); background-color: var(--surface-base);">
+
+  <div class="admin-shell">
+    {% include "partials/topbar.html" %}
+
+    <div class="admin-body">
+      {% include "partials/sidebar.html" %}
+
+      <div class="admin-content {% set _cw = (ui_config | default({})).content_width | default('default') %}{% if _cw != 'default' %}content--{{ _cw }}{% endif %}"
+           id="admin-content">
+        {% include "partials/flash_messages.html" %}
+
+        <div class="admin-content__inner">
+          {% block content %}{% endblock %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Confirm dialog modal #}
+  <template x-if="true">
+    <div id="confirm-dialog"
+         x-data="{ open: false, title: '', message: '', onConfirm: null }"
+         x-show="open" x-cloak>
+      <div class="modal-backdrop" @click="open = false"></div>
+      <div class="modal modal--sm" @click.stop>
+        <div class="modal__header">
+          <h3 class="modal__title" x-text="title"></h3>
+          <button type="button" class="modal__close" @click="open = false">
+            {{ icon("x-mark") }}
+          </button>
+        </div>
+        <div class="modal__body">
+          <div class="flex items-start gap-3">
+            {{ icon("exclamation-triangle", class="flex-shrink-0 mt-0.5", size="24px") }}
+            <p x-text="message" style="color: var(--text-secondary);"></p>
+          </div>
+        </div>
+        <div class="modal__footer">
+          <button @click="open = false" class="btn btn-secondary btn-sm">Cancel</button>
+          <button @click="onConfirm(); open = false" class="btn btn-danger btn-sm">Delete</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  {% include "partials/command_palette.html" %}
+
+  {% set _ui2 = ui_config | default({}) %}
+  {% if _ui2.custom_js_url | default('') %}
+  <script src="{{ _ui2.custom_js_url }}"></script>
+  {% endif %}
+  {% if _ui2.custom_js | default('') %}
+  <script>{{ _ui2.custom_js }}</script>
+  {% endif %}
+
+  <script src="/static/js/htmx-config.js"></script>
+  <script src="/static/js/admin.js?v={{ static_version }}"></script>
+</body>
+</html>

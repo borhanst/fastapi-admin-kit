@@ -1,0 +1,55 @@
+{# pages/2fa/verify.html — 2FA verification during login #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title | default("Admin") }} — Verify 2FA</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body class="bg-[var(--surface-overlay)] text-[var(--text-primary)] font-sans antialiased min-h-screen flex items-center justify-center p-4">
+
+  <div class="w-full max-w-md">
+    <div class="text-center mb-6">
+      <div class="w-10 h-10 mx-auto mb-2 rounded-lg bg-[var(--primary-500)] flex items-center justify-center">
+        {{ icon("lock", css_class="text-white", size="20px") }}
+      </div>
+      <h1 class="text-xl font-bold text-[var(--text-primary)]" style="margin: 0;">Verify Your Identity</h1>
+      <p class="text-sm text-[var(--text-secondary)] mt-0.5">Enter the code from your authenticator app</p>
+    </div>
+
+    <form method="post" action="{{ admin_path | default('/admin') }}/verify-2fa"
+          class="bg-white rounded-xl shadow-md border border-[var(--surface-border)] p-8">
+      <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+      {% if temp_token %}
+      <input type="hidden" name="temp_token" value="{{ temp_token }}">
+      {% endif %}
+
+      {% if error %}
+      <div class="mb-4 p-3 rounded-lg bg-[var(--danger-50)] text-[var(--danger-500)] text-sm border border-[var(--danger-100)]">
+        {{ error }}
+      </div>
+      {% endif %}
+
+      <div class="mb-6">
+        <label for="code" class="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">Authentication Code</label>
+        <input type="text" id="code" name="code" required maxlength="6" pattern="[0-9]{6}"
+               class="form-input w-full px-4 py-2.5 rounded-lg border border-[var(--surface-border)] bg-white text-[var(--text-primary)] placeholder-[var(--text-disabled)] focus:ring-2 focus:ring-[var(--primary-500)] focus:border-[var(--primary-500)] transition-all text-center text-2xl tracking-[0.5em] font-mono"
+               placeholder="000000" autocomplete="off" autofocus>
+      </div>
+
+      <button type="submit"
+              class="w-full px-4 py-3 rounded-lg bg-[var(--primary-500)] text-white font-medium hover:bg-[var(--primary-600)] focus:ring-2 focus:ring-[var(--primary-500)] focus:ring-offset-2 transition-all cursor-pointer">
+        Verify
+      </button>
+    </form>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,119 @@
+{# pages/form.html — create/edit form with fieldsets #}
+{% extends "base.html" %}
+{% from "macros/form_fields.html" import render_field %}
+
+{% block title %}{% if obj %}Edit{% else %}Create{% endif %} {{ registered.verbose_name }} — {{ title | default("Admin") }}{% endblock %}
+
+{% block breadcrumb %}
+{{ super() }}
+<span class="breadcrumb-separator">/</span>
+<a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/" class="breadcrumb-segment hover:text-[var(--color-primary-600)] transition-colors">{{ registered.verbose_name_plural }}</a>
+<span class="breadcrumb-separator">/</span>
+<span class="breadcrumb-current">{% if obj %}Edit {{ obj }}{% else %}Create{% endif %}</span>
+{% endblock %}
+
+{% block content %}
+<div x-data="{ unsaved: false }" @change="unsaved = true">
+  <div class="page-header">
+    <div class="page-header-left">
+      <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/" class="page-header-back">
+        {{ icon("chevron-left", size="16px") }}
+        {{ registered.verbose_name_plural }}
+      </a>
+      <h1 class="page-header-title">
+        {% if obj %}Edit {{ registered.verbose_name }}{% else %}New {{ registered.verbose_name }}{% endif %}
+      </h1>
+      {% if obj %}
+      <p class="page-header-subtitle">
+        <span class="mono">#{{ obj.id }}</span>
+        {% if obj.__str__() %} — {{ obj.__str__() }}{% endif %}
+      </p>
+      {% endif %}
+    </div>
+    <div class="page-header-right">
+      {% if obj and permissions.can_delete %}
+      <form method="post" action="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/{{ obj.id }}/delete">
+        <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+        <button type="button" class="btn btn-danger btn-sm"
+                onclick="confirmAction('Delete', 'Are you sure you want to delete this {{ registered.verbose_name | lower }}?', () => this.closest('form').submit())">Delete</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if errors %}
+  <div class="mb-6 p-4 rounded-lg bg-red-50 border border-red-200">
+    <div class="flex items-center gap-2 text-red-700">
+      {{ icon("exclamation-triangle", size="20px") }}
+      <span class="font-medium">Please correct the errors below</span>
+    </div>
+  </div>
+  {% endif %}
+
+  {% set _ui = ui_config | default({}) %}
+  <form method="post"
+        action="{{ admin_path | default('/admin') }}/{{ registered.table_name }}{% if obj %}/{{ obj.id }}{% else %}/create{% endif %}"
+        @input="unsaved = true"
+        class="space-y-6 form--{{ _ui.form_layout | default('two-column') }} form--{{ _ui.form_spacing | default('normal') }}">
+    <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+
+    {% if fieldsets %}
+    {% for fieldset in fieldsets %}
+    <div class="fieldset" x-data="{ open: true }">
+      <button type="button" @click="open = !open"
+              class="fieldset__header" style="cursor: pointer; background: none; border: none; width: 100%; text-align: left;">
+        <span class="fieldset__title">{{ fieldset.title or "General" }}</span>
+        <span class="fieldset__toggle" :style="open ? 'transform: rotate(180deg)' : ''">
+          {{ icon("chevron-right", size="16px") }}
+        </span>
+      </button>
+      <div x-show="open" x-collapse class="fieldset__fields">
+        {% for field in fieldset.fields %}
+        {{ render_field(field, registered.table_name) }}
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="fieldset">
+      <div class="fieldset__fields">
+        {% for field in form_fields %}
+        {{ render_field(field, registered.table_name) }}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if perm_data is defined and search_url is defined %}
+    <div class="fieldset">
+      <div class="fieldset__header">
+        <h3 class="fieldset__title">Direct Permissions</h3>
+      </div>
+      <div class="fieldset__fields">
+        <p class="field-help" style="color: var(--text-secondary); font-size: 0.75rem; margin-bottom: 0.5rem;">
+          Override role permissions for specific tables. These are merged with role permissions using OR logic.
+        </p>
+        {% include "partials/permission_widget.html" with context %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="sticky bottom-0 flex items-center justify-between p-4" style="background: var(--surface-base); border: 1px solid var(--surface-border); border-radius: var(--radius-lg);">
+      <div class="text-sm" style="color: var(--text-secondary);" x-show="unsaved" x-transition>
+        You have unsaved changes
+      </div>
+      <div class="flex items-center gap-3 ml-auto">
+        <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+           class="btn btn-secondary">
+          Cancel
+        </a>
+        <button type="submit"
+                @click="unsaved = false"
+                class="btn btn-primary">
+          {% if obj %}Save Changes{% else %}Create {{ registered.verbose_name }}{% endif %}
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

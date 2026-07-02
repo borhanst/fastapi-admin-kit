@@ -1,0 +1,95 @@
+{# partials/topbar.html — top navigation bar matching reference #}
+{% set _ui = ui_config | default({}) %}
+<header class="admin-topbar topbar--{{ _ui.topbar_style | default('default') }}">
+  {# Left zone: collapse toggle, logo #}
+  <div class="topbar-left">
+    <button class="collapse-toggle"
+            @click="if (window.innerWidth < 1024) { toggleMobileSidebar(); } else { sidebarCollapsed = !sidebarCollapsed; }"
+            title="Toggle sidebar">
+      {{ icon("bars-3", size="18px") }}
+    </button>
+
+    <a href="{{ admin_path | default('/admin') }}/" class="topbar-logo">
+      {% if admin_config.logo_url %}
+      <img src="{{ admin_config.logo_url }}" alt="Logo" style="height: 28px; max-width: 120px;">
+      {% else %}
+      <span class="topbar-logo-icon">
+        {{ icon("shield-check", size="24px") }}
+      </span>
+      <span>{{ admin_config.title | default("Admin") }}</span>
+      {% endif %}
+    </a>
+  </div>
+
+  {# Center zone: search bar #}
+  <div class="topbar-center">
+    <div class="topbar-search" @click="$dispatch('open-command-palette')">
+      {{ icon("magnifying-glass", size="16px") }}
+      <span class="topbar-search-placeholder">Search anything...</span>
+      <span class="topbar-search-shortcut">
+        <kbd>⌘</kbd><kbd>K</kbd>
+      </span>
+    </div>
+  </div>
+
+  {# Right zone: environment, notifications, dark toggle, user #}
+  <div class="topbar-right">
+    {% if _ui.environment_label | default('') %}
+    <span class="badge badge-{{ _ui.environment_color | default('info') }}">
+      {{ _ui.environment_label }}
+    </span>
+    {% endif %}
+
+    {# Dark mode toggle #}
+    <button class="icon-btn"
+            @click="$store.theme.toggle()"
+            title="Toggle dark mode">
+      <span x-show="!$store.theme.dark">{{ icon("moon", size="18px") }}</span>
+      <span x-show="$store.theme.dark" style="display: none;">{{ icon("sun", size="18px") }}</span>
+    </button>
+
+    {# Notifications #}
+    <button class="icon-btn" title="Notifications">
+      {{ icon("bell", size="18px") }}
+    </button>
+
+    {# User avatar dropdown #}
+    <div class="topbar-user" x-data="{ open: false }">
+      <button @click="open = !open" @click.outside="open = false"
+              class="topbar-user-btn">
+        <div class="user-avatar">
+          {{ current_user.full_name[0] | upper if current_user and current_user.full_name else "A" }}
+        </div>
+        <div class="topbar-user-info">
+          <span class="topbar-user-name">{{ current_user.full_name | default("Admin") }}</span>
+          <span class="topbar-user-role">{{ "Superuser" if current_user and current_user.is_superuser else "Admin" }}</span>
+        </div>
+        {{ icon("chevron-down", size="14px") }}
+      </button>
+
+      <div x-show="open"
+           x-transition:enter="transition ease-out duration-100"
+           x-transition:enter-start="opacity-0 scale-95"
+           x-transition:enter-end="opacity-100 scale-100"
+           x-transition:leave="transition ease-in duration-75"
+           x-transition:leave-start="opacity-100 scale-100"
+           x-transition:leave-end="opacity-0 scale-95"
+           class="user-dropdown"
+           style="display: none;">
+        <div class="user-dropdown-header">
+          <div class="user-dropdown-name">{{ current_user.full_name | default("Admin") }}</div>
+          <div class="user-dropdown-email">{{ current_user.email | default("") }}</div>
+        </div>
+        <a href="{{ admin_path | default('/admin') }}/profile/" class="user-dropdown-item">
+          Profile
+        </a>
+        <form method="post" action="{{ admin_path | default('/admin') }}/logout/">
+          <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+          <button type="submit" class="user-dropdown-item danger">
+            Sign out
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</header>

@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}{% if role %}Edit Role{% else %}Create Role{% endif %} — Admin{% endblock %}
+
+{% block content %}
+<a href="{{ request.app.state.admin_config.admin_path }}/roles" class="back-link">
+    {{ icon("chevron-left", size="20px") }}
+    Back to Roles
+</a>
+
+<div class="page-header">
+    <div class="page-header__left">
+        <h1 class="page-header__title">{% if role %}Edit Role{% else %}Create Role{% endif %}</h1>
+        {% if role %}
+        <p class="page-header__subtitle">Editing: <strong style="color: var(--text-primary);">{{ role.name }}</strong></p>
+        {% endif %}
+    </div>
+</div>
+
+<form method="post">
+    <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+    <!-- Role details -->
+    <div class="fieldset" style="margin-bottom: var(--space-5); max-width: var(--form-max-width);">
+        <div class="fieldset__header">
+            <h3 class="fieldset__title">Role Details</h3>
+        </div>
+        <div class="fieldset__fields">
+            <div class="field-wrapper">
+                <label for="role_name" class="field-label">Role Name</label>
+                <input type="text" id="role_name" name="role_name" required
+                       value="{% if role %}{{ role.name }}{% endif %}"
+                       class="form-input">
+            </div>
+            <div class="field-wrapper field-wrapper--full">
+                <label for="description" class="field-label">Description</label>
+                <textarea id="description" name="description" rows="2"
+                          class="form-textarea">{% if role %}{{ role.description or '' }}{% endif %}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- Permissions matrix -->
+    <div class="fieldset" style="margin-bottom: var(--space-5); max-width: var(--form-max-width);">
+        <div class="fieldset__header">
+            <h3 class="fieldset__title">Model Permissions</h3>
+        </div>
+        <div class="permissions-matrix" style="border: none;">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="text-align: left;">Model</th>
+                        <th>View</th>
+                        <th>Create</th>
+                        <th>Edit</th>
+                        <th>Delete</th>
+                        <th style="text-align: left;">Fields</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for model in models %}
+                    {% set table_name = model.table_name %}
+                    {% set perm = permissions.get(table_name) %}
+                    {% set f_perms = field_permissions.get(table_name, {}) %}
+                    <tr>
+                        <td style="font-weight: var(--font-medium);">{{ model.verbose_name_plural }}</td>
+                        <td><input type="checkbox" name="perm[{{ table_name }}][view]" class="matrix-checkbox" {% if perm and perm.can_view %}checked{% endif %}></td>
+                        <td><input type="checkbox" name="perm[{{ table_name }}][create]" class="matrix-checkbox" {% if perm and perm.can_create %}checked{% endif %}></td>
+                        <td><input type="checkbox" name="perm[{{ table_name }}][edit]" class="matrix-checkbox" {% if perm and perm.can_edit %}checked{% endif %}></td>
+                        <td><input type="checkbox" name="perm[{{ table_name }}][delete]" class="matrix-checkbox" {% if perm and perm.can_delete %}checked{% endif %}></td>
+                        <td>
+                            <details>
+                                <summary style="cursor: pointer; color: var(--primary-500); font-size: var(--text-xs);">Configure</summary>
+                                <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+                                    {% for field in model.form_fields %}
+                                    {% set field_key = field.name %}
+                                    {% set fp = f_perms.get(field_key) %}
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <span style="font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--text-secondary); min-width: 100px;">{{ field.label or field.name }}</span>
+                                        <label style="display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-2xs); color: var(--text-secondary);">
+                                            <input type="checkbox" name="field_perm[{{ table_name }}][{{ field_key }}][view]" class="matrix-checkbox" style="width: 14px; height: 14px;" {% if fp and fp.can_view %}checked{% endif %}>
+                                            View
+                                        </label>
+                                        <label style="display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-2xs); color: var(--text-secondary);">
+                                            <input type="checkbox" name="field_perm[{{ table_name }}][{{ field_key }}][edit]" class="matrix-checkbox" style="width: 14px; height: 14px;" {% if fp and fp.can_edit %}checked{% endif %}>
+                                            Edit
+                                        </label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </details>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Save bar -->
+    <div class="form-save-bar" style="margin: var(--space-8) calc(-1 * var(--content-padding)) 0; width: calc(100% + var(--content-padding) * 2);">
+        <div class="form-save-bar__left">
+            {% if role %}
+            <button type="button" class="btn btn-danger btn-sm"
+                    onclick="confirmAction('Delete Role', 'Are you sure you want to delete this role?', () => { window.location='{{ request.app.state.admin_config.admin_path }}/roles/{{ role.id }}/delete'; })">
+                Delete Role
+            </button>
+            {% endif %}
+        </div>
+        <div class="form-save-bar__right">
+            <a href="{{ request.app.state.admin_config.admin_path }}/roles" class="btn btn-ghost">Cancel</a>
+            <button type="submit" class="btn btn-primary">
+                Save Role
+            </button>
+        </div>
+    </div>
+</form>
+{% endblock %}

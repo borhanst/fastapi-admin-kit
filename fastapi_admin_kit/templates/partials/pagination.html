@@ -1,0 +1,82 @@
+{# partials/pagination.html — reusable pagination component #}
+{% macro render_pagination(page, total_pages, total_items, per_page, next_cursor=None, has_next=false, pagination_mode="offset") %}
+{% if pagination_mode and "cursor" in pagination_mode %}
+{# Cursor-based pagination #}
+<div class="pagination">
+  <div class="pagination-info">
+    {% if has_next or total_items > per_page %}
+    {% if page is defined and page > 1 %}
+    Showing cursor-based results (page {{ page }})
+    {% else %}
+    Showing cursor-based results
+    {% endif %}
+    {% else %}
+    Showing all {{ total_items | int }} results
+    {% endif %}
+  </div>
+  <div class="pagination-links">
+    {% if has_next %}
+    <a href="?after={{ next_cursor }}" class="pagination-link" title="Next page">
+      {{ icon("chevron-right") }}
+    </a>
+    {% else %}
+    <span class="pagination-link pagination-link--disabled">
+      {{ icon("chevron-right") }}
+    </span>
+    {% endif %}
+  </div>
+</div>
+{% else %}
+{# Offset-based pagination (default) #}
+<div class="pagination">
+  <div class="pagination-info">
+    Showing {{ ((page - 1) * per_page + 1) | int }} to {{ (page * per_page) if page < total_pages else total_items | int }} of {{ total_items | int }} results
+  </div>
+  <div class="pagination-links">
+    {% if page > 1 %}
+    <a href="?page={{ page - 1 }}" class="pagination-link" title="Previous page">
+      {{ icon("chevron-left") }}
+    </a>
+    {% else %}
+    <span class="pagination-link pagination-link--disabled">
+      {{ icon("chevron-left") }}
+    </span>
+    {% endif %}
+
+    {% set start_page = [1, page - 2] | max %}
+    {% set end_page = [total_pages, page + 2] | min %}
+
+    {% if start_page > 1 %}
+    <a href="?page=1" class="pagination-link">1</a>
+    {% if start_page > 2 %}
+    <span class="pagination-ellipsis">...</span>
+    {% endif %}
+    {% endif %}
+
+    {% for p in range(start_page, end_page + 1) %}
+    <a href="?page={{ p }}"
+       class="pagination-link {% if p == page %}pagination-link--active{% endif %}">
+      {{ p }}
+    </a>
+    {% endfor %}
+
+    {% if end_page < total_pages %}
+    {% if end_page < total_pages - 1 %}
+    <span class="pagination-ellipsis">...</span>
+    {% endif %}
+    <a href="?page={{ total_pages }}" class="pagination-link">{{ total_pages }}</a>
+    {% endif %}
+
+    {% if page < total_pages %}
+    <a href="?page={{ page + 1 }}" class="pagination-link" title="Next page">
+      {{ icon("chevron-right") }}
+    </a>
+    {% else %}
+    <span class="pagination-link pagination-link--disabled">
+      {{ icon("chevron-right") }}
+    </span>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endmacro %}

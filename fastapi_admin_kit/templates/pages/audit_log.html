@@ -1,0 +1,102 @@
+{# pages/audit_log.html — audit log timeline page #}
+{% extends "base.html" %}
+
+{% block title %}Audit Log — {{ title | default("Admin") }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1 class="page-header-title">Audit Log</h1>
+      <p class="page-header-subtitle">Track all changes across your models</p>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl border border-[var(--color-gray-200)]">
+    <div class="px-6 py-4 border-b border-[var(--color-gray-200)]">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+        <div class="flex-1">
+          <div class="relative">
+            {{ icon("magnifying-glass", class="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-gray-400)]", size="20px") }}
+            <input type="text" name="search" value="{{ search | default('') }}"
+                   placeholder="Search audit log..."
+                   class="form-input w-full pl-10 pr-4 py-2 rounded-lg border border-[var(--color-gray-300)] bg-white text-[var(--color-gray-900)] focus:ring-2 focus:ring-[var(--color-primary-500)] focus:border-[var(--color-primary-500)] transition-colors">
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <select name="action" class="form-select px-3 py-2 rounded-lg border border-[var(--color-gray-300)] bg-white text-[var(--color-gray-900)] text-sm">
+            <option value="">All Actions</option>
+            <option value="CREATE" {% if action_filter == 'CREATE' %}selected{% endif %}>Create</option>
+            <option value="UPDATE" {% if action_filter == 'UPDATE' %}selected{% endif %}>Update</option>
+            <option value="DELETE" {% if action_filter == 'DELETE' %}selected{% endif %}>Delete</option>
+          </select>
+
+          <select name="model" class="form-select px-3 py-2 rounded-lg border border-[var(--color-gray-300)] bg-white text-[var(--color-gray-900)] text-sm">
+            <option value="">All Models</option>
+            {% for model_name in model_names %}
+            <option value="{{ model_name }}" {% if model_filter == model_name %}selected{% endif %}>{{ model_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="divide-y divide-[var(--color-gray-100)]">
+      {% if entries %}
+      {% for entry in entries %}
+      <div class="px-6 py-4 hover:bg-[var(--color-gray-50)] transition-colors">
+        <div class="flex items-start gap-4">
+          <div class="shrink-0 mt-1">
+            {% if entry.action == 'CREATE' %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Created</span>
+            {% elif entry.action == 'UPDATE' %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Updated</span>
+            {% elif entry.action == 'DELETE' %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Deleted</span>
+            {% endif %}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm text-[var(--color-gray-900)]">
+              <span class="font-medium">{{ entry.user_email | default("System") }}</span>
+              {{ entry.action | lower }}d
+              <a href="{{ admin_path | default('/admin') }}/{{ entry.table_name }}/{{ entry.object_id }}"
+                 class="font-medium text-[var(--color-primary-600)] hover:underline">
+                {{ entry.model_name }} #{{ entry.object_id }}
+              </a>
+              {% if entry.object_repr %}
+              <span class="text-[var(--color-gray-500)]">({{ entry.object_repr }})</span>
+              {% endif %}
+            </div>
+            <div class="text-xs text-[var(--color-gray-500)] mt-1">
+              {{ entry.timestamp }}
+              {% if entry.ip_address %}
+              <span class="ml-2">IP: {{ entry.ip_address }}</span>
+              {% endif %}
+            </div>
+            {% if entry.changes %}
+            <div class="mt-2 text-xs text-[var(--color-gray-500)]">
+              Changed: {{ entry.changes.keys() | list | join(', ') }}
+            </div>
+            {% endif %}
+          </div>
+          <a href="{{ admin_path | default('/admin') }}/audit-log/{{ entry.id }}"
+             class="shrink-0 text-sm text-[var(--color-primary-600)] hover:underline">
+            View
+          </a>
+        </div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="px-6 py-12 text-center">
+        {{ icon("clock", class="mx-auto text-[var(--color-gray-400)]", size="48px") }}
+        <p class="mt-4 text-sm text-[var(--color-gray-500)]">No audit log entries found</p>
+      </div>
+      {% endif %}
+    </div>
+
+    {% from "partials/pagination.html" import render_pagination %}
+    {{ render_pagination(page, total_pages, total_items, per_page) }}
+  </div>
+</div>
+{% endblock %}

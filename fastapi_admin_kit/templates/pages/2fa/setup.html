@@ -1,0 +1,122 @@
+{# pages/2fa/setup.html — 2FA setup with QR code #}
+{% extends "base.html" %}
+
+{% block title %}Two-Factor Authentication — {{ title | default("Admin") }}{% endblock %}
+
+{% block breadcrumb %}
+{{ super() }}
+<span class="text-[var(--color-gray-400)]">/</span>
+<a href="{{ admin_path | default('/admin') }}/profile" class="hover:text-[var(--color-primary-600)] transition-colors">Profile</a>
+<span class="text-[var(--color-gray-400)]">/</span>
+<span class="text-[var(--color-gray-900)] font-medium">Two-Factor Authentication</span>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="page-header">
+    <div class="page-header-left">
+      <a href="{{ admin_path | default('/admin') }}/profile" class="page-header-back">
+        {{ icon("chevron-left") }}
+        Profile
+      </a>
+      <h1 class="page-header-title">Two-Factor Authentication</h1>
+    </div>
+  </div>
+
+  {% if error %}
+  <div class="p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+    {{ error }}
+  </div>
+  {% endif %}
+
+  {% if success %}
+  <div class="p-4 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm">
+    {{ success }}
+  </div>
+  {% endif %}
+
+  {% if backup_codes %}
+  <div class="bg-white rounded-xl border border-[var(--color-gray-200)] p-6">
+    <h2 class="text-lg font-semibold text-[var(--color-gray-900)] mb-2">Backup Codes</h2>
+    <p class="text-sm text-[var(--color-gray-600)] mb-4">
+      Save these codes somewhere safe. Each code can only be used once.
+    </p>
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+      {% for code in backup_codes %}
+      <code class="px-3 py-2 bg-[var(--color-gray-50)] border border-[var(--color-gray-200)] rounded text-sm font-mono text-center">
+        {{ code }}
+      </code>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if totp_enabled %}
+  <div class="bg-white rounded-xl border border-[var(--color-gray-200)] p-6">
+    <h2 class="text-lg font-semibold text-[var(--color-gray-900)] mb-2">2FA is Enabled</h2>
+    <p class="text-sm text-[var(--color-gray-600)] mb-4">Your account is protected with two-factor authentication.</p>
+
+    <div class="flex items-center gap-4">
+      <form method="post" action="{{ admin_path | default('/admin') }}/profile/2fa/disable" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+        <div class="flex items-center gap-2">
+          <input type="password" name="password" placeholder="Current password" required
+                 class="form-input px-3 py-1.5 rounded-lg border border-[var(--color-gray-300)] text-sm">
+          <input type="text" name="code" placeholder="TOTP code" required maxlength="6" pattern="[0-9]{6}"
+                 class="form-input px-3 py-1.5 rounded-lg border border-[var(--color-gray-300)] text-sm w-24">
+          <button type="submit"
+                  class="px-4 py-1.5 rounded-lg border border-red-300 text-red-700 text-sm hover:bg-red-50 transition-colors">
+            Disable 2FA
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <form method="post" action="{{ admin_path | default('/admin') }}/profile/2fa/backup-codes" class="mt-4">
+      <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+      <button type="submit"
+              class="px-4 py-2 rounded-lg border border-[var(--color-gray-300)] text-sm text-[var(--color-gray-700)] hover:bg-[var(--color-gray-50)] transition-colors">
+        Regenerate Backup Codes
+      </button>
+    </form>
+  </div>
+
+  {% elif secret %}
+  <div class="bg-white rounded-xl border border-[var(--color-gray-200)] p-6">
+    <h2 class="text-lg font-semibold text-[var(--color-gray-900)] mb-2">Set Up 2FA</h2>
+    <p class="text-sm text-[var(--color-gray-600)] mb-4">
+      Scan the QR code below with your authenticator app (Google Authenticator, Authy, etc.).
+    </p>
+
+    <div class="flex items-start gap-8">
+      <div class="text-center">
+        {% if qr_uri %}
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ qr_uri | urlencode }}"
+             alt="TOTP QR Code" class="border border-[var(--color-gray-200)] rounded-lg">
+        {% endif %}
+        <p class="mt-2 text-xs text-[var(--color-gray-500)]">Or enter manually:</p>
+        <code class="text-xs font-mono break-all text-[var(--color-gray-600)]">{{ secret }}</code>
+      </div>
+
+      <div class="flex-1">
+        <form method="post" action="{{ admin_path | default('/admin') }}/profile/2fa/enable">
+          <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+          <div class="mb-4">
+            <label for="code" class="block text-sm font-medium text-[var(--color-gray-700)] mb-1">
+              Enter the 6-digit code from your app
+            </label>
+            <input type="text" id="code" name="code" required maxlength="6" pattern="[0-9]{6}"
+                   class="form-input w-full px-4 py-2.5 rounded-lg border border-[var(--color-gray-300)] bg-white text-[var(--color-gray-900)] focus:ring-2 focus:ring-[var(--color-primary-500)] focus:border-[var(--color-primary-500)] transition-colors"
+                   placeholder="000000" autocomplete="off">
+          </div>
+          <button type="submit"
+                  class="btn-primary px-4 py-2 rounded-lg bg-[var(--color-primary-600)] text-white text-sm font-medium hover:bg-[var(--color-primary-500)] transition-colors">
+            Enable 2FA
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,72 @@
+site_name: FastAPI Console
+site_description: Drop-in admin panel for FastAPI + SQLAlchemy apps
+site_url: https://borhanst.github.io/fastapi-console/
+repo_url: https://github.com/borhanst/fastapi-console
+repo_name: fastapi-console
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            show_source: true
+            show_root_heading: true
+            members_order: source
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+      - Configuration: getting-started/configuration.md
+  - Guide:
+      - Model Registration: guide/model-registration.md
+      - Authentication & RBAC: guide/auth-rbac.md
+      - Widgets & Forms: guide/widgets-forms.md
+      - Audit Logging: guide/audit-logging.md
+      - Command Palette: guide/command-palette.md
+      # - Plugins: guide/plugins.md
+      - Pagination: guide/pagination.md
+      - Alembic Setup: guide/alembic-setup.md
+  - API Reference:
+      - Admin: api/admin.md
+      - Widgets: api/widgets.md
+      - Auth: api/auth.md
+  - Contributing: contributing.md
+  - Upcoming Features: upcoming-features.md

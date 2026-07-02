@@ -1,0 +1,74 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   FastAPI Console — CSS Custom Properties
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Primary colour scale ─────────────────────────────────────────────── */
+  --color-primary-50:  #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #4f46e5;
+  --color-primary-700: #4338ca;
+  --color-primary-800: #3730a3;
+  --color-primary-900: #312e81;
+
+  /* ── Neutral greys ────────────────────────────────────────────────────── */
+  --color-gray-50:  #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+
+  /* ── Semantic colours ─────────────────────────────────────────────────── */
+  --color-success: #059669;
+  --color-warning: #d97706;
+  --color-danger:  #dc2626;
+  --color-info:    #2563eb;
+
+  /* ── Layout dimensions ────────────────────────────────────────────────── */
+  --sidebar-width:   256px;
+  --sidebar-collapsed: 0;
+  --topbar-height:   64px;
+  --content-max-width: 1280px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Dark mode
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-theme="dark"] {
+  --color-primary-50:  #1e1b4b;
+  --color-primary-100: #312e81;
+  --color-primary-200: #3730a3;
+  --color-primary-300: #4338ca;
+  --color-primary-400: #4f46e5;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #818cf8;
+  --color-primary-700: #a5b4fc;
+  --color-primary-800: #c7d2fe;
+  --color-primary-900: #eef2ff;
+
+  --color-gray-50:  #111827;
+  --color-gray-100: #1f2937;
+  --color-gray-200: #374151;
+  --color-gray-300: #4b5563;
+  --color-gray-400: #6b7280;
+  --color-gray-500: #9ca3af;
+  --color-gray-600: #d1d5db;
+  --color-gray-700: #e5e7eb;
+  --color-gray-800: #f3f4f6;
+  --color-gray-900: #f9fafb;
+
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger:  #f87171;
+  --color-info:    #60a5fa;
+}

@@ -1,0 +1,75 @@
+{# pages/role_form.html — role edit with permission matrix #}
+{% extends "base.html" %}
+
+{% block title %}{% if role %}Edit Role{% else %}Create Role{% endif %} — {{ title | default("Admin") }}{% endblock %}
+
+{% block breadcrumb %}
+{{ super() }}
+<span class="text-[var(--color-gray-400)]">/</span>
+<a href="{{ admin_path | default('/admin') }}/roles/" class="hover:text-[var(--color-primary-600)] transition-colors">Roles</a>
+<span class="text-[var(--color-gray-400)]">/</span>
+<span class="text-[var(--color-gray-900)] font-medium">{% if role %}{{ role.name }}{% else %}Create{% endif %}</span>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="page-header">
+    <div class="page-header-left">
+      <a href="{{ admin_path | default('/admin') }}/roles/" class="page-header-back">
+        {{ icon("chevron-left") }}
+        Roles
+      </a>
+      <h1 class="page-header-title">
+        {% if role %}Edit Role{% else %}New Role{% endif %}
+      </h1>
+      {% if role %}
+      <p class="page-header-subtitle">
+        <span class="mono">#{{ role.id }}</span> — {{ role.name }}
+      </p>
+      {% endif %}
+    </div>
+  </div>
+
+  <form method="post" action="{{ admin_path | default('/admin') }}/roles{% if role %}/{{ role.id }}{% endif %}"
+        class="space-y-6">
+    <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+    <div class="bg-white rounded-xl border border-[var(--color-gray-200)] p-6">
+      <h2 class="text-lg font-semibold text-[var(--color-gray-900)] mb-4">Role Details</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label for="name" class="block text-sm font-medium text-[var(--color-gray-700)] mb-1">Name</label>
+          <input type="text" id="name" name="name" value="{{ role.name | default('') }}" required
+                 class="form-input w-full px-4 py-2.5 rounded-lg border border-[var(--color-gray-300)] bg-white text-[var(--color-gray-900)] focus:ring-2 focus:ring-[var(--color-primary-500)] focus:border-[var(--color-primary-500)] transition-colors">
+        </div>
+        <div>
+          <label for="description" class="block text-sm font-medium text-[var(--color-gray-700)] mb-1">Description</label>
+          <input type="text" id="description" name="description" value="{{ role.description | default('') }}"
+                 class="form-input w-full px-4 py-2.5 rounded-lg border border-[var(--color-gray-300)] bg-white text-[var(--color-gray-900)] focus:ring-2 focus:ring-[var(--color-primary-500)] focus:border-[var(--color-primary-500)] transition-colors">
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl border border-[var(--color-gray-200)]">
+      <div class="px-6 py-4 border-b border-[var(--color-gray-200)]">
+        <h2 class="text-lg font-semibold text-[var(--color-gray-900)]">Permissions</h2>
+        <p class="mt-1 text-sm text-[var(--color-gray-500)]">Select tables and configure actions for this role.</p>
+      </div>
+
+      <div class="p-6">
+        {% include "partials/permission_widget.html" with context %}
+      </div>
+    </div>
+
+    <div class="sticky bottom-0 bg-white border border-[var(--color-gray-200)] rounded-xl p-4 flex items-center justify-end gap-3">
+      <a href="{{ admin_path | default('/admin') }}/roles/"
+         class="px-4 py-2 rounded-lg border border-[var(--color-gray-300)] text-sm text-[var(--color-gray-700)] hover:bg-[var(--color-gray-50)] transition-colors">
+        Cancel
+      </a>
+      <button type="submit"
+              class="btn-primary px-4 py-2 rounded-lg bg-[var(--color-primary-600)] text-white text-sm font-medium hover:bg-[var(--color-primary-500)] transition-colors">
+        {% if role %}Save Changes{% else %}Create Role{% endif %}
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

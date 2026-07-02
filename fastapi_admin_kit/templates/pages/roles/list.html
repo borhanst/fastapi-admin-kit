@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Roles — Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header__left">
+        <h1 class="page-header__title">Roles</h1>
+        <p class="page-header__subtitle">Manage user roles and permissions.</p>
+    </div>
+    <div class="page-header__actions">
+        <a href="{{ request.app.state.admin_config.admin_path }}/roles/create" class="btn btn-primary">
+            {{ icon("plus", size="15px") }}
+            New Role
+        </a>
+    </div>
+</div>
+
+<div class="table-container">
+    <table class="table-wrapper">
+        <thead>
+            <tr>
+                <th class="table__th">Name</th>
+                <th class="table__th">Description</th>
+                <th class="table__th">Users</th>
+                <th class="table__th table__th--actions"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for data in roles %}
+            <tr>
+                <td class="table__cell" style="font-weight: var(--font-medium);">{{ data.role.name }}</td>
+                <td class="table__cell" style="color: var(--text-secondary);">{{ data.role.description or '—' }}</td>
+                <td class="table__cell table__cell--mono">{{ data.user_count }}</td>
+                <td class="table__cell table__cell--actions">
+                    <div class="table-actions">
+                        <a href="{{ request.app.state.admin_config.admin_path }}/roles/{{ data.role.id }}"
+                           class="table-action">Edit</a>
+                        <span class="table-actions__separator"></span>
+                        <form method="post" action="{{ request.app.state.admin_config.admin_path }}/roles/{{ data.role.id }}/delete"
+                               class="inline">
+                            <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+                            <button type="button"
+                                    class="table-action table-action--danger"
+                                    {% if data.user_count > 0 %}disabled{% endif %}
+                                    onclick="confirmAction('Delete Role', 'Are you sure you want to delete this role?', () => this.closest('form').submit())">
+                                Delete
+                            </button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+
+            {% if not roles %}
+            <tr>
+                <td colspan="4">
+                    <div class="empty-state">
+                        {{ icon("shield-check", css_class="empty-state__icon", size="48px") }}
+                        <h3 class="empty-state__title">No roles found</h3>
+                        <p class="empty-state__text">Create your first role to get started.</p>
+                    </div>
+                </td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,83 @@
+{# pages/users/list.html — admin user management list #}
+{% extends "base.html" %}
+
+{% block title %}Users — {{ title | default("Admin") }}{% endblock %}
+
+{% block breadcrumb %}
+{{ super() }}
+<span class="text-[var(--color-gray-400)]">/</span>
+<span class="text-[var(--color-gray-900)] font-medium">Users</span>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1 class="page-header-title">Admin Users</h1>
+    </div>
+    <div class="page-header-right">
+      <a href="{{ admin_path | default('/admin') }}/users/create"
+         class="btn-primary px-4 py-2 rounded-lg bg-[var(--color-primary-600)] text-white text-sm font-medium hover:bg-[var(--color-primary-500)] transition-colors">
+        Add User
+      </a>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl border border-[var(--color-gray-200)] overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-[var(--color-gray-200)]">
+          <th class="px-6 py-3 text-left font-medium text-[var(--color-gray-500)]">Email</th>
+          <th class="px-6 py-3 text-left font-medium text-[var(--color-gray-500)]">Full Name</th>
+          <th class="px-6 py-3 text-left font-medium text-[var(--color-gray-500)]">Roles</th>
+          <th class="px-6 py-3 text-center font-medium text-[var(--color-gray-500)]">Superuser</th>
+          <th class="px-6 py-3 text-center font-medium text-[var(--color-gray-500)]">Active</th>
+          <th class="px-6 py-3 text-left font-medium text-[var(--color-gray-500)]">Last Login</th>
+          <th class="px-6 py-3 text-right font-medium text-[var(--color-gray-500)]">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-[var(--color-gray-100)]">
+        {% for u in users %}
+        <tr class="hover:bg-[var(--color-gray-50)] transition-colors">
+          <td class="px-6 py-4 font-medium text-[var(--color-gray-900)]">{{ u.email }}</td>
+          <td class="px-6 py-4 text-[var(--color-gray-600)]">{{ u.full_name or '—' }}</td>
+          <td class="px-6 py-4">
+            <div class="flex flex-wrap gap-1">
+              {% for r in u.roles %}
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[var(--color-primary-50)] text-[var(--color-primary-700)]">
+                {{ r.name }}
+              </span>
+              {% endfor %}
+              {% if not u.roles %}
+              <span class="text-[var(--color-gray-400)]">—</span>
+              {% endif %}
+            </div>
+          </td>
+          <td class="px-6 py-4 text-center">
+            {% if u.is_superuser %}
+            <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-amber-100 text-amber-800">Yes</span>
+            {% else %}
+            <span class="text-[var(--color-gray-400)]">No</span>
+            {% endif %}
+          </td>
+          <td class="px-6 py-4 text-center">
+            {% if u.is_active %}
+            <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">Active</span>
+            {% else %}
+            <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800">Inactive</span>
+            {% endif %}
+          </td>
+          <td class="px-6 py-4 text-[var(--color-gray-500)] text-sm">
+            {{ u.last_login.strftime('%Y-%m-%d %H:%M') if u.last_login else 'Never' }}
+          </td>
+          <td class="px-6 py-4 text-right">
+            <a href="{{ admin_path | default('/admin') }}/users/{{ u.id }}"
+               class="text-[var(--color-primary-600)] hover:text-[var(--color-primary-500)] text-sm font-medium mr-3">Edit</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

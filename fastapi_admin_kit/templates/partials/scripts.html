@@ -1,0 +1,13 @@
+    <script src="/static/js/admin.js?v={{ static_version }}"></script>
+    <script src="/static/js/htmx-config.js"></script>
+    <script>
+      // Mobile menu button visibility
+      (function() {
+        var mql = window.matchMedia('(max-width: 1024px)');
+        var btn = document.getElementById('mobile-menu-btn');
+        function check(e) { btn.style.display = e.matches ? 'inline-flex' : 'none'; }
+        mql.addEventListener('change', check);
+        check(mql);
+      })();
+    </script>
+    {% block scripts %}{% endblock %}

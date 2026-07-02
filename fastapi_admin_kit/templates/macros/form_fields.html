@@ -1,0 +1,660 @@
+{# macros/form_fields.html — Complete widget macro library for form rendering.
+
+   Usage:
+     {% from "macros/form_fields.html" import render_field %}
+     {{ render_field(field_ctx, model_name) }}
+
+   field_ctx is a FieldRenderContext with:
+     .meta          — FieldMeta (name, label, required, readonly, help_text, placeholder, extra)
+     .widget_macro  — str macro name
+     .widget_context — dict from widget.render_context()
+     .errors        — list[str]
+#}
+
+{# ─── Dispatcher ────────────────────────────────────────────────────────── #}
+
+{% macro render_field(field_ctx, model_name) %}
+  {% set m = field_ctx.widget_macro %}
+  {% if   m == "text_input"      %}{{ _text_input(field_ctx, model_name) }}
+  {% elif m == "autocomplete"    %}{{ _autocomplete(field_ctx, model_name) }}
+  {% elif m == "textarea"        %}{{ _textarea(field_ctx, model_name) }}
+  {% elif m == "number_input"    %}{{ _number_input(field_ctx, model_name) }}
+  {% elif m == "toggle"          %}{{ _toggle(field_ctx) }}
+  {% elif m == "select"          %}{{ _select(field_ctx, model_name) }}
+  {% elif m == "date_picker"     %}{{ _date_picker(field_ctx, model_name) }}
+  {% elif m == "datetime_picker" %}{{ _datetime_picker(field_ctx, model_name) }}
+  {% elif m == "time_picker"     %}{{ _time_picker(field_ctx, model_name) }}
+  {% elif m == "json_editor"     %}{{ _json_editor(field_ctx) }}
+  {% elif m == "password_input"  %}{{ _password_input(field_ctx, model_name) }}
+  {% elif m == "readonly"        %}{{ _readonly(field_ctx) }}
+  {% elif m == "hidden"          %}{{ _hidden(field_ctx) }}
+  {% elif m == "email_input"     %}{{ _email_input(field_ctx, model_name) }}
+  {% elif m == "url_input"       %}{{ _url_input(field_ctx, model_name) }}
+  {% elif m == "phone_input"     %}{{ _phone_input(field_ctx, model_name) }}
+  {% elif m == "color_picker"    %}{{ _color_picker(field_ctx) }}
+  {% elif m == "slug"            %}{{ _slug(field_ctx, model_name) }}
+  {% elif m == "image_upload"    %}{{ _image_upload(field_ctx) }}
+  {% elif m == "file_upload"     %}{{ _file_upload(field_ctx) }}
+  {% elif m == "tag_input"       %}{{ _tag_input(field_ctx) }}
+  {% elif m == "relation_picker" %}{{ _relation_picker(field_ctx) }}
+  {% elif m == "multi_relation"  %}{{ _multi_relation(field_ctx) }}
+  {% else %}                        {{ _text_input(field_ctx, model_name) }}
+  {% endif %}
+{% endmacro %}
+
+{# ─── Shared helpers ────────────────────────────────────────────────────── #}
+
+{% macro _field_wrapper_open(field_ctx) %}
+{% set name = field_ctx.meta.name %}
+{% set has_error = field_ctx.errors | length > 0 %}
+{% set full_width = field_ctx.meta.extra.get('full_width', false) %}
+<div class="field-wrapper{% if full_width %} field-wrapper--full{% endif %}{% if has_error %} has-error{% endif %}"
+     id="field-wrapper-{{ name }}">
+{% endmacro %}
+
+{% macro _field_wrapper_close() %}
+</div>
+{% endmacro %}
+
+{% macro _label(field_ctx) %}
+{% set name = field_ctx.meta.name %}
+<label for="{{ name }}" class="field-label">
+  {{ field_ctx.meta.label }}
+  {% if field_ctx.meta.required %}<span class="required-star">*</span>{% endif %}
+</label>
+{% endmacro %}
+
+{% macro _errors(field_ctx) %}
+{% if field_ctx.errors %}
+<ul class="field-errors">
+  {% for err in field_ctx.errors %}
+  <li>{{ err }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endmacro %}
+
+{% macro _help_text(field_ctx) %}
+{% if field_ctx.meta.help_text %}
+<p class="field-help">{{ field_ctx.meta.help_text }}</p>
+{% endif %}
+{% endmacro %}
+
+{% macro _htmx_validate(field_ctx, model_name, trigger="blur") %}
+hx-post="{{ admin_path }}/{{ model_name }}/validate-field"
+hx-trigger="{{ trigger }}"
+hx-target="#field-wrapper-{{ field_ctx.meta.name }}"
+hx-swap="outerHTML"
+hx-include="[name='csrf_token']"
+hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
+{% endmacro %}
+
+{# ─── Text Input ────────────────────────────────────────────────────────── #}
+
+{# ─── Autocomplete (Text Input with Datalist) ──────────────────────────── #}
+
+{% macro _autocomplete(field_ctx, model_name) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{% set suggestions = field_ctx.widget_context.suggestions | default([]) %}
+{% set has_error = field_ctx.errors | length > 0 %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  {% set safe_suggestions = suggestions | tojson | forceescape %}
+  <div x-data="autocompleteField({{ safe_suggestions }}, '{{ val | e }}')"
+       @click.outside="open = false" style="position: relative;">
+    <div style="position: relative; display: flex; align-items: center;">
+      <input type="text" id="{{ name }}" name="{{ name }}"
+             x-model="query"
+             @input="onInput()"
+             @focus="onFocus()"
+             @keydown.escape="open = false"
+             @keydown.arrow-down.prevent="onArrowDown()"
+             @keydown.arrow-up.prevent="onArrowUp()"
+             @keydown.enter.prevent="onEnter()"
+             {% if field_ctx.meta.required %}required{% endif %}
+             {% if field_ctx.meta.readonly %}readonly{% endif %}
+             {% if field_ctx.meta.placeholder %}placeholder="{{ field_ctx.meta.placeholder }}"{% endif %}
+             {{ _htmx_validate(field_ctx, model_name) }}
+             class="form-input" style="padding-right: 32px;">
+      <button type="button" x-show="query.length > 0" x-cloak
+              @click.prevent="clearSelection()"
+              style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 2px; line-height: 1; display: flex; align-items: center; justify-content: center; z-index: 1;">
+        {{ icon("x-mark", size="14px") }}
+      </button>
+    </div>
+    <div x-show="open && filtered.length > 0" x-cloak
+         style="position: absolute; z-index: 50; width: 100%; background: var(--surface-base); border: 1px solid var(--surface-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); max-height: 200px; overflow-y: auto; margin-top: 4px;">
+      <template x-for="(item, index) in filtered" :key="item">
+        <div @mousedown.prevent="selectItem(item)"
+             @mouseenter="highlighted = index"
+             :style="index === highlighted ? 'background: var(--surface-hover);' : 'background: transparent;'"
+             style="padding: 10px 14px; cursor: pointer; font-size: var(--text-sm); transition: background 0.1s ease; border-bottom: 1px solid var(--surface-border);"
+             :style="index === highlighted ? 'background: var(--surface-hover);' : 'background: transparent;'">
+          <span x-text="item"></span>
+        </div>
+      </template>
+    </div>
+  </div>
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Text Input ────────────────────────────────────────────────────────── #}
+
+{% macro _text_input(field_ctx, model_name) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{% set has_error = field_ctx.errors | length > 0 %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <input type="text" id="{{ name }}" name="{{ name }}"
+         value="{{ val }}"
+         {% if field_ctx.meta.required %}required{% endif %}
+         {% if field_ctx.meta.readonly %}readonly{% endif %}
+         {% if field_ctx.meta.placeholder %}placeholder="{{ field_ctx.meta.placeholder }}"{% endif %}
+         {% if field_ctx.widget_context.maxlength %}maxlength="{{ field_ctx.widget_context.maxlength }}"{% endif %}
+         {{ _htmx_validate(field_ctx, model_name) }}
+         class="form-input">
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Textarea ──────────────────────────────────────────────────────────── #}
+
+{% macro _textarea(field_ctx, model_name) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{% set rows = field_ctx.widget_context.rows | default(5) %}
+{% set has_error = field_ctx.errors | length > 0 %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <textarea id="{{ name }}" name="{{ name }}" rows="{{ rows }}"
+            {% if field_ctx.meta.required %}required{% endif %}
+            {% if field_ctx.meta.readonly %}readonly{% endif %}
+            {% if field_ctx.meta.placeholder %}placeholder="{{ field_ctx.meta.placeholder }}"{% endif %}
+            {{ _htmx_validate(field_ctx, model_name) }}
+            class="form-textarea">{{ val }}</textarea>
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Number Input ──────────────────────────────────────────────────────── #}
+
+{% macro _number_input(field_ctx, model_name) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{% set step = field_ctx.widget_context.step | default('1') %}
+{% set min = field_ctx.widget_context.min %}
+{% set max = field_ctx.widget_context.max %}
+{% set has_error = field_ctx.errors | length > 0 %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <input type="number" id="{{ name }}" name="{{ name }}"
+         value="{{ val }}"
+         step="{{ step }}"
+         {% if min is not none %}min="{{ min }}"{% endif %}
+         {% if max is not none %}max="{{ max }}"{% endif %}
+         {% if field_ctx.meta.required %}required{% endif %}
+         {% if field_ctx.meta.readonly %}readonly{% endif %}
+         {% if field_ctx.meta.placeholder %}placeholder="{{ field_ctx.meta.placeholder }}"{% endif %}
+         {{ _htmx_validate(field_ctx, model_name) }}
+         class="form-input">
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Toggle (Boolean) ─────────────────────────────────────────────────── #}
+
+{% macro _toggle(field_ctx) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <div x-data="{ on: {{ 'true' if val else 'false' }} }"
+       class="toggle-switch cursor-pointer"
+       :class="on ? 'active' : ''"
+       @click="on = !on">
+    <input type="hidden" name="{{ name }}" :value="on ? '1' : '0'">
+    <input type="checkbox" id="{{ name }}"
+           {% if val %}checked{% endif %}
+           {% if field_ctx.meta.readonly %}disabled{% endif %}
+           class="sr-only">
+    <span class="toggle-knob"></span>
+  </div>
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Select (Enum) ────────────────────────────────────────────────────── #}
+
+{% macro _select(field_ctx, model_name) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{% set choices = field_ctx.widget_context.choices | default([]) %}
+{% set has_error = field_ctx.errors | length > 0 %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <select id="{{ name }}" name="{{ name }}"
+          {% if field_ctx.meta.required %}required{% endif %}
+          {% if field_ctx.meta.readonly %}disabled{% endif %}
+          {{ _htmx_validate(field_ctx, model_name, trigger="change") }}
+          class="form-select">
+    <option value="">Select {{ field_ctx.meta.label }}...</option>
+    {% for choice in choices %}
+    <option value="{{ choice[0] }}" {% if choice[0] | string == val | string %}selected{% endif %}>{{ choice[1] }}</option>
+    {% endfor %}
+  </select>
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Date Picker ──────────────────────────────────────────────────────── #}
+
+{% macro _date_picker(field_ctx, model_name) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{% set has_error = field_ctx.errors | length > 0 %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <input type="date" id="{{ name }}" name="{{ name }}"
+         value="{{ val }}"
+         {% if field_ctx.meta.required %}required{% endif %}
+         {% if field_ctx.meta.readonly %}readonly{% else %}onclick="if(this.showPicker) { try { this.showPicker(); } catch(e) {} }"{% endif %}
+         {{ _htmx_validate(field_ctx, model_name) }}
+         class="form-input">
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── DateTime Picker ──────────────────────────────────────────────────── #}
+
+{% macro _datetime_picker(field_ctx, model_name) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{% set has_error = field_ctx.errors | length > 0 %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <input type="datetime-local" id="{{ name }}" name="{{ name }}"
+         value="{{ val }}"
+         {% if field_ctx.meta.required %}required{% endif %}
+         {% if field_ctx.meta.readonly %}readonly{% else %}onclick="if(this.showPicker) { try { this.showPicker(); } catch(e) {} }"{% endif %}
+         {{ _htmx_validate(field_ctx, model_name) }}
+         class="form-input">
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Time Picker ──────────────────────────────────────────────────────── #}
+
+{% macro _time_picker(field_ctx, model_name) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{% set has_error = field_ctx.errors | length > 0 %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <input type="time" id="{{ name }}" name="{{ name }}"
+         value="{{ val }}"
+         {% if field_ctx.meta.required %}required{% endif %}
+         {% if field_ctx.meta.readonly %}readonly{% else %}onclick="if(this.showPicker) { try { this.showPicker(); } catch(e) {} }"{% endif %}
+         {{ _htmx_validate(field_ctx, model_name) }}
+         class="form-input">
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── JSON Editor ──────────────────────────────────────────────────────── #}
+
+{% macro _json_editor(field_ctx) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{% set has_error = field_ctx.errors | length > 0 %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <div id="json-editor-{{ name }}" x-data="jsonEditor('field-{{ name }}')" class="json-editor-wrapper">
+    <div x-ref="editorContainer" style="min-height: 200px;"></div>
+    <textarea id="field-{{ name }}" name="{{ name }}" class="sr-only">{{ val }}</textarea>
+  </div>
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Password Input ───────────────────────────────────────────────────── #}
+
+{% macro _password_input(field_ctx, model_name) %}
+{% set name = field_ctx.meta.name %}
+{% set is_create = field_ctx.widget_context.is_create | default(true) %}
+{% set obj_id = field_ctx.widget_context.obj_id | default('') %}
+{% set has_error = field_ctx.errors | length > 0 %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  {% if is_create %}
+  <input type="password" id="{{ name }}" name="{{ name }}" value=""
+         {% if field_ctx.meta.required %}required{% endif %}
+         {% if field_ctx.meta.readonly %}readonly{% endif %}
+         {% if field_ctx.meta.placeholder %}placeholder="{{ field_ctx.meta.placeholder }}"{% endif %}
+         class="form-input">
+  {% else %}
+  <div style="padding: 10px 12px; border: 1px solid var(--surface-border); border-radius: var(--radius-md); background: var(--surface-inset); display: flex; align-items: center; justify-content: space-between;">
+    <span style="color: var(--text-secondary); font-size: var(--text-sm);">Password is set</span>
+    <a href="{{ admin_path | default('/admin') }}/profile/password"
+       class="btn btn-secondary btn-sm" style="margin: 0;">
+      Change Password
+    </a>
+  </div>
+  <input type="hidden" name="{{ name }}" value="">
+  {% endif %}
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Email Input ──────────────────────────────────────────────────────── #}
+
+{% macro _email_input(field_ctx, model_name) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{% set has_error = field_ctx.errors | length > 0 %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <input type="email" id="{{ name }}" name="{{ name }}"
+         value="{{ val }}"
+         {% if field_ctx.meta.required %}required{% endif %}
+         {% if field_ctx.meta.readonly %}readonly{% endif %}
+         {% if field_ctx.meta.placeholder %}placeholder="{{ field_ctx.meta.placeholder }}"{% endif %}
+         {{ _htmx_validate(field_ctx, model_name) }}
+         class="form-input">
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── URL Input ────────────────────────────────────────────────────────── #}
+
+{% macro _url_input(field_ctx, model_name) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{% set has_error = field_ctx.errors | length > 0 %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <input type="url" id="{{ name }}" name="{{ name }}"
+         value="{{ val }}"
+         {% if field_ctx.meta.required %}required{% endif %}
+         {% if field_ctx.meta.readonly %}readonly{% endif %}
+         {% if field_ctx.meta.placeholder %}placeholder="{{ field_ctx.meta.placeholder }}"{% endif %}
+         {{ _htmx_validate(field_ctx, model_name) }}
+         class="form-input">
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Phone Input ──────────────────────────────────────────────────────── #}
+
+{% macro _phone_input(field_ctx, model_name) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{% set has_error = field_ctx.errors | length > 0 %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <input type="tel" id="{{ name }}" name="{{ name }}"
+         value="{{ val }}"
+         {% if field_ctx.meta.required %}required{% endif %}
+         {% if field_ctx.meta.readonly %}readonly{% endif %}
+         {% if field_ctx.meta.placeholder %}placeholder="{{ field_ctx.meta.placeholder }}"{% endif %}
+         {{ _htmx_validate(field_ctx, model_name) }}
+         class="form-input">
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Color Picker ─────────────────────────────────────────────────────── #}
+
+{% macro _color_picker(field_ctx) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('#000000') %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <div class="flex items-center gap-3">
+    <input type="color" id="{{ name }}" name="{{ name }}"
+           value="{{ val }}"
+           {% if field_ctx.meta.readonly %}disabled{% endif %}
+           style="height: 40px; width: 56px; border-radius: var(--radius-md); border: 1px solid var(--surface-border); cursor: pointer;">
+    <input type="text" value="{{ val }}"
+           @input="document.getElementById('{{ name }}').value = $event.target.value"
+           @change="document.querySelector('[name={{ name }}_text]').value = $event.target.value"
+           class="form-input" style="flex: 1;">
+  </div>
+  <input type="hidden" name="{{ name }}" value="{{ val }}">
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Slug Input ───────────────────────────────────────────────────────── #}
+
+{% macro _slug(field_ctx, model_name) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{% set source = field_ctx.widget_context.source_field | default('title') %}
+{% set has_error = field_ctx.errors | length > 0 %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <div class="flex items-center gap-2" x-data="slugWidget('{{ source }}', '{{ name }}')">
+    <input type="text" id="{{ name }}" name="{{ name }}"
+           :value="slug"
+           @input="onManualEdit($event.target.value)"
+           {% if field_ctx.meta.required %}required{% endif %}
+           {% if field_ctx.meta.readonly %}readonly{% endif %}
+           pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$"
+           {% if field_ctx.meta.placeholder %}placeholder="{{ field_ctx.meta.placeholder }}"{% endif %}
+           {{ _htmx_validate(field_ctx, model_name) }}
+           class="form-input" style="flex: 1;">
+    <button type="button" @click="regenerate()"
+            class="btn btn-secondary btn-sm" style="padding: 7px 12px;">
+      ↺
+    </button>
+  </div>
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Read-only Field ──────────────────────────────────────────────────── #}
+
+{% macro _readonly(field_ctx) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('-') %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <div class="form-input" style="cursor: default; background: var(--surface-inset);">
+    {{ val }}
+  </div>
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Hidden Field ─────────────────────────────────────────────────────── #}
+
+{% macro _hidden(field_ctx) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+<input type="hidden" id="{{ name }}" name="{{ name }}" value="{{ val }}">
+{% endmacro %}
+
+{# ─── Image Upload ─────────────────────────────────────────────────────── #}
+
+{% macro _image_upload(field_ctx) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <div x-data="imageUpload('{{ val }}')">
+    <input type="hidden" name="{{ name }}_action" :value="action">
+    <input type="file" id="{{ name }}" name="{{ name }}" accept="image/*"
+           @change="onFileSelect($event)" class="sr-only" x-ref="fileInput">
+    {% if val %}
+    <div style="margin-bottom: 8px;">
+      <img :src="existingUrl || '{{ val }}'" style="width: 128px; height: 128px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--surface-border);">
+    </div>
+    {% endif %}
+    <div x-show="previewUrl" style="margin-bottom: 8px;">
+      <img :src="previewUrl" style="width: 128px; height: 128px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--surface-border);">
+    </div>
+    <div class="flex items-center gap-2">
+      <button type="button" @click="$refs.fileInput.click()"
+              class="btn btn-secondary btn-sm">
+        Choose Image
+      </button>
+      {% if val %}
+      <button type="button" @click="clear()" class="btn btn-ghost btn-sm" style="color: var(--danger-500);">Remove</button>
+      {% endif %}
+    </div>
+  </div>
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── File Upload ──────────────────────────────────────────────────────── #}
+
+{% macro _file_upload(field_ctx) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <div x-data="fileUpload('{{ val }}')">
+    <input type="hidden" name="{{ name }}_action" :value="action">
+    <input type="file" id="{{ name }}" name="{{ name }}"
+           @change="onFileSelect($event)" class="sr-only" x-ref="fileInput">
+    {% if val %}
+    <div style="margin-bottom: 8px; font-size: var(--text-sm); color: var(--text-secondary);">
+      Current: <a href="{{ val }}" style="color: var(--primary-500);" target="_blank">{{ val }}</a>
+    </div>
+    {% endif %}
+    <div class="flex items-center gap-2">
+      <button type="button" @click="$refs.fileInput.click()"
+              class="btn btn-secondary btn-sm">
+        Choose File
+      </button>
+      {% if val %}
+      <button type="button" @click="clear()" class="btn btn-ghost btn-sm" style="color: var(--danger-500);">Remove</button>
+      {% endif %}
+    </div>
+  </div>
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Tag Input ────────────────────────────────────────────────────────── #}
+
+{% macro _tag_input(field_ctx) %}
+{% set name = field_ctx.meta.name %}
+{% set tags = field_ctx.widget_context.value | default('[]') %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <div x-data="tagInput({{ tags }})">
+    <input type="hidden" name="{{ name }}" :value="JSON.stringify(tags)">
+    <div class="flex flex-wrap gap-2" style="margin-bottom: 8px;">
+      <template x-for="(tag, index) in tags" :key="index">
+        <span class="tag-chip">
+          <span x-text="tag"></span>
+          <button type="button" @click="remove(index)" class="tag-chip__remove">
+            {{ icon("x-mark", size="12px") }}
+          </button>
+        </span>
+      </template>
+    </div>
+    <input type="text" x-model="newTag" @keydown.enter.prevent="add()" placeholder="Add tag..."
+           class="form-input">
+  </div>
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Relation Picker (ForeignKey) ─────────────────────────────────────── #}
+
+{% macro _relation_picker(field_ctx) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{% set label_text = field_ctx.widget_context.label_text | default('') %}
+{% set related_table = field_ctx.widget_context.related_table | default('') %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <div x-data="relationPicker('{{ val }}', '{{ label_text }}', '{{ admin_path }}/{{ related_table }}/search')">
+    <input type="hidden" name="{{ name }}" :value="selectedId">
+    <div class="relation-picker">
+      <input type="text" x-model="searchQuery" @input="search()" @click.outside="open = false" @focus="open = true"
+             placeholder="Search {{ field_ctx.meta.label | lower }}..."
+             class="form-input">
+      <div x-show="open && results.length > 0" class="relation-picker-dropdown">
+        <template x-for="result in results" :key="result.id">
+          <div @click="select(result)" class="relation-option">
+            <span x-text="result.label"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+    {% if val %}
+    <div style="margin-top: 8px; font-size: var(--text-sm); color: var(--text-secondary);">
+      Selected: <span style="font-weight: var(--font-medium);">{{ label_text }}</span>
+    </div>
+    {% endif %}
+  </div>
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Multi-Relation (Many-to-Many) ────────────────────────────────────── #}
+
+{% macro _multi_relation(field_ctx) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('[]') %}
+{% set related_table = field_ctx.widget_context.related_table | default('') %}
+{% set search_url = field_ctx.widget_context.search_url | default('') %}
+{% set url = search_url if search_url else (admin_path + '/' + related_table + '/search') %}
+{{ _field_wrapper_open(field_ctx) }}
+  {{ _label(field_ctx) }}
+  <div x-data="multiRelation({{ val | tojson | forceescape }}, '{{ url }}', [])">
+    <input type="hidden" name="{{ name }}" :value="JSON.stringify(selectedIds)">
+    <div class="flex flex-wrap gap-2" style="margin-bottom: 8px;">
+      <template x-for="(item, index) in selectedItems" :key="item.id">
+        <span class="tag-chip">
+          <span x-text="item.label"></span>
+          <button type="button" @click="remove(index)" class="tag-chip__remove">
+            {{ icon("x-mark", size="12px") }}
+          </button>
+        </span>
+      </template>
+    </div>
+    <div class="relation-picker">
+      <input type="text" x-model="searchQuery" @input="search()" @focus="open = true" @click.outside="open = false"
+             placeholder="Add {{ field_ctx.meta.label | lower }}..."
+             class="form-input">
+      <div x-show="open && results.length > 0" class="relation-picker-dropdown">
+        <template x-for="result in results" :key="result.id">
+          <div @click="add(result)" class="relation-option">
+            <span x-text="result.label"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}

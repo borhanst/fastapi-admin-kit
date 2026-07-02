@@ -1,0 +1,52 @@
+{# partials/command_palette.html — global search command palette #}
+<div x-data="commandPalette()" x-show="open" x-cloak
+     @open-command-palette.window="open = true; $nextTick(() => { $refs.paletteInput.focus(); $refs.paletteInput.select(); })"
+     class="command-palette-backdrop"
+     @click="close()">
+  <div class="command-palette" @click.stop>
+    <div class="command-palette-header">
+      {{ icon("magnifying-glass", size="18px") }}
+      <input x-ref="paletteInput"
+             type="text"
+             class="command-palette-input"
+             placeholder="Search models, fields..."
+             x-model="query"
+             @input="onInput()"
+             @keydown="onKeydown($event)"
+             autocomplete="off">
+      <kbd class="command-palette-esc">Esc</kbd>
+    </div>
+
+    <div class="command-palette-results" x-show="results.length > 0">
+      <template x-for="(item, index) in results" :key="index">
+        <a :href="item.url"
+           class="command-palette-result"
+           :class="{ 'command-palette-result--active': index === selectedIndex }"
+           @mouseenter="selectedIndex = index"
+           @click.prevent="navigate(item.url)">
+          <span class="command-palette-result-icon">
+            <span class="material-symbols-outlined" style="font-size: 18px;"
+                  x-text="item.type === 'model' ? 'inventory_2' : 'description'"></span>
+          </span>
+          <span class="command-palette-result-text">
+            <span class="command-palette-result-label" x-text="item.label"></span>
+            <span class="command-palette-result-sublabel" x-text="item.sublabel"></span>
+          </span>
+          <span class="command-palette-result-badge"
+                :class="item.type === 'model' ? 'badge-model' : 'badge-field'"
+                x-text="item.type"></span>
+        </a>
+      </template>
+    </div>
+
+    <div class="command-palette-empty" x-show="query.trim() && results.length === 0">
+      <p>No results found for "<span x-text="query"></span>"</p>
+    </div>
+
+    <div class="command-palette-footer" x-show="results.length > 0">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> open</span>
+      <span><kbd>esc</kbd> close</span>
+    </div>
+  </div>
+</div>

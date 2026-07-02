@@ -1,0 +1,159 @@
+{# Widget macros for form rendering #}
+
+{% macro text_input(name, label, value='', required=false, readonly=false, placeholder='', maxlength=null, error=null, css_class='') %}
+<div class="relative">
+    <input type="text" 
+           id="{{ name }}" 
+           name="{{ name }}" 
+           value="{{ value or '' }}"
+           {% if required %}required{% endif %}
+           {% if readonly %}readonly{% endif %}
+           {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
+           {% if maxlength %}maxlength="{{ maxlength }}"{% endif %}
+           class="w-full border rounded px-3 py-2 {% if error %}border-red-500{% endif %} {{ css_class }}">
+</div>
+{% endmacro %}
+
+{% macro textarea(name, label, value='', required=false, readonly=false, rows=5, placeholder='', error=null, css_class='') %}
+<textarea id="{{ name }}" 
+          name="{{ name }}" 
+          rows="{{ rows }}"
+          {% if required %}required{% endif %}
+          {% if readonly %}readonly{% endif %}
+          {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
+          class="w-full border rounded px-3 py-2 {% if error %}border-red-500{% endif %} {{ css_class }}">{{ value or '' }}</textarea>
+{% endmacro %}
+
+{% macro number_input(name, label, value='', required=false, readonly=false, step='1', min=null, max=null, placeholder='', error=null, css_class='') %}
+<input type="number" 
+       id="{{ name }}" 
+       name="{{ name }}" 
+       value="{{ value or '' }}"
+       step="{{ step }}"
+       {% if min is not none %}min="{{ min }}"{% endif %}
+       {% if max is not none %}max="{{ max }}"{% endif %}
+       {% if required %}required{% endif %}
+       {% if readonly %}readonly{% endif %}
+       {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
+       class="w-full border rounded px-3 py-2 {% if error %}border-red-500{% endif %} {{ css_class }}">
+{% endmacro %}
+
+{% macro toggle(name, label, checked=false, required=false, readonly=false, error=null, css_class='') %}
+<label class="relative inline-flex items-center cursor-pointer">
+    <input type="checkbox" 
+           id="{{ name }}" 
+           name="{{ name }}" 
+           {% if checked %}checked{% endif %}
+           {% if readonly %}disabled{% endif %}
+           class="sr-only peer">
+    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+</label>
+{% endmacro %}
+
+{% macro date_picker(name, label, value='', required=false, readonly=false, error=null, css_class='') %}
+<input type="date" 
+       id="{{ name }}" 
+       name="{{ name }}" 
+       value="{{ value or '' }}"
+       {% if required %}required{% endif %}
+       {% if readonly %}readonly{% endif %}
+       class="w-full border rounded px-3 py-2 {% if error %}border-red-500{% endif %} {{ css_class }}">
+{% endmacro %}
+
+{% macro datetime_picker(name, label, value='', required=false, readonly=false, error=null, css_class='') %}
+<input type="datetime-local" 
+       id="{{ name }}" 
+       name="{{ name }}" 
+       value="{{ value or '' }}"
+       {% if required %}required{% endif %}
+       {% if readonly %}readonly{% endif %}
+       class="w-full border rounded px-3 py-2 {% if error %}border-red-500{% endif %} {{ css_class }}">
+{% endmacro %}
+
+{% macro time_picker(name, label, value='', required=false, readonly=false, error=null, css_class='') %}
+<input type="time" 
+       id="{{ name }}" 
+       name="{{ name }}" 
+       value="{{ value or '' }}"
+       {% if required %}required{% endif %}
+       {% if readonly %}readonly{% endif %}
+       class="w-full border rounded px-3 py-2 {% if error %}border-red-500{% endif %} {{ css_class }}">
+{% endmacro %}
+
+{% macro select(name, label, value='', choices=[], required=false, readonly=false, error=null, css_class='') %}
+<select id="{{ name }}" 
+        name="{{ name }}" 
+        {% if required %}required{% endif %}
+        {% if readonly %}disabled{% endif %}
+        class="w-full border rounded px-3 py-2 {% if error %}border-red-500{% endif %} {{ css_class }}">
+    <option value="">-- Select --</option>
+    {% for choice in choices %}
+    <option value="{{ choice.value }}" {% if choice.value == value %}selected{% endif %}>
+        {{ choice.label }}
+    </option>
+    {% endfor %}
+</select>
+{% endmacro %}
+
+{% macro json_editor(name, label, value='', required=false, readonly=false, error=null, css_class='') %}
+<textarea id="{{ name }}" 
+          name="{{ name }}" 
+          rows="10"
+          {% if required %}required{% endif %}
+          {% if readonly %}readonly{% endif %}
+          class="w-full border rounded px-3 py-2 font-mono text-sm {% if error %}border-red-500{% endif %} {{ css_class }}"
+          placeholder="{}">{{ value | tojson if value else '' }}</textarea>
+{% endmacro %}
+
+{% macro file_upload(name, label, required=false, readonly=false, accept='*/*', error=null, css_class='') %}
+<input type="file" 
+       id="{{ name }}" 
+       name="{{ name }}" 
+       accept="{{ accept }}"
+       {% if required %}required{% endif %}
+       {% if readonly %}disabled{% endif %}
+       class="w-full border rounded px-3 py-2 {% if error %}border-red-500{% endif %} {{ css_class }}">
+{% endmacro %}
+
+{% macro tag_input(name, label, tags=[], required=false, readonly=false, error=null, css_class='') %}
+<div x-data="{ tags: {{ tags | tojson }}, newTag: '' }" class="w-full">
+    <div class="flex flex-wrap gap-2 mb-2">
+        <template x-for="(tag, index) in tags" :key="index">
+            <span class="bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded flex items-center gap-1">
+                <span x-text="tag"></span>
+                {% if not readonly %}
+                <button type="button" @click="tags.splice(index, 1)" class="text-blue-600 hover:text-blue-800">&times;</button>
+                {% endif %}
+            </span>
+        </template>
+    </div>
+    <input type="text" 
+           x-model="newTag" 
+           @keydown.enter.prevent="if(newTag.trim()){tags.push(newTag.trim());newTag=''}"
+           placeholder="Add tag..."
+           class="w-full border rounded px-3 py-2">
+    <input type="hidden" :name="'{{ name }}'" :value="JSON.stringify(tags)">
+</div>
+{% endmacro %}
+
+{% macro relation_picker(name, label, value='', required=false, readonly=false, error=null, css_class='') %}
+<select id="{{ name }}" 
+        name="{{ name }}" 
+        {% if required %}required{% endif %}
+        {% if readonly %}disabled{% endif %}
+        class="w-full border rounded px-3 py-2 {% if error %}border-red-500{% endif %} {{ css_class }}">
+    <option value="">-- Select --</option>
+    {# Options will be loaded via HTMX #}
+</select>
+{% endmacro %}
+
+{% macro multi_relation_picker(name, label, selected=[], required=false, readonly=false, error=null, css_class='') %}
+<select id="{{ name }}" 
+        name="{{ name }}" 
+        multiple
+        {% if required %}required{% endif %}
+        {% if readonly %}disabled{% endif %}
+        class="w-full border rounded px-3 py-2 {% if error %}border-red-500{% endif %} {{ css_class }}">
+    {# Options will be loaded via HTMX #}
+</select>
+{% endmacro %}

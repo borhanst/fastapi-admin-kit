@@ -1,0 +1,91 @@
+[project]
+name = "fastapi-admin-kit"
+dynamic = ["version"]
+description = "Drop-in admin panel for FastAPI + SQLAlchemy apps"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Typing :: Typed",
+]
+dependencies = [
+    "fastapi>=0.136.3",
+    "sqlalchemy>=2.0.0",
+    "jinja2>=3.1.0",
+    "python-multipart>=0.0.9",
+    "itsdangerous>=2.2.0",
+    "bcrypt>=4.0.0",
+    "aiosqlite>=0.20.0",
+    "uvicorn>=0.49.0",
+    "pyjwt>=2.13.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/borhanst/fastapi-admin-kit"
+Documentation = "https://borhanst.github.io/fastapi-admin-kit/"
+Repository = "https://github.com/borhanst/fastapi-admin-kit"
+Changelog = "https://github.com/borhanst/fastapi-admin-kit/releases"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
+    "ruff>=0.5.0",
+    "hatch>=1.13.0",
+]
+sqlmodel = ["sqlmodel>=0.0.39"]
+postgres = ["asyncpg>=0.29.0"]
+mysql = ["aiomysql>=0.2.0"]
+docs = [
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.25.0",
+]
+
+[project.scripts]
+fconsole = "fastapi_admin_kit.cli:main"
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+
+path = "fastapi_admin_kit/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["fastapi_admin_kit"]
+
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "tests/",
+    "docs/",
+    "example.py",
+    "example_sqlmodel.py",
+    "*.db",
+    ".*",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

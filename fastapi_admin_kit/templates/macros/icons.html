@@ -1,0 +1,50 @@
+{# macros/icons.html — Material Symbols icon macro (with Heroicon name mapping) #}
+{# NOTE: The icon() function is also available as a Jinja2 global (registered in core.py) #}
+{# This macro file is kept for backward compatibility with {% from "macros/icons.html" import icon %} #}
+
+{% set _icon_map = {
+  "home": "home",
+  "chart-bar": "bar_chart",
+  "clock": "schedule",
+  "shield-check": "verified_user",
+  "users": "group",
+  "folder": "folder",
+  "cube": "inventory_2",
+  "shopping-cart": "shopping_cart",
+  "magnifying-glass": "search",
+  "chevron-right": "chevron_right",
+  "chevron-left": "chevron_left",
+  "chevron-up": "expand_less",
+  "chevron-down": "expand_more",
+  "ellipsis-vertical": "more_vert",
+  "pencil": "edit",
+  "trash": "delete",
+  "x-mark": "close",
+  "x-circle": "cancel",
+  "check-circle": "check_circle",
+  "check": "check",
+  "plus": "add",
+  "eye": "visibility",
+  "bell": "notifications",
+  "sun": "light_mode",
+  "moon": "dark_mode",
+  "bars-": "menu",
+  "arrow-down-tray": "download",
+  "arrow-path": "refresh",
+  "paper-airplane": "send",
+  "exclamation-triangle": "warning",
+  "information-circle": "info",
+  "document-text": "description",
+  "arrow-down": "arrow_downward",
+  "arrow-up": "arrow_upward",
+  "bolt": "bolt",
+  "cog-": "settings",
+  "cog-6-tooth": "settings",
+  "lock": "lock"
+} %}
+
+{% macro icon(name, size="", css_class="") %}
+{% set _ms_name = _icon_map.get(name, name) %}
+{% set _size = size or "24px" %}
+<span class="material-symbols-outlined {{ css_class }}" style="font-size: {{ _size }};">{{ _ms_name }}</span>
+{% endmacro %}

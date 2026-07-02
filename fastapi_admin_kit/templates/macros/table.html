@@ -1,0 +1,108 @@
+{# macros/table.html — Reusable table macros for list views #}
+
+{% macro table_header(columns, ordering, model_name, admin_path="/admin") %}
+<thead>
+  <tr class="border-b border-[var(--color-gray-200)]">
+    <th class="px-6 py-3 text-left">
+      <input type="checkbox" id="select-all"
+             class="rounded border-[var(--color-gray-300)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-500)]">
+    </th>
+    {% for col in columns %}
+    {% if not col.primary_key or columns | length > 1 %}
+    <th class="px-6 py-3 text-left text-xs font-semibold text-[var(--color-gray-500)] uppercase tracking-wider">
+      <a href="?ordering={% if ordering == col.name %}-{% endif %}{{ col.name }}"
+         class="flex items-center gap-1 hover:text-[var(--color-gray-900)] transition-colors">
+        {{ col.name | replace('_', ' ') | title }}
+        {% if ordering == col.name %}
+        {{ icon("chevron-right") }}
+        {% elif ordering == '-' ~ col.name %}
+        {{ icon("chevron-right", class="rotate-180") }}
+        {% endif %}
+      </a>
+    </th>
+    {% endif %}
+    {% endfor %}
+    <th class="px-6 py-3 text-right text-xs font-semibold text-[var(--color-gray-500)] uppercase tracking-wider">
+      Actions
+    </th>
+  </tr>
+</thead>
+{% endmacro %}
+
+{% macro table_row(obj, columns, permissions, model_name, admin_path="/admin") %}
+<tr class="hover:bg-[var(--color-gray-50)] transition-colors">
+  <td class="px-6 py-4">
+    <input type="checkbox" name="ids[]" value="{{ obj.id }}"
+           class="rounded border-[var(--color-gray-300)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-500)]">
+  </td>
+  {% for col in columns %}
+  {% if not col.primary_key or columns | length > 1 %}
+  <td class="px-6 py-4 text-sm text-[var(--color-gray-900)]">
+    {{ table_cell(obj, col) }}
+  </td>
+  {% endif %}
+  {% endfor %}
+  <td class="px-6 py-4 text-right text-sm space-x-2">
+    {% if permissions.can_edit %}
+    <a href="{{ admin_path }}/{{ model_name }}/{{ obj.id }}"
+       class="text-[var(--color-primary-600)] hover:text-[var(--color-primary-500)] font-medium transition-colors">
+      Edit
+    </a>
+    {% endif %}
+    {% if permissions.can_delete %}
+    <button class="text-[var(--color-danger)] hover:text-red-700 font-medium transition-colors"
+            onclick="confirmAction('Delete', 'Are you sure you want to delete this?', () => { var form = document.createElement('form'); form.method = 'POST'; form.action = '{{ admin_path }}/{{ model_name }}/{{ obj.id }}/delete'; var csrf = document.createElement('input'); csrf.type = 'hidden'; csrf.name = 'csrf_token'; csrf.value = '{{ get_csrf_token(request) }}'; form.appendChild(csrf); document.body.appendChild(form); form.submit(); })">
+      Delete
+    </button>
+    {% endif %}
+  </td>
+</tr>
+{% endmacro %}
+
+{% macro table_cell(obj, col) %}
+{% if col.display_fn is defined and col.display_fn %}
+{% set val = col.value(obj) %}
+{% else %}
+{% set val = attr(obj, col.name) | default('-') %}
+{% endif %}
+{% if col.boolean is defined and col.boolean %}
+{% if val is sameas true %}
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+  Active
+</span>
+{% elif val is sameas false %}
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+  Inactive
+</span>
+{% else %}
+{{ val }}
+{% endif %}
+{% elif val is sameas true %}
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+  Active
+</span>
+{% elif val is sameas false %}
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+  Inactive
+</span>
+{% elif val == '-' %}
+<span class="text-[var(--color-gray-400)]">-</span>
+{% else %}
+{{ val }}
+{% endif %}
+{% endmacro %}
+
+{% macro empty_state(model_name, verbose_name, can_create, admin_path="/admin") %}
+<tr>
+  <td colspan="100" class="px-6 py-12 text-center">
+    {{ icon("document-text", size="48px") }}
+    <p class="mt-4 text-sm text-[var(--color-gray-500)]">No {{ verbose_name | lower }} found</p>
+    {% if can_create %}
+    <a href="{{ admin_path }}/{{ model_name }}/create"
+       class="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--color-primary-600)] text-white text-sm font-medium hover:bg-[var(--color-primary-500)] transition-colors">
+      + Create your first {{ verbose_name | lower }}
+    </a>
+    {% endif %}
+  </td>
+</tr>
+{% endmacro %}

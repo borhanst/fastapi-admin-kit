@@ -1,0 +1,183 @@
+{# pages/detail.html — read-only detail view for a single object #}
+{% extends "base.html" %}
+
+{% block title %}{{ registered.verbose_name }} #{{ obj.id }} — {{ title | default("Admin") }}{% endblock %}
+
+{% block breadcrumb %}
+{{ super() }}
+<span class="breadcrumb-separator">/</span>
+<a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/" class="breadcrumb-segment hover:text-[var(--color-primary-600)] transition-colors">{{ registered.verbose_name_plural }}</a>
+<span class="breadcrumb-separator">/</span>
+<span class="breadcrumb-current">{{ obj }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="page-header">
+    <div class="page-header-left">
+      <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/" class="page-header-back">
+        {{ icon("chevron-left", size="16px") }}
+        {{ registered.verbose_name_plural }}
+      </a>
+      <h1 class="page-header-title">View {{ registered.verbose_name }}</h1>
+      <p class="page-header-subtitle">
+        <span class="mono">#{{ obj.id }}</span>
+        {% if obj.__str__() %} — {{ obj.__str__() }}{% endif %}
+      </p>
+    </div>
+    <div class="page-header-right">
+      {% if permissions.can_edit %}
+      <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/{{ obj.id }}" class="btn btn-primary btn-sm">
+        {{ icon("pencil", size="16px") }}
+        Edit
+      </a>
+      {% endif %}
+      {% if permissions.can_delete %}
+      <form method="post" action="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/{{ obj.id }}/delete" style="display: inline;">
+        <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+        <button type="button" class="btn btn-danger btn-sm"
+                onclick="confirmAction('Delete', 'Are you sure you want to delete this {{ registered.verbose_name | lower }}?', () => this.closest('form').submit())">
+          Delete
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if fieldsets %}
+  {% for fieldset in fieldsets %}
+  <div class="bg-white rounded-xl border border-[var(--color-gray-200)]">
+    <div class="px-6 py-4 border-b border-[var(--color-gray-200)]">
+      <h2 class="text-lg font-semibold text-[var(--color-gray-900)]">{{ fieldset.title or "Details" }}</h2>
+    </div>
+    <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+      {% for field in fieldset.fields %}
+      <div{% if field.meta.extra.get('full_width', false) %} class="md:col-span-2"{% endif %}>
+        <dt class="text-sm font-medium text-[var(--color-gray-500)]">{{ field.meta.label }}</dt>
+        <dd class="mt-1 text-sm text-[var(--color-gray-900)]">
+          {% set val = field.widget_context.value | default(none) %}
+          {% if val is none %}
+            <span class="text-[var(--color-gray-400)]">-</span>
+          {% elif field.widget_macro == 'toggle' %}
+            {% if val %}
+            <span class="status-badge status-badge--success">
+              {{ icon("check-circle", size="14px") }}
+              Active
+            </span>
+            {% else %}
+            <span class="status-badge status-badge--muted">
+              {{ icon("x-circle", size="14px") }}
+              Inactive
+            </span>
+            {% endif %}
+          {% elif field.widget_macro == 'select' %}
+            {% set choices = field.widget_context.choices | default([]) %}
+            {% set found = false %}
+            {% for choice in choices %}
+              {% if choice[0] | string == val | string %}
+                {{ choice[1] }}
+                {% set found = true %}
+              {% endif %}
+            {% endfor %}
+            {% if not found and val %}{{ val }}{% endif %}
+          {% elif field.widget_macro == 'image_upload' and val %}
+            <img src="{{ val }}" style="max-width: 200px; max-height: 200px; border-radius: var(--radius-md); border: 1px solid var(--surface-border);">
+          {% elif field.widget_macro == 'file_upload' and val %}
+            <a href="{{ val }}" target="_blank" style="color: var(--primary-500);">{{ val }}</a>
+          {% elif field.widget_macro == 'json_editor' %}
+            <pre class="bg-[var(--color-gray-50)] rounded-lg p-4 overflow-auto text-sm text-[var(--color-gray-900)]" style="max-height: 300px;">{{ val }}</pre>
+          {% elif field.widget_macro == 'color_picker' %}
+            <div class="flex items-center gap-2">
+              <div style="width: 24px; height: 24px; border-radius: var(--radius-sm); border: 1px solid var(--surface-border); background: {{ val }};"></div>
+              <span>{{ val }}</span>
+            </div>
+          {% elif field.widget_macro == 'relation_picker' %}
+            {{ field.widget_context.label_text | default(val) }}
+          {% elif field.widget_macro == 'tag_input' %}
+            {% set tags = val | default('[]') %}
+            {% if tags is string %}
+              {% set tags = tags | tojson %}
+            {% endif %}
+            <div class="flex flex-wrap gap-1">
+              {% for tag in tags %}
+              <span class="tag-chip">{{ tag }}</span>
+              {% endfor %}
+            </div>
+          {% else %}
+            {{ val }}
+          {% endif %}
+        </dd>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="bg-white rounded-xl border border-[var(--color-gray-200)]">
+    <div class="px-6 py-4 border-b border-[var(--color-gray-200)]">
+      <h2 class="text-lg font-semibold text-[var(--color-gray-900)]">Details</h2>
+    </div>
+    <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+      {% for field in form_fields %}
+      <div{% if field.meta.extra.get('full_width', false) %} class="md:col-span-2"{% endif %}>
+        <dt class="text-sm font-medium text-[var(--color-gray-500)]">{{ field.meta.label }}</dt>
+        <dd class="mt-1 text-sm text-[var(--color-gray-900)]">
+          {% set val = field.widget_context.value | default(none) %}
+          {% if val is none %}
+            <span class="text-[var(--color-gray-400)]">-</span>
+          {% elif field.widget_macro == 'toggle' %}
+            {% if val %}
+            <span class="status-badge status-badge--success">
+              {{ icon("check-circle", size="14px") }}
+              Active
+            </span>
+            {% else %}
+            <span class="status-badge status-badge--muted">
+              {{ icon("x-circle", size="14px") }}
+              Inactive
+            </span>
+            {% endif %}
+          {% elif field.widget_macro == 'select' %}
+            {% set choices = field.widget_context.choices | default([]) %}
+            {% set found = false %}
+            {% for choice in choices %}
+              {% if choice[0] | string == val | string %}
+                {{ choice[1] }}
+                {% set found = true %}
+              {% endif %}
+            {% endfor %}
+            {% if not found and val %}{{ val }}{% endif %}
+          {% elif field.widget_macro == 'image_upload' and val %}
+            <img src="{{ val }}" style="max-width: 200px; max-height: 200px; border-radius: var(--radius-md); border: 1px solid var(--surface-border);">
+          {% elif field.widget_macro == 'file_upload' and val %}
+            <a href="{{ val }}" target="_blank" style="color: var(--primary-500);">{{ val }}</a>
+          {% elif field.widget_macro == 'json_editor' %}
+            <pre class="bg-[var(--color-gray-50)] rounded-lg p-4 overflow-auto text-sm text-[var(--color-gray-900)]" style="max-height: 300px;">{{ val }}</pre>
+          {% elif field.widget_macro == 'color_picker' %}
+            <div class="flex items-center gap-2">
+              <div style="width: 24px; height: 24px; border-radius: var(--radius-sm); border: 1px solid var(--surface-border); background: {{ val }};"></div>
+              <span>{{ val }}</span>
+            </div>
+          {% elif field.widget_macro == 'relation_picker' %}
+            {{ field.widget_context.label_text | default(val) }}
+          {% elif field.widget_macro == 'tag_input' %}
+            {% set tags = val | default('[]') %}
+            {% if tags is string %}
+              {% set tags = tags | tojson %}
+            {% endif %}
+            <div class="flex flex-wrap gap-1">
+              {% for tag in tags %}
+              <span class="tag-chip">{{ tag }}</span>
+              {% endfor %}
+            </div>
+          {% else %}
+            {{ val }}
+          {% endif %}
+        </dd>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

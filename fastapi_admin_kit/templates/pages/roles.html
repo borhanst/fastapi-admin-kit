@@ -1,0 +1,77 @@
+{# pages/roles.html — role list page #}
+{% extends "base.html" %}
+
+{% block title %}Roles — {{ title | default("Admin") }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1 class="page-header-title">Roles</h1>
+      <p class="page-header-subtitle">Manage roles and permissions</p>
+    </div>
+    <div class="page-header-right">
+      <a href="{{ admin_path | default('/admin') }}/roles/create" class="btn btn-primary">
+        + New Role
+      </a>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl border border-[var(--color-gray-200)]">
+    <div class="overflow-x-auto">
+      <table class="table-wrapper w-full">
+        <thead>
+          <tr class="border-b border-[var(--color-gray-200)]">
+            <th class="px-6 py-3 text-left text-xs font-semibold text-[var(--color-gray-500)] uppercase tracking-wider">Name</th>
+            <th class="px-6 py-3 text-left text-xs font-semibold text-[var(--color-gray-500)] uppercase tracking-wider">Description</th>
+            <th class="px-6 py-3 text-left text-xs font-semibold text-[var(--color-gray-500)] uppercase tracking-wider">Users</th>
+            <th class="px-6 py-3 text-right text-xs font-semibold text-[var(--color-gray-500)] uppercase tracking-wider">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-[var(--color-gray-100)]">
+          {% if roles %}
+          {% for role in roles %}
+          <tr class="hover:bg-[var(--color-gray-50)] transition-colors">
+            <td class="px-6 py-4">
+              <a href="{{ admin_path | default('/admin') }}/roles/{{ role.id }}" class="text-sm font-medium text-[var(--color-primary-600)] hover:underline">
+                {{ role.name }}
+              </a>
+            </td>
+            <td class="px-6 py-4 text-sm text-[var(--color-gray-600)]">{{ role.description | default("-") }}</td>
+            <td class="px-6 py-4 text-sm text-[var(--color-gray-600)]">{{ role.user_count }} user{{ "s" if role.user_count != 1 else "" }}</td>
+            <td class="px-6 py-4 text-right text-sm space-x-2">
+              <a href="{{ admin_path | default('/admin') }}/roles/{{ role.id }}"
+                 class="text-[var(--color-primary-600)] hover:text-[var(--color-primary-500)] font-medium transition-colors">
+                Edit
+              </a>
+              {% if role.user_count == 0 %}
+              <form method="post" action="{{ admin_path | default('/admin') }}/roles/{{ role.id }}/delete" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+                <button type="button"
+                        class="text-[var(--color-danger)] hover:text-red-700 font-medium transition-colors"
+                        onclick="confirmAction('Delete Role', 'Are you sure you want to delete this role?', () => this.closest('form').submit())">
+                  Delete
+                </button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          {% else %}
+          <tr>
+            <td colspan="4" class="px-6 py-12 text-center">
+              {{ icon("users", size="48px") }}
+              <p class="mt-4 text-sm text-[var(--color-gray-500)]">No roles defined</p>
+              <a href="{{ admin_path | default('/admin') }}/roles/create"
+                 class="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--color-primary-600)] text-white text-sm font-medium hover:bg-[var(--color-primary-500)] transition-colors">
+                + Create your first role
+              </a>
+            </td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

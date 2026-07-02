@@ -1,0 +1,229 @@
+{# pages/users/form.html — create/edit admin user #}
+{% extends "base.html" %}
+
+{% block title %}{% if user %}Edit User{% else %}Create User{% endif %} — {{ title | default("Admin") }}{% endblock %}
+
+{% block breadcrumb %}
+{{ super() }}
+<span class="breadcrumb-separator">/</span>
+<a href="{{ admin_path | default('/admin') }}/users/" class="breadcrumb-segment">Users</a>
+<span class="breadcrumb-separator">/</span>
+<span class="breadcrumb-current">{% if user %}{{ user.email }}{% else %}Create{% endif %}</span>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="page-header">
+    <div class="page-header-left">
+      <a href="{{ admin_path | default('/admin') }}/users/" class="page-header-back">
+        {{ icon("chevron-left", size="16px") }}
+        Users
+      </a>
+      <h1 class="page-header-title">
+        {% if user %}Edit User{% else %}New User{% endif %}
+      </h1>
+    </div>
+  </div>
+
+  {% if error %}
+  <div class="p-4 rounded-lg bg-red-50 border border-red-200">
+    <div class="flex items-center gap-2 text-red-700 text-sm">
+      {{ icon("exclamation-triangle", size="20px") }}
+      {{ error }}
+    </div>
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ admin_path | default('/admin') }}/users{% if user %}/{{ user.id }}{% else %}/create{% endif %}"
+        class="space-y-6">
+    <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+
+    <div class="fieldset">
+      <div class="fieldset__header">
+        <h3 class="fieldset__title">User Details</h3>
+      </div>
+      <div class="fieldset__fields">
+        <div class="field-wrapper">
+          <label for="email" class="field-label">Email</label>
+          <input type="email" id="email" name="email" value="{{ user.email | default('') }}" required
+                 class="form-input">
+        </div>
+        <div class="field-wrapper">
+          <label for="full_name" class="field-label">Full Name</label>
+          <input type="text" id="full_name" name="full_name" value="{{ user.full_name | default('') }}"
+                 class="form-input">
+        </div>
+        <div class="field-wrapper">
+          <label for="password" class="field-label">
+            Password {% if user %}(leave blank to keep current){% endif %}
+          </label>
+          <input type="password" id="password" name="password" {% if not user %}required{% endif %}
+                 class="form-input">
+        </div>
+        <div class="field-wrapper">
+          <label for="role_ids" class="field-label">Roles</label>
+          {% set selected_role_ids = [] %}
+          {% set selected_role_items = [] %}
+          {% if user and user.id %}
+            {% for r in user.roles %}
+              {% if selected_role_ids.append(r.id) %}{% endif %}
+              {% if selected_role_items.append({"id": r.id, "label": r.name | string}) %}{% endif %}
+            {% endfor %}
+          {% endif %}
+          <div x-data="multiRelation({{ selected_role_ids | tojson | forceescape }}, '{{ admin_path | default('/admin') }}/users/roles/search', {{ selected_role_items | tojson | forceescape }})">
+            <input type="hidden" name="role_ids" :value="JSON.stringify(selectedIds)">
+            <div class="flex flex-wrap gap-2" style="margin-bottom: 8px;">
+              <template x-for="(item, index) in selectedItems" :key="item.id">
+                <span class="tag-chip">
+                  <span x-text="item.label"></span>
+                  <button type="button" @click="remove(index)" class="tag-chip__remove">&times;</button>
+                </span>
+              </template>
+            </div>
+            <div style="position: relative;">
+              <input type="text" x-model="searchQuery" @input="search()" @focus="open = true" @click.outside="open = false"
+                     placeholder="Search roles..."
+                     class="form-input">
+              <div x-show="open && results.length > 0"
+                   style="position: absolute; z-index: 50; width: 100%; margin-top: 4px; background: var(--surface-base); border: 1px solid var(--surface-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); max-height: 200px; overflow-y: auto;">
+                <template x-for="result in results" :key="result.id">
+                  <div @click="add(result)"
+                       style="padding: 8px 12px; cursor: pointer; font-size: 0.875rem;"
+                       onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''">
+                    <span x-text="result.label"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+          <p class="field-help" style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem;">Search and select roles. Permissions are merged from all selected roles.</p>
+        </div>
+        <div class="field-wrapper">
+          <label class="field-label">Direct Permissions</label>
+          <p class="field-help" style="color: var(--text-secondary); font-size: 0.75rem; margin-bottom: 0.5rem;">
+            Override role permissions for specific tables. These are merged with role permissions using OR logic.
+          </p>
+          {% set user_perm_data = {} %}
+          {% if user and user.direct_permissions %}
+            {% for p in user.direct_permissions %}
+              {% set _ = user_perm_data.update({p.table_name: {"_label": p.table_name, "view": p.can_view, "create": p.can_create, "edit": p.can_edit, "delete": p.can_delete}}) %}
+            {% endfor %}
+          {% endif %}
+          {% set perm_search_url = admin_path | default('/admin') ~ '/tables/search' %}
+          <div x-data="permissionWidget('{{ perm_search_url }}', {{ user_perm_data | tojson | forceescape }})">
+            <input type="hidden" name="perm_data" :value="serializedPermData">
+
+            <div class="space-y-3">
+              <template x-for="(table, index) in selectedTables" :key="table.id">
+                <div class="border border-[var(--color-gray-200)] rounded-lg overflow-hidden">
+                  <div class="flex items-center justify-between px-4 py-3 bg-[var(--color-gray-50)] cursor-pointer hover:bg-[var(--color-gray-100)]"
+                       @click="toggleExpand(table.id)">
+                    <div class="flex items-center gap-3">
+                      <span class="text-sm font-medium text-[var(--color-gray-900)]" x-text="table.label"></span>
+                      <span class="text-xs text-[var(--color-gray-500)]" x-text="table.id"></span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs px-2 py-0.5 rounded-full"
+                            :class="permData[table.id]?.view || permData[table.id]?.create || permData[table.id]?.edit || permData[table.id]?.delete
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-[var(--color-gray-100)] text-[var(--color-gray-500)]'"
+                            x-text="(permData[table.id]?.view ? 'V ' : '') + (permData[table.id]?.create ? 'C ' : '') + (permData[table.id]?.edit ? 'E ' : '') + (permData[table.id]?.delete ? 'D ' : '') || 'None'">
+                      </span>
+                      <button type="button" @click.stop="toggleExpand(table.id)"
+                              class="text-[var(--color-gray-400)] hover:text-[var(--color-gray-600)]">
+                        <svg class="w-4 h-4 transition-transform" :class="expandedTable === table.id ? 'rotate-180' : ''"
+                             fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                      </button>
+                      <button type="button" @click.stop="removeTable(index)"
+                              class="text-[var(--color-gray-400)] hover:text-red-500 ml-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div x-show="expandedTable === table.id" x-collapse class="px-4 py-4 bg-white">
+                    <div class="flex items-center justify-between mb-3">
+                      <span class="text-xs font-medium text-[var(--color-gray-500)] uppercase tracking-wide">Actions</span>
+                      <div class="flex gap-2">
+                        <button type="button" @click="toggleAllActions(table.id, true)"
+                                class="text-xs text-[var(--color-primary-600)] hover:text-[var(--color-primary-500)]">All</button>
+                        <span class="text-[var(--color-gray-300)]">|</span>
+                        <button type="button" @click="toggleAllActions(table.id, false)"
+                                class="text-xs text-[var(--color-gray-500)] hover:text-[var(--color-gray-700)]">None</button>
+                      </div>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <template x-for="action in ['view', 'create', 'edit', 'delete']" :key="action">
+                        <label class="flex items-center gap-2 p-2 rounded border border-[var(--color-gray-200)] cursor-pointer hover:bg-[var(--color-gray-50)]">
+                          <input type="checkbox"
+                                 :checked="permData[table.id]?.[action]"
+                                 @change="permData[table.id][action] = $event.target.checked"
+                                 class="rounded border-[var(--color-gray-300)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-500)]">
+                          <span class="text-sm capitalize" x-text="action"></span>
+                        </label>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <div class="mt-4" style="position: relative;">
+              <div class="flex items-center gap-2">
+                <div class="flex-1 relative">
+                  <input type="text" x-model="searchQuery" @input="search()" @focus="open = true" @click.outside="open = false"
+                         placeholder="Search tables to add..."
+                         class="form-input w-full">
+                </div>
+              </div>
+              <div x-show="open && results.length > 0" x-cloak
+                   style="position: absolute; z-index: 50; width: 100%; margin-top: 4px; background: var(--surface-base); border: 1px solid var(--surface-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); max-height: 200px; overflow-y: auto;">
+                <template x-for="result in results" :key="result.id">
+                  <div @click="addTable(result)"
+                       style="padding: 8px 12px; cursor: pointer; font-size: 0.875rem;"
+                       onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''">
+                    <span x-text="result.label"></span>
+                    <span class="text-xs text-[var(--color-gray-400)] ml-2" x-text="result.id"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 flex items-center gap-6">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="is_superuser" value="on"
+                 {% if user and user.is_superuser %}checked{% endif %}
+                 class="matrix-checkbox">
+          <span class="text-sm" style="color: var(--text-primary);">Superuser</span>
+        </label>
+        {% if user %}
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="is_active" value="on"
+                 {% if user.is_active %}checked{% endif %}
+                 class="matrix-checkbox">
+          <span class="text-sm" style="color: var(--text-primary);">Active</span>
+        </label>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="sticky bottom-0 flex items-center justify-end gap-3 p-4" style="background: var(--surface-base); border: 1px solid var(--surface-border); border-radius: var(--radius-lg);">
+      <a href="{{ admin_path | default('/admin') }}/users/"
+         class="btn btn-secondary">
+        Cancel
+      </a>
+      <button type="submit"
+              class="btn btn-primary">
+        {% if user %}Save Changes{% else %}Create User{% endif %}
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

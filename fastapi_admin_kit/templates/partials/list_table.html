@@ -1,0 +1,178 @@
+{# partials/list_table.html — table wrapper fragment for HTMX requests #}
+<div id="table-wrapper" class="table-container">
+  <input type="hidden" name="action" value="delete_selected">
+  <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+  <div class="overflow-x-auto">
+    {% set _ui = ui_config | default({}) %}
+    <table class="data-table data-table--{{ _ui.table_style | default('default') }}{% if _ui.table_row_height | default('normal') == 'compact' %} data-table--compact{% endif %}{% if _ui.table_row_height | default('normal') == 'relaxed' %} data-table--relaxed{% endif %}">
+      <thead>
+        <tr>
+          {% if permissions.can_delete %}
+          <th class="col-checkbox">
+            <input type="checkbox" id="select-all"
+                   onchange="document.querySelectorAll('input[name=&quot;ids[]&quot;]').forEach(c => c.checked = this.checked); this.dispatchEvent(new Event('change', {bubbles: true}));">
+          </th>
+          {% endif %}
+          {% for col in display_columns %}
+          <th class="col-header">
+            <a href="?ordering={% if ordering == col.name %}-{% endif %}{{ col.name }}"
+               class="col-header-link{% if ordering == col.name or ordering == '-' ~ col.name %} active{% endif %}">
+              {{ col.label }}
+              {% if ordering == col.name %}
+              {{ icon("chevron-up", size="16px", css_class="sort-icon sort-icon--asc") }}
+              {% elif ordering == '-' ~ col.name %}
+              {{ icon("chevron-down", size="16px", css_class="sort-icon sort-icon--desc") }}
+              {% endif %}
+            </a>
+          </th>
+          {% endfor %}
+          <th class="col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if items %}
+        {% for obj in items %}
+        <tr class="data-row">
+          {% if permissions.can_delete %}
+          <td class="col-checkbox">
+            <input type="checkbox" name="ids[]" value="{{ obj.id }}" class="row-checkbox">
+          </td>
+          {% endif %}
+          {% set _detail_url = admin_path | default('/admin') ~ '/' ~ registered.table_name ~ '/' ~ obj.id %}
+          {% set _first_col = true %}
+          {% for col in display_columns %}
+            <td class="col-cell{% if col.css_class %} {{ col.css_class }}{% endif %}">
+              {% set val = col.value(obj) %}
+              {% if _first_col %}
+                {% set _first_col = false %}
+                <a href="{{ _detail_url }}" class="text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)] transition-colors">
+                {% if val is none %}
+                  -
+                {% elif col.boolean and val is sameas true %}
+                  <span class="toggle-switch toggle-switch--on" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
+                {% elif col.boolean and val is sameas false %}
+                  <span class="toggle-switch" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
+                {% elif val is sameas true %}
+                  <span class="toggle-switch toggle-switch--on" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
+                {% elif val is sameas false %}
+                  <span class="toggle-switch" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
+                {% elif val is string or val is number %}
+                  {% if col.icon %}<span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">{{ col.icon }}</span>{% endif %}{{ val }}
+                {% elif val is iterable and val is not string %}
+                  {{ model_display_name(val) }}
+                {% else %}
+                  {{ val | string }}
+                {% endif %}
+                </a>
+              {% else %}
+                {% if val is none %}
+                  <span class="text-muted">-</span>
+                {% elif col.boolean and val is sameas true %}
+                  <span class="toggle-switch toggle-switch--on" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
+                {% elif col.boolean and val is sameas false %}
+                  <span class="toggle-switch" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
+                {% elif val is sameas true %}
+                  <span class="toggle-switch toggle-switch--on" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
+                {% elif val is sameas false %}
+                  <span class="toggle-switch" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
+                {% elif val is string or val is number %}
+                  {% if col.icon %}<span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">{{ col.icon }}</span>{% endif %}{{ val }}
+                {% elif val is iterable and val is not string %}
+                  {{ model_display_name(val) }}
+                {% else %}
+                  {{ val | string }}
+                {% endif %}
+              {% endif %}
+            </td>
+          {% endfor %}
+          <td class="col-actions">
+            <div class="actions-dropdown" x-data="{ open: false, menuStyle: '' }"
+                 @actions-close.window="open = false">
+              <button type="button" class="actions-trigger" @click.stop="
+                open = !open;
+                if (open) {
+                  $dispatch('actions-close');
+                  open = true;
+                  $nextTick(() => {
+                    const btn = $el;
+                    const menu = $el.nextElementSibling;
+                    const rect = btn.getBoundingClientRect();
+                    const menuRect = menu.getBoundingClientRect();
+                    const viewportH = window.innerHeight;
+                    let top = rect.bottom + 4;
+                    let left = rect.right - menuRect.width;
+                    if (top + menuRect.height > viewportH) {
+                      top = rect.top - menuRect.height - 4;
+                    }
+                    if (left < 8) left = 8;
+                    menuStyle = 'position:fixed;top:' + top + 'px;left:' + left + 'px;z-index:9999;';
+                  });
+                }
+              " title="Actions">
+                {{ icon("ellipsis-vertical", size="16px") }}
+              </button>
+              <div class="actions-menu" x-show="open" x-cloak
+                   :style="menuStyle"
+                   @click.outside="open = false"
+                   x-transition>
+                {% if permissions.can_edit %}
+                <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/{{ obj.id }}"
+                   class="actions-menu-item"
+                   @click="open = false">
+                  {{ icon("pencil", size="16px") }}
+                  Edit
+                </a>
+                {% endif %}
+                {% if row_actions %}
+                {% for action in row_actions %}
+                <button type="button" class="actions-menu-item"
+                        hx-post="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/action/{{ action.name }}/{{ obj.id }}"
+                        hx-headers='{"X-CSRF-Token": "{{ get_csrf_token(request) }}"}'
+                        hx-swap="none"
+                        hx-on::after-request="window.location.reload();"
+                        @click="open = false">
+                  {% if action.icon %}
+                  {{ icon(action.icon, size="16px") }}
+                  {% endif %}
+                  {{ action.label | default(action.name) }}
+                </button>
+                {% endfor %}
+                {% endif %}
+                {% if permissions.can_delete %}
+                <button type="button" class="actions-menu-item actions-menu-item--danger"
+                        @click="open = false; confirmAction('Delete', 'Are you sure you want to delete this {{ registered.verbose_name | lower }}?', () => { var form = document.createElement('form'); form.method = 'POST'; form.action = '{{ admin_path | default('/admin') }}/{{ registered.table_name }}/{{ obj.id }}/delete'; var csrf = document.createElement('input'); csrf.type = 'hidden'; csrf.name = 'csrf_token'; csrf.value = '{{ get_csrf_token(request) }}'; form.appendChild(csrf); document.body.appendChild(form); form.submit(); })">
+                  {{ icon("trash", size="16px") }}
+                  Delete
+                </button>
+                {% endif %}
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+        {% else %}
+        <tr>
+          <td colspan="{{ display_columns | length + 2 }}" class="empty-cell">
+            <div class="empty-state">
+              {{ icon("document-text", size="48px", css_class="empty-state-icon") }}
+              <p class="empty-state-text">No {{ registered.verbose_name_plural | lower }} found</p>
+              {% if permissions.can_create %}
+              <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/create"
+                 class="btn btn-primary btn-sm">
+                + Create your first {{ registered.verbose_name | lower }}
+              </a>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  {# Pagination #}
+  <div class="table-footer">
+    {% from "partials/pagination.html" import render_pagination %}
+    {{ render_pagination(page, total_pages, total, registered.admin.per_page, next_cursor|default(null), has_next|default(false), pagination_mode|default("offset")) }}
+  </div>
+</div>

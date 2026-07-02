@@ -1,0 +1,122 @@
+{# pages/audit_detail.html — single audit entry with full diff #}
+{% extends "base.html" %}
+
+{% block title %}Audit Entry #{{ entry.id }} — {{ title | default("Admin") }}{% endblock %}
+
+{% block breadcrumb %}
+{{ super() }}
+<span class="text-[var(--color-gray-400)]">/</span>
+<a href="{{ admin_path | default('/admin') }}/audit-log/" class="hover:text-[var(--color-primary-600)] transition-colors">Audit Log</a>
+<span class="text-[var(--color-gray-400)]">/</span>
+<span class="text-[var(--color-gray-900)] font-medium">#{{ entry.id }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="page-header">
+    <div class="page-header-left">
+      <a href="{{ admin_path | default('/admin') }}/audit-log/" class="page-header-back">
+        {{ icon("chevron-left") }}
+        Audit Log
+      </a>
+      <h1 class="page-header-title">Audit Entry <span class="mono">#{{ entry.id }}</span></h1>
+      <p class="page-header-subtitle">
+        {{ entry.model_name }} — {{ entry.object_repr | default("") }}
+      </p>
+    </div>
+    <div class="page-header-right">
+      {% if entry.action == 'CREATE' %}
+      <span class="badge badge-success">Created</span>
+      {% elif entry.action == 'UPDATE' %}
+      <span class="badge badge-warning">Updated</span>
+      {% elif entry.action == 'DELETE' %}
+      <span class="badge badge-danger">Deleted</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl border border-[var(--color-gray-200)]">
+    <div class="px-6 py-4 border-b border-[var(--color-gray-200)]">
+      <h2 class="text-lg font-semibold text-[var(--color-gray-900)]">Details</h2>
+    </div>
+    <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <dt class="text-sm font-medium text-[var(--color-gray-500)]">Action</dt>
+        <dd class="mt-1 text-sm text-[var(--color-gray-900)]">{{ entry.action }}</dd>
+      </div>
+      <div>
+        <dt class="text-sm font-medium text-[var(--color-gray-500)]">Timestamp</dt>
+        <dd class="mt-1 text-sm text-[var(--color-gray-900)]">{{ entry.timestamp }}</dd>
+      </div>
+      <div>
+        <dt class="text-sm font-medium text-[var(--color-gray-500)]">User</dt>
+        <dd class="mt-1 text-sm text-[var(--color-gray-900)]">{{ entry.user_email | default("System") }}</dd>
+      </div>
+      <div>
+        <dt class="text-sm font-medium text-[var(--color-gray-500)]">IP Address</dt>
+        <dd class="mt-1 text-sm text-[var(--color-gray-900)]">{{ entry.ip_address | default("-") }}</dd>
+      </div>
+      <div>
+        <dt class="text-sm font-medium text-[var(--color-gray-500)]">Model</dt>
+        <dd class="mt-1 text-sm text-[var(--color-gray-900)]">{{ entry.model_name }}</dd>
+      </div>
+      <div>
+        <dt class="text-sm font-medium text-[var(--color-gray-500)]">Object ID</dt>
+        <dd class="mt-1 text-sm text-[var(--color-gray-900)]">{{ entry.object_id }}</dd>
+      </div>
+      <div class="md:col-span-2">
+        <dt class="text-sm font-medium text-[var(--color-gray-500)]">Object Representation</dt>
+        <dd class="mt-1 text-sm text-[var(--color-gray-900)]">{{ entry.object_repr | default("-") }}</dd>
+      </div>
+    </div>
+  </div>
+
+  {% if entry.changes %}
+  <div class="bg-white rounded-xl border border-[var(--color-gray-200)]">
+    <div class="px-6 py-4 border-b border-[var(--color-gray-200)]">
+      <h2 class="text-lg font-semibold text-[var(--color-gray-900)]">Changes</h2>
+    </div>
+    <div class="p-6">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-[var(--color-gray-200)]">
+            <th class="text-left py-2 font-medium text-[var(--color-gray-500)]">Field</th>
+            <th class="text-left py-2 font-medium text-[var(--color-gray-500)]">Before</th>
+            <th class="text-left py-2 font-medium text-[var(--color-gray-500)]">After</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-[var(--color-gray-100)]">
+          {% for field, change in entry.changes.items() %}
+          <tr>
+            <td class="py-2 font-medium text-[var(--color-gray-900)]">{{ field }}</td>
+            <td class="py-2 text-[var(--color-gray-600)]">{{ change.before | default("-") }}</td>
+            <td class="py-2 text-[var(--color-gray-900)]">{{ change.after | default("-") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if entry.full_snapshot %}
+  <div class="bg-white rounded-xl border border-[var(--color-gray-200)]">
+    <div class="px-6 py-4 border-b border-[var(--color-gray-200)]">
+      <h2 class="text-lg font-semibold text-[var(--color-gray-900)]">Full Snapshot</h2>
+    </div>
+    <div class="p-6">
+      <pre class="bg-[var(--color-gray-50)] rounded-lg p-4 overflow-auto text-sm text-[var(--color-gray-900)]">{{ entry.full_snapshot | tojson(indent=2) }}</pre>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="bg-white rounded-xl border border-[var(--color-gray-200)]">
+    <div class="px-6 py-4 border-b border-[var(--color-gray-200)]">
+      <h2 class="text-lg font-semibold text-[var(--color-gray-900)]">User Agent</h2>
+    </div>
+    <div class="p-6">
+      <p class="text-sm text-[var(--color-gray-600)] break-all">{{ entry.user_agent | default("-") }}</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

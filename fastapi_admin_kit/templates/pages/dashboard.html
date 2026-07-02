@@ -1,0 +1,294 @@
+{# pages/dashboard.html — premium dashboard #}
+{% extends "base.html" %}
+
+{% block title %}{{ title | default("Admin") }} — Dashboard{% endblock %}
+
+{% block content %}
+{% set _colors = {
+  'Categories': 'teal',
+  'Products': 'purple',
+  'Users': 'blue',
+  'Orders': 'orange',
+  'Order Items': 'green',
+  'Order Itemss': 'green',
+  'Admin Field Permissions': 'yellow',
+  'Admin Field Permissionss': 'yellow',
+  'Admin Permissions': 'red',
+  'Admin Permissionss': 'red',
+  'Admin Users': 'indigo',
+  'Admin Userss': 'indigo',
+  'Admin Audit Logs': 'cyan',
+  'Admin Roles': 'pink',
+  'Admin Roless': 'pink'
+} %}
+
+<div class="dashboard-wrapper" style="display: flex; flex-direction: column; gap: 28px;">
+  {# ─── Page Header ─── #}
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1 class="page-header-title">Dashboard</h1>
+      <p class="page-header-subtitle" style="color: var(--text-tertiary); font-size: var(--text-sm);">
+        Welcome back, Admin! Here's what's happening with your store today.
+      </p>
+    </div>
+    <div class="page-header-right">
+      <span class="badge badge-info" style="font-size: var(--text-2xs);">
+        <span style="width: 6px; height: 6px; background: var(--info-500); border-radius: 50%; display: inline-block; margin-right: 6px; animation: pulse 2s infinite;"></span>
+        System Online
+      </span>
+    </div>
+  </div>
+
+  {# ─── Stat Cards ─── #}
+  <div class="stat-cards" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px;">
+    {% for card in stat_cards %}
+    {% set _color = _colors[card.title] | default('teal') %}
+    <a href="{{ card.url }}" class="dashboard-stat-card">
+      <div class="stat-header">
+        <div class="stat-icon stat-icon--{{ _color }}">
+          {{ icon(card.icon, size="20px") }}
+        </div>
+        <span class="stat-label">{{ card.title }}</span>
+      </div>
+      <div class="stat-count">{{ card.count }}</div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="stat-subtitle">Total {{ card.title | lower }}</span>
+        {% if card.has_trend %}
+        <span class="stat-trend {{ card.trend_direction }}">
+          {% if card.trend_direction == 'up' %}{{ icon('arrow-up', size="10px") }}{% else %}{{ icon('arrow-down', size="10px") }}{% endif %}
+          {{ card.trend_pct }}%
+        </span>
+        <span class="stat-trend-period">vs last 30 days</span>
+        {% endif %}
+      </div>
+      {# Wave decoration #}
+      <svg class="stat-wave" viewBox="0 0 80 30" fill="none">
+        <path d="M0 20 Q20 5 40 15 T80 10 V30 H0Z" fill="currentColor" opacity="0.3"/>
+        <path d="M0 25 Q25 12 50 20 T80 15 V30 H0Z" fill="currentColor" opacity="0.5"/>
+      </svg>
+    </a>
+    {% endfor %}
+  </div>
+
+  {# ─── Bottom Grid: Activity + Quick Actions ─── #}
+  <div style="display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start;">
+    {# Recent Activity #}
+    <div style="background: var(--surface-raised); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); overflow: hidden;">
+      <div style="padding: 20px 24px; border-bottom: 1px solid var(--surface-border); display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--primary-50); display: flex; align-items: center; justify-content: center;">
+            {{ icon('clock', size="18px") }}
+          </div>
+          <div>
+            <h2 style="font-family: var(--font-display); font-size: var(--text-md); font-weight: 700; color: var(--text-primary);">Recent Activity</h2>
+            <p style="font-size: var(--text-xs); color: var(--text-tertiary);">Latest system activities will appear here</p>
+          </div>
+        </div>
+        {% if recent_audit %}
+        <a href="{{ admin_path | default('/admin') }}/audit-log/" style="display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--text-primary); text-decoration: none; padding: 6px 12px; border-radius: var(--radius-md); border: 1px solid var(--surface-border); transition: all 0.15s;"
+           onmouseenter="this.style.borderColor='var(--primary-500)'" onmouseleave="this.style.borderColor='var(--surface-border)'">
+          View all
+          {{ icon('chevron-right', size="14px") }}
+        </a>
+        {% endif %}
+      </div>
+
+      {% if recent_audit %}
+      <div>
+        {% for entry in recent_audit %}
+        <div style="padding: 16px 24px; display: flex; align-items: flex-start; gap: 14px; border-bottom: 1px solid var(--surface-border); transition: background 0.15s;"
+             onmouseenter="this.style.background='var(--primary-50)'" onmouseleave="this.style.background=''">
+          <div style="flex-shrink: 0; margin-top: 2px;">
+            {% if entry.action == 'CREATE' %}
+            <div style="width: 32px; height: 32px; border-radius: var(--radius-full); background: rgba(34, 197, 94, 0.1); display: flex; align-items: center; justify-content: center;">
+              {{ icon('plus', size="16px") }}
+            </div>
+            {% elif entry.action == 'UPDATE' %}
+            <div style="width: 32px; height: 32px; border-radius: var(--radius-full); background: rgba(245, 158, 11, 0.1); display: flex; align-items: center; justify-content: center;">
+              {{ icon('pencil', size="16px") }}
+            </div>
+            {% elif entry.action == 'DELETE' %}
+            <div style="width: 32px; height: 32px; border-radius: var(--radius-full); background: rgba(239, 68, 68, 0.1); display: flex; align-items: center; justify-content: center;">
+              {{ icon('trash', size="16px") }}
+            </div>
+            {% endif %}
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: var(--text-sm); color: var(--text-primary); line-height: 1.5;">
+              <span style="font-weight: var(--font-semibold);">{{ entry.user_email | default("System") }}</span>
+              <span style="color: var(--text-tertiary);"> {{ entry.action | lower }}d </span>
+              <span style="font-weight: var(--font-semibold);">{{ entry.model_name }}</span>
+              <span style="font-family: var(--font-mono); color: var(--text-tertiary); font-size: var(--text-xs);"> #{{ entry.object_id }}</span>
+            </div>
+            <div style="font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 4px; font-family: var(--font-mono);">{{ entry.timestamp }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="padding: 48px 24px; text-align: center;">
+        <div style="width: 64px; height: 64px; border-radius: var(--radius-full); background: var(--surface-overlay); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+          {{ icon('clock', size="32px") }}
+        </div>
+        <p style="font-size: var(--text-sm); color: var(--text-primary); font-weight: var(--font-semibold);">No recent Activity</p>
+        <p style="font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 4px;">System activities will appear here</p>
+      </div>
+      {% endif %}
+    </div>
+
+    {# Quick Actions #}
+    <div style="background: var(--surface-raised); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); overflow: hidden;">
+      <div style="padding: 20px 24px; border-bottom: 1px solid var(--surface-border); display: flex; align-items: center; gap: 10px;">
+        <div style="width: 36px; height: 36px; border-radius: var(--radius-md); background: rgba(234, 179, 8, 0.12); display: flex; align-items: center; justify-content: center;">
+          {{ icon('bolt', size="18px") }}
+        </div>
+        <div>
+          <h2 style="font-family: var(--font-display); font-size: var(--text-md); font-weight: 700; color: var(--text-primary);">Quick Actions</h2>
+          <p style="font-size: var(--text-xs); color: var(--text-tertiary);">Common actions at your fingertips</p>
+        </div>
+      </div>
+      <div class="quick-actions-grid">
+        {% set _action_colors = {
+          'Categories': {'bg': 'rgba(20, 184, 166, 0.12)', 'fg': '#14b8a6'},
+          'Products': {'bg': 'rgba(139, 92, 246, 0.12)', 'fg': '#8b5cf6'},
+          'Users': {'bg': 'rgba(59, 130, 246, 0.12)', 'fg': '#3b82f6'},
+          'Orders': {'bg': 'rgba(249, 115, 22, 0.12)', 'fg': '#f97316'},
+          'Order Items': {'bg': 'rgba(34, 197, 94, 0.12)', 'fg': '#22c55e'},
+          'Admin Audit Logs': {'bg': 'rgba(6, 182, 212, 0.12)', 'fg': '#06b6d4'},
+          'Admin Roles': {'bg': 'rgba(236, 72, 153, 0.12)', 'fg': '#ec4899'},
+          'Admin Users': {'bg': 'rgba(99, 102, 241, 0.12)', 'fg': '#6366f1'},
+          'Admin Permissions': {'bg': 'rgba(239, 68, 68, 0.12)', 'fg': '#ef4444'},
+          'Admin Field Permissions': {'bg': 'rgba(234, 179, 8, 0.12)', 'fg': '#eab308'}
+        } %}
+        {% for registered in registered_models %}
+        {% set _ac = _action_colors[registered.verbose_name_plural] | default({'bg': 'var(--primary-50)', 'fg': 'var(--primary-600)'}) %}
+        <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/" class="quick-action-item">
+          <div class="action-icon" style="background: {{ _ac.bg }};">
+            {{ icon(registered.admin.icon | default('cube'), size="18px") }}
+          </div>
+          <div class="action-text">
+            <div class="action-title">Add {{ registered.verbose_name }}</div>
+            <div class="action-desc">Create a new {{ registered.verbose_name | lower }}</div>
+          </div>
+          {{ icon('chevron-right', size="18px", class="action-chevron") }}
+        </a>
+        {% endfor %}
+        {# Extra: System Logs link #}
+        <a href="{{ admin_path | default('/admin') }}/audit-log/" class="quick-action-item">
+          <div class="action-icon" style="background: rgba(6, 182, 212, 0.12);">
+            {{ icon('document-text', size="18px") }}
+          </div>
+          <div class="action-text">
+            <div class="action-title">System Logs</div>
+            <div class="action-desc">View system audit logs</div>
+          </div>
+          {{ icon('chevron-right', size="18px", class="action-chevron") }}
+        </a>
+      </div>
+    </div>
+  </div>
+
+  {# ─── System Overview (donut chart) ─── #}
+  {% if overview_data %}
+  <div class="system-overview-card">
+    <div class="overview-header">
+      <div class="overview-header-icon">
+        {{ icon('chart-bar') }}
+      </div>
+      <span class="overview-title">System Overview</span>
+    </div>
+    <div class="overview-body">
+      <div class="overview-chart">
+        <canvas id="overviewDonut"></canvas>
+      </div>
+      <div class="overview-legend">
+        {% for item in overview_data %}
+        {% if item.value > 0 %}
+        <div class="overview-legend-item">
+          <span class="overview-legend-label">
+            <span class="overview-legend-dot" style="background: {{ item.color }};"></span>
+            {{ item.label }}
+          </span>
+          <span class="overview-legend-value">{{ item.value }}</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+        <div class="overview-total">
+          <span>Total</span>
+          <span class="overview-legend-value">{{ overview_total }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const canvas = document.getElementById('overviewDonut');
+  if (!canvas) return;
+
+  const data = {{ overview_data | tojson }};
+  const labels = data.map(d => d.label);
+  const values = data.map(d => d.value);
+  const colors = data.map(d => d.color);
+
+  new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: values,
+        backgroundColor: colors,
+        borderWidth: 0,
+        hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      cutout: '65%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          titleColor: '#f1f5f9',
+          bodyColor: '#94a3b8',
+          borderColor: 'rgba(30, 41, 59, 0.5)',
+          borderWidth: 1,
+          cornerRadius: 8,
+          padding: 10,
+          bodyFont: { family: "'DM Sans', sans-serif" }
+        }
+      }
+    }
+  });
+});
+</script>
+
+<style>
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  @media (max-width: 1280px) {
+    .stat-cards {
+      grid-template-columns: repeat(3, 1fr) !important;
+    }
+  }
+
+  @media (max-width: 1024px) {
+    .stat-cards {
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)) !important;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .stat-cards {
+      grid-template-columns: repeat(2, 1fr) !important;
+    }
+  }
+</style>
+{% endblock %}

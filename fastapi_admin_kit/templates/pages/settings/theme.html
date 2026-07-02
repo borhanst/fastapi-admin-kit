@@ -1,0 +1,255 @@
+{# pages/settings/theme.html — visual theme builder #}
+{% extends "base.html" %}
+
+{% block title %}Theme Settings — {{ title | default("Admin") }}{% endblock %}
+
+{% block content %}
+<div x-data="themeBuilder()" class="space-y-6">
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1 class="page-header-title">Theme Settings</h1>
+      <p class="page-header-subtitle">Customize the look and feel of your admin panel</p>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    {# Controls Panel #}
+    <div class="lg:col-span-2 space-y-6">
+      {# Preset Selector #}
+      <div class="fieldset">
+        <div class="fieldset__header">
+          <h2 class="fieldset__title">Theme Preset</h2>
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          {% for p in ["editorial", "modern", "midnight", "paper", "forest", "minimal"] %}
+          <button @click="applyPreset('{{ p }}')"
+                  :class="preset === '{{ p }}' ? 'ring-2 ring-[var(--primary-500)]' : ''"
+                  class="p-4 rounded-lg border border-[var(--surface-border)] text-left transition-all hover:border-[var(--primary-400)]">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="w-4 h-4 rounded-full border border-[var(--surface-border)]"
+                    :style="'background: ' + presets['{{ p }}'].primary_color"></span>
+              <span class="text-sm font-medium">{{ p | title }}</span>
+            </div>
+            <div class="flex gap-1">
+              <span class="w-4 h-3 rounded-sm" :style="'background: ' + presets['{{ p }}'].surface_base"></span>
+              <span class="w-4 h-3 rounded-sm" :style="'background: ' + presets['{{ p }}'].surface_raised"></span>
+              <span class="w-4 h-3 rounded-sm" :style="'background: ' + presets['{{ p }}'].text_primary"></span>
+            </div>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# Color Customization #}
+      <div class="fieldset">
+        <div class="fieldset__header">
+          <h2 class="fieldset__title">Colors</h2>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="field-label">Primary Color</label>
+            <div class="flex items-center gap-2">
+              <input type="color" x-model="customizations.primary_color" class="h-10 w-14 rounded border border-[var(--surface-border)] cursor-pointer">
+              <input type="text" x-model="customizations.primary_color" class="form-input flex-1">
+            </div>
+          </div>
+          <div>
+            <label class="field-label">Surface Background</label>
+            <div class="flex items-center gap-2">
+              <input type="color" x-model="customizations.surface_base" class="h-10 w-14 rounded border border-[var(--surface-border)] cursor-pointer">
+              <input type="text" x-model="customizations.surface_base" class="form-input flex-1">
+            </div>
+          </div>
+          <div>
+            <label class="field-label">Card Background</label>
+            <div class="flex items-center gap-2">
+              <input type="color" x-model="customizations.surface_raised" class="h-10 w-14 rounded border border-[var(--surface-border)] cursor-pointer">
+              <input type="text" x-model="customizations.surface_raised" class="form-input flex-1">
+            </div>
+          </div>
+          <div>
+            <label class="field-label">Text Color</label>
+            <div class="flex items-center gap-2">
+              <input type="color" x-model="customizations.text_primary" class="h-10 w-14 rounded border border-[var(--surface-border)] cursor-pointer">
+              <input type="text" x-model="customizations.text_primary" class="form-input flex-1">
+            </div>
+          </div>
+          <div>
+            <label class="field-label">Border Color</label>
+            <div class="flex items-center gap-2">
+              <input type="color" x-model="customizations.border_color" class="h-10 w-14 rounded border border-[var(--surface-border)] cursor-pointer">
+              <input type="text" x-model="customizations.border_color" class="form-input flex-1">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# Border Radius #}
+      <div class="fieldset">
+        <div class="fieldset__header">
+          <h2 class="fieldset__title">Border Radius</h2>
+        </div>
+        <div class="grid grid-cols-3 gap-4">
+          <div>
+            <label class="field-label">Small</label>
+            <input type="text" x-model="customizations.radius_sm" class="form-input">
+          </div>
+          <div>
+            <label class="field-label">Medium</label>
+            <input type="text" x-model="customizations.radius_md" class="form-input">
+          </div>
+          <div>
+            <label class="field-label">Large</label>
+            <input type="text" x-model="customizations.radius_lg" class="form-input">
+          </div>
+        </div>
+      </div>
+
+      {# Feature Toggles #}
+      <div class="fieldset">
+        <div class="fieldset__header">
+          <h2 class="fieldset__title">Features</h2>
+        </div>
+        <div class="space-y-3">
+          <label class="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" x-model="customizations.show_grain" class="table-checkbox">
+            <span class="text-sm">Show grain texture overlay</span>
+          </label>
+          <label class="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" x-model="customizations.show_accent_line" class="table-checkbox">
+            <span class="text-sm">Show topbar accent line</span>
+          </label>
+        </div>
+      </div>
+
+      {# Save Button #}
+      <div class="flex items-center gap-3">
+        <button @click="save()" class="btn btn-primary">
+          Save Theme
+        </button>
+        <button @click="reset()" class="btn btn-secondary">
+          Reset to Default
+        </button>
+        <span x-show="saved" x-transition class="text-sm text-[var(--success-500)]">Saved!</span>
+      </div>
+    </div>
+
+    {# Live Preview Panel #}
+    <div class="space-y-4">
+      <div class="fieldset">
+        <div class="fieldset__header">
+          <h2 class="fieldset__title">Preview</h2>
+        </div>
+        <div class="space-y-3 p-4 rounded-lg border border-[var(--surface-border)]"
+             :style="'background: ' + customizations.surface_base + '; color: ' + customizations.text_primary">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-full" :style="'background: ' + customizations.primary_color"></div>
+            <span class="font-medium">Sample Card</span>
+          </div>
+          <div class="p-3 rounded-lg" :style="'background: ' + customizations.surface_raised + '; border: 1px solid ' + customizations.border_color">
+            <div class="text-xs opacity-60 mb-1">Card Title</div>
+            <div class="text-2xl font-bold" :style="'color: ' + customizations.primary_color">1,234</div>
+          </div>
+          <div class="flex gap-2">
+            <button class="px-3 py-1.5 rounded text-xs text-white" :style="'background: ' + customizations.primary_color">Primary</button>
+            <button class="px-3 py-1.5 rounded text-xs border" :style="'border-color: ' + customizations.border_color + '; color: ' + customizations.text_primary">Secondary</button>
+          </div>
+        </div>
+      </div>
+
+      {# Export #}
+      <div class="fieldset">
+        <div class="fieldset__header">
+          <h2 class="fieldset__title">Python Config</h2>
+        </div>
+        <pre class="text-xs font-mono p-3 rounded-lg bg-[var(--surface-inset)] overflow-auto max-h-64"><code x-text="exportConfig()"></code></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function themeBuilder() {
+  return {
+    preset: '{{ theme_preset | default("editorial") }}',
+    saved: false,
+    presets: {
+      editorial: { primary_color: '#059669', surface_base: '#FAF8F5', surface_raised: '#FFFFFF', text_primary: '#1C1917', border_color: '#E8E4DE', radius_sm: '3px', radius_md: '5px', radius_lg: '8px' },
+      modern: { primary_color: '#6366F1', surface_base: '#F8FAFC', surface_raised: '#FFFFFF', text_primary: '#0F172A', border_color: '#E2E8F0', radius_sm: '6px', radius_md: '8px', radius_lg: '12px' },
+      midnight: { primary_color: '#818CF8', surface_base: '#0B0F19', surface_raised: '#151B2B', text_primary: '#E2E8F0', border_color: '#2A3248', radius_sm: '4px', radius_md: '6px', radius_lg: '10px' },
+      paper: { primary_color: '#059669', surface_base: '#FAF8F5', surface_raised: '#FFFFFF', text_primary: '#1C1917', border_color: '#E8E4DE', radius_sm: '3px', radius_md: '5px', radius_lg: '8px' },
+      forest: { primary_color: '#22C55E', surface_base: '#F0FDF4', surface_raised: '#FFFFFF', text_primary: '#14532D', border_color: '#BBF7D0', radius_sm: '4px', radius_md: '6px', radius_lg: '10px' },
+      minimal: { primary_color: '#404040', surface_base: '#FFFFFF', surface_raised: '#FFFFFF', text_primary: '#171717', border_color: '#E5E5E5', radius_sm: '0px', radius_md: '0px', radius_lg: '0px' },
+    },
+    customizations: {
+      primary_color: '#059669',
+      surface_base: '#FAF8F5',
+      surface_raised: '#FFFFFF',
+      text_primary: '#1C1917',
+      border_color: '#E8E4DE',
+      radius_sm: '3px',
+      radius_md: '5px',
+      radius_lg: '8px',
+      show_grain: true,
+      show_accent_line: true,
+    },
+
+    init() {
+      const saved = JSON.parse(localStorage.getItem('admin_theme_custom') || 'null');
+      if (saved) {
+        Object.assign(this.customizations, saved);
+        this.preset = saved.preset || this.preset;
+      }
+    },
+
+    applyPreset(name) {
+      this.preset = name;
+      const p = this.presets[name];
+      if (p) {
+        this.customizations.primary_color = p.primary_color;
+        this.customizations.surface_base = p.surface_base;
+        this.customizations.surface_raised = p.surface_raised;
+        this.customizations.text_primary = p.text_primary;
+        this.customizations.border_color = p.border_color;
+        this.customizations.radius_sm = p.radius_sm;
+        this.customizations.radius_md = p.radius_md;
+        this.customizations.radius_lg = p.radius_lg;
+      }
+      this.applyLive();
+    },
+
+    applyLive() {
+      const root = document.documentElement;
+      root.style.setProperty('--primary-500', this.customizations.primary_color);
+      root.style.setProperty('--surface-base', this.customizations.surface_base);
+      root.style.setProperty('--surface-raised', this.customizations.surface_raised);
+      root.style.setProperty('--text-primary', this.customizations.text_primary);
+      root.style.setProperty('--surface-border', this.customizations.border_color);
+      root.style.setProperty('--radius-sm', this.customizations.radius_sm);
+      root.style.setProperty('--radius-md', this.customizations.radius_md);
+      root.style.setProperty('--radius-lg', this.customizations.radius_lg);
+    },
+
+    save() {
+      localStorage.setItem('admin_theme_preset', this.preset);
+      localStorage.setItem('admin_theme_custom', JSON.stringify({ ...this.customizations, preset: this.preset }));
+      document.documentElement.setAttribute('data-preset', this.preset);
+      this.applyLive();
+      this.saved = true;
+      setTimeout(() => this.saved = false, 2000);
+    },
+
+    reset() {
+      localStorage.removeItem('admin_theme_preset');
+      localStorage.removeItem('admin_theme_custom');
+      document.documentElement.setAttribute('data-preset', 'editorial');
+      location.reload();
+    },
+
+    exportConfig() {
+      return `from fastapi_admin_kit import Admin\nfrom fastapi_admin_kit.config import ThemeConfig\n\nadmin = Admin(\n    theme=ThemeConfig(\n        preset="${this.preset}",\n        primary_color="${this.customizations.primary_color}",\n        surface_base="${this.customizations.surface_base}",\n        surface_raised="${this.customizations.surface_raised}",\n        text_primary="${this.customizations.text_primary}",\n        border_color="${this.customizations.border_color}",\n        radius_sm="${this.customizations.radius_sm}",\n        radius_md="${this.customizations.radius_md}",\n        radius_lg="${this.customizations.radius_lg}",\n        show_grain_texture=${this.customizations.show_grain},\n        show_accent_line=${this.customizations.show_accent_line},\n    ),\n)`;
+    },
+  };
+}
+</script>
+{% endblock %}

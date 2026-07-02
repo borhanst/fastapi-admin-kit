@@ -1,0 +1,94 @@
+{# partials/sidebar.html — navigation sidebar with collapsible groups #}
+{% set _ui = ui_config | default({}) %}
+<aside class="admin-sidebar sidebar--{{ _ui.sidebar_style | default('default') }}{% if _ui.sidebar_position | default('left') == 'right' %} sidebar--right{% endif %}"
+       :class="{ 'open': sidebarOpen, 'collapsed': sidebarCollapsed && window.innerWidth >= 1024 }"
+       :style="sidebarCollapsed && window.innerWidth >= 1024 ? 'width: var(--sidebar-collapsed-width)' : 'width: var(--sidebar-width)'"
+       x-show="true">
+
+  <nav class="sidebar-nav">
+    <ul class="sidebar-nav-list">
+      {# Dashboard link #}
+      {% if dashboard_visible | default(true) %}
+      <li class="sidebar-nav-item">
+        <a href="{{ admin_path | default('/admin') }}/"
+           class="nav-link {% if request.url.path == admin_path | default('/admin') ~ '/' %}active{% endif %}">
+          {{ icon("home", size="18px") }}
+          <span class="nav-link-label">Dashboard</span>
+          <span class="nav-tooltip" x-show="sidebarCollapsed">Dashboard</span>
+        </a>
+      </li>
+      {% endif %}
+
+      {# Nav Groups — collapsible #}
+
+      {% for group in nav_groups %}
+      <li class="sidebar-section" x-data="{ open: {{ 'true' if not group.collapsed_by_default else 'false' }} }">
+        <button type="button" @click="open = !open"
+                class="sidebar-section-toggle">
+          <span class="sidebar-section-label">{{ group.label }}</span>
+          {{ icon("chevron-right", size="14px") }}
+        </button>
+        <ul class="sidebar-section-items" x-show="open" x-collapse x-cloak>
+          {% for item in group.items %}
+          <li class="sidebar-nav-item">
+            <a href="{{ item.url }}"
+               class="nav-link {% if not item.icon %}nav-link--no-icon{% endif %} {% if request.url.path.startswith(item.url) %}active{% endif %}">
+              {% if item.icon %}
+              {{ icon(item.icon, size="18px") }}
+              {% endif %}
+              <span class="nav-link-label">{{ item.label }}</span>
+              {% if item.badge_fn %}
+              {% set badge = item.badge_fn() %}
+              {% if badge %}
+              <span class="nav-link-badge">{{ badge }}</span>
+              {% endif %}
+              {% endif %}
+              <span class="nav-tooltip" x-show="sidebarCollapsed">{{ item.label }}</span>
+            </a>
+            {% if item.children %}
+            <ul class="sidebar-sub-items">
+              {% for child in item.children %}
+              <li class="sidebar-nav-item sidebar-nav-item--child">
+                <a href="{{ child.url }}"
+                   class="nav-link nav-link--child {% if request.url.path.startswith(child.url) %}active{% endif %}">
+                  {% if child.icon %}
+                  {{ icon(child.icon, size="16px") }}
+                  {% endif %}
+                  <span class="nav-link-label">{{ child.label }}</span>
+                </a>
+              </li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </li>
+      {% endfor %}
+    </ul>
+  </nav>
+
+  {# Settings at bottom #}
+  {% if settings_visible | default(true) %}
+  <div class="sidebar-bottom">
+    <ul class="sidebar-nav-list">
+      <li class="sidebar-nav-item">
+        <a href="{{ admin_path | default('/admin') }}/settings/"
+           class="nav-link {% if request.url.path.startswith(admin_path | default('/admin') ~ '/settings') %}active{% endif %}">
+          {{ icon("cog-6-tooth", size="18px") }}
+          <span class="nav-link-label">Settings</span>
+          <span class="nav-tooltip" x-show="sidebarCollapsed">Settings</span>
+        </a>
+      </li>
+    </ul>
+  </div>
+  {% endif %}
+</aside>
+
+{# Mobile sidebar overlay #}
+<div class="admin-sidebar-overlay"
+     :class="{ 'open': sidebarOpen }"
+     @click="sidebarOpen = false"
+     x-show="window.innerWidth < 1024 && sidebarOpen"
+     style="display: none;">
+</div>

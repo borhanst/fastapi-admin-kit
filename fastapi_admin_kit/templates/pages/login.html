@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title | default("Admin") }} — Login</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/admin.css">
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <style>
+    :root {
+      --primary-500: {{ admin_config.primary_color | default('') }};
+      --primary-600: {{ admin_config.primary_color_dark | default('') }};
+    }
+  </style>
+</head>
+<body class="bg-[var(--surface-overlay)] text-[var(--text-primary)] font-sans antialiased min-h-screen flex items-center justify-center p-4">
+
+  <div class="w-full max-w-md">
+    <div class="text-center mb-6">
+      {% if logo_url %}
+      <img src="{{ logo_url }}" alt="Logo" class="h-10 mx-auto mb-2">
+      {% else %}
+      <div class="w-10 h-10 mx-auto mb-2 rounded-lg bg-[var(--primary-500)] flex items-center justify-center">
+        {{ icon("home", css_class="text-white", size="20px") }}
+      </div>
+      {% endif %}
+      <h1 class="text-xl font-bold text-[var(--text-primary)]" style="margin: 0;">{{ title | default("Admin") }}</h1>
+      <p class="text-sm text-[var(--text-secondary)] mt-0.5">Sign in to your account</p>
+    </div>
+
+    {% set messages = get_flash_messages(request) | default([]) %}
+    {% if messages %}
+    <div class="mb-4 space-y-2">
+      {% for msg in messages %}
+      <div class="p-3 rounded-lg text-sm
+                  {% if msg.level == 'error' %}bg-[var(--danger-50)] text-[var(--danger-500)] border border-[var(--danger-100)]
+                  {% elif msg.level == 'success' %}bg-[var(--success-50)] text-[var(--success-500)] border border-[var(--success-100)]
+                  {% elif msg.level == 'warning' %}bg-[var(--warning-50)] text-[var(--warning-500)] border border-[var(--warning-100)]
+                  {% else %}bg-[var(--info-50)] text-[var(--info-500)] border border-[var(--info-100)]{% endif %}">
+        {{ msg.text }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="post" action="{{ admin_path | default('/admin') }}/login{% if next %}?next={{ next }}{% endif %}"
+          class="bg-white rounded-xl shadow-md border border-[var(--surface-border)] p-8">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% if error %}
+      <div class="mb-4 p-3 rounded-lg bg-[var(--danger-50)] text-[var(--danger-500)] text-sm border border-[var(--danger-100)]">
+        {{ error }}
+      </div>
+      {% endif %}
+
+      <div class="mb-4">
+        <label for="email" class="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">Email address</label>
+        <input type="email" id="email" name="email" required autofocus
+               class="form-input w-full px-4 py-2.5 rounded-lg border border-[var(--surface-border)] bg-white text-[var(--text-primary)] placeholder-[var(--text-disabled)] focus:ring-2 focus:ring-[var(--primary-500)] focus:border-[var(--primary-500)] transition-all"
+               placeholder="admin@example.com">
+      </div>
+
+      <div class="mb-6">
+        <label for="password" class="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">Password</label>
+        <input type="password" id="password" name="password" required
+               class="form-input w-full px-4 py-2.5 rounded-lg border border-[var(--surface-border)] bg-white text-[var(--text-primary)] placeholder-[var(--text-disabled)] focus:ring-2 focus:ring-[var(--primary-500)] focus:border-[var(--primary-500)] transition-all"
+               placeholder="Enter your password">
+      </div>
+
+      <button type="submit"
+              class="w-full px-4 py-3 rounded-lg bg-[var(--primary-500)] text-white font-medium hover:bg-[var(--primary-600)] focus:ring-2 focus:ring-[var(--primary-500)] focus:ring-offset-2 transition-all cursor-pointer">
+        Sign in
+      </button>
+    </form>
+  </div>
+
+</body>
+</html>

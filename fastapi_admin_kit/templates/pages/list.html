@@ -1,0 +1,277 @@
+{# pages/list.html — model list view with type-aware filters #}
+{% extends "base.html" %}
+
+{% block title %}{{ registered.verbose_name_plural }} — {{ title | default("Admin") }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  {# Breadcrumb #}
+  <nav class="breadcrumb">
+    <a href="{{ admin_path | default('/admin') }}/" class="breadcrumb-segment">
+      {{ icon("home", size="16px") }}
+      Dashboard
+    </a>
+    <span class="breadcrumb-separator">/</span>
+    <span class="breadcrumb-current">{{ registered.verbose_name_plural }}</span>
+  </nav>
+
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1 class="page-header-title">{{ registered.verbose_name_plural }}</h1>
+      <p class="page-header-subtitle">Manage your {{ registered.verbose_name_plural | lower }} and inventory</p>
+    </div>
+    {% if permissions.can_create %}
+    <div class="page-header-right">
+      <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/create" class="btn btn-primary">
+        + New {{ registered.verbose_name }}
+      </a>
+    </div>
+    {% endif %}
+  </div>
+
+  {# Filter Bar #}
+  <div class="filter-bar" x-data="filterBar()">
+    <div class="filter-bar-search">
+      {{ icon("magnifying-glass", class="filter-bar-search-icon", size="20px") }}
+      <input type="text" name="q" value="{{ search_query | default('') }}"
+             placeholder="Search {{ registered.verbose_name_plural | lower }}..."
+             hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+             hx-trigger="keyup changed delay:300ms"
+             hx-target="#table-wrapper"
+             hx-swap="outerHTML"
+             hx-include="[name='q']"
+             class="filter-bar-search-input"
+             x-ref="searchInput"
+             @input="hasSearch = $refs.searchInput.value.length > 0">
+      <button type="button" class="filter-bar-clear"
+              x-show="hasSearch" x-transition
+              @click="$refs.searchInput.value = ''; hasSearch = false; $refs.searchInput.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true}))">
+        {{ icon("x-mark", size="16px") }}
+      </button>
+    </div>
+
+    {% if filter_fields %}
+    <div class="filter-bar-chips">
+      {% for field_name, field_info in filter_fields.items() %}
+      <div class="relative" x-data="{ open: false }">
+
+        {% if field_info.field_type == "date" %}
+        <div class="filter-chip-wrap {% if active_filters.get(field_name) %}filter-chip--active{% endif %}">
+          <label class="filter-chip-label">{{ field_name | replace('_', ' ') | title }}</label>
+          <input type="date" name="filter_{{ field_name }}"
+                 value="{{ active_filters.get(field_name, '') }}"
+                 hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                 hx-trigger="change"
+                 hx-target="#table-wrapper"
+                 hx-swap="outerHTML"
+                 hx-include="[name='q'], [name^='filter_']"
+                 class="filter-input-date">
+          {% if active_filters.get(field_name) %}
+          <button type="button" class="filter-clear-btn" title="Clear"
+                  hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                  hx-target="#table-wrapper"
+                  hx-swap="outerHTML"
+                   hx-include="[name='q']">&times;</button>
+          {% endif %}
+        </div>
+
+        {% elif field_info.field_type == "datetime" %}
+        <div class="filter-chip-wrap {% if active_filters.get(field_name) %}filter-chip--active{% endif %}">
+          <label class="filter-chip-label">{{ field_name | replace('_', ' ') | title }}</label>
+          <input type="datetime-local" name="filter_{{ field_name }}"
+                 value="{{ active_filters.get(field_name, '') }}"
+                 hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                 hx-trigger="change"
+                 hx-target="#table-wrapper"
+                 hx-swap="outerHTML"
+                 hx-include="[name='q'], [name^='filter_']"
+                 class="filter-input-datetime">
+          {% if active_filters.get(field_name) %}
+          <button type="button" class="filter-clear-btn" title="Clear"
+                  hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                  hx-target="#table-wrapper"
+                  hx-swap="outerHTML"
+                   hx-include="[name='q']">&times;</button>
+          {% endif %}
+        </div>
+
+        {% elif field_info.field_type == "time" %}
+        <div class="filter-chip-wrap {% if active_filters.get(field_name) %}filter-chip--active{% endif %}">
+          <label class="filter-chip-label">{{ field_name | replace('_', ' ') | title }}</label>
+          <input type="time" name="filter_{{ field_name }}"
+                 value="{{ active_filters.get(field_name, '') }}"
+                 hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                 hx-trigger="change"
+                 hx-target="#table-wrapper"
+                 hx-swap="outerHTML"
+                 hx-include="[name='q'], [name^='filter_']"
+                 class="filter-input-time">
+          {% if active_filters.get(field_name) %}
+          <button type="button" class="filter-clear-btn" title="Clear"
+                  hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                  hx-target="#table-wrapper"
+                  hx-swap="outerHTML"
+                   hx-include="[name='q']">&times;</button>
+          {% endif %}
+        </div>
+
+        {% else %}
+        {# boolean, enum, relation, text — render as dropdown #}
+        <button type="button" class="filter-chip"
+                :class="{ 'active': activeFilters['{{ field_name }}'] }"
+                @click="open = !open">
+          {{ field_name | replace('_', ' ') | title }}
+          <template x-if="activeFilters['{{ field_name }}']">
+            <span class="filter-chip-count" x-text="activeFilters['{{ field_name }}']"></span>
+          </template>
+          {{ icon("chevron-right", size="16px") }}
+        </button>
+        <div class="filter-dropdown" x-show="open" @click.outside="open = false" x-transition>
+          <div class="filter-dropdown-header">
+            <span>{{ field_name | replace('_', ' ') | title }}</span>
+            <button type="button" class="filter-dropdown-clear"
+                    @click="clearFilter('{{ field_name }}'); open = false">Clear</button>
+          </div>
+          {% for value, label in field_info.choices %}
+          <div class="filter-dropdown-item">
+            <input type="radio" name="filter_{{ field_name }}" value="{{ value }}"
+                   :checked="activeFilters['{{ field_name }}'] === '{{ value }}'"
+                   @change="setFilter('{{ field_name }}', '{{ value }}'); open = false"
+                   id="filter_{{ field_name }}_{{ value }}">
+            <label for="filter_{{ field_name }}_{{ value }}">{{ label }}</label>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="filter-bar-right">
+      {% if filter_fields %}
+      <button type="button" class="filter-bar-clear-all"
+              x-show="Object.keys(activeFilters).length > 0"
+              x-transition
+              @click="clearAllFilters()">
+        Clear all filters
+      </button>
+      <div class="filter-bar-divider" x-show="Object.keys(activeFilters).length > 0"></div>
+      {% endif %}
+
+      <button type="button" class="filter-bar-action" title="Toggle column visibility"
+              @click="showColumnPicker = !showColumnPicker">
+        {{ icon("eye", size="20px") }}
+      </button>
+    </div>
+  </div>
+
+  {# Bulk Actions Bar — Django-style: always visible above table #}
+  {% if permissions.can_delete or list_actions %}
+  <div class="bulk-bar">
+    <div class="bulk-bar-left">
+      <label class="bulk-bar-label" for="bulk-action-select">Action:</label>
+      <select id="bulk-action-select" name="bulk_action" class="bulk-bar-select">
+        <option value="">---------</option>
+        {% if list_actions %}
+        {% for action in list_actions %}
+        <option value="{{ action.name }}">{{ action.label | default(action.name) }}</option>
+        {% endfor %}
+        {% endif %}
+        {% if permissions.can_delete %}
+        <option value="delete_selected">Delete selected</option>
+        {% endif %}
+      </select>
+    </div>
+    <div class="bulk-bar-right">
+      <button type="button" class="btn btn-primary btn-sm" onclick="executeBulkAction()">Go</button>
+    </div>
+  </div>
+  {% endif %}
+
+  {% include "partials/list_table.html" %}
+</div>
+
+<script>
+function filterBar() {
+  return {
+    hasSearch: false,
+    activeFilters: {{ active_filters | tojson }},
+    showColumnPicker: false,
+    init() {
+    },
+    setFilter(field, value) {
+      if (value) {
+        this.activeFilters[field] = value;
+      } else {
+        delete this.activeFilters[field];
+      }
+      this.applyFilters();
+    },
+    clearFilter(field) {
+      delete this.activeFilters[field];
+      this.applyFilters();
+    },
+    clearAllFilters() {
+      this.activeFilters = {};
+      this.applyFilters();
+    },
+    applyFilters() {
+      const params = new URLSearchParams(window.location.search);
+      Object.entries(this.activeFilters).forEach(([key, val]) => {
+        if (val) params.set('filter_' + key, val);
+        else params.delete('filter_' + key);
+      });
+      const search = this.$refs.searchInput?.value;
+      if (search) params.set('q', search);
+      else params.delete('q');
+      const url = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+      htmx.ajax('GET', url, { target: '#table-wrapper', swap: 'outerHTML' });
+    }
+  };
+}
+
+function _sendBulkAction(actionValue, selectedIds) {
+  var params = new URLSearchParams();
+  params.append('action', actionValue);
+  params.append('csrf_token', document.querySelector('meta[name="csrf-token"]').content);
+  selectedIds.forEach(function(id) {
+    params.append('ids[]', id);
+  });
+
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', '{{ admin_path | default("/admin") }}/{{ registered.table_name }}/bulk', true);
+  xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+  xhr.setRequestHeader('HX-Request', 'true');
+  xhr.onload = function() { window.location.reload(); };
+  xhr.onerror = function() { window.location.reload(); };
+  xhr.send(params.toString());
+}
+
+function executeBulkAction() {
+  var actionSelect = document.getElementById('bulk-action-select');
+  var selected = document.querySelectorAll('input[name="ids[]"]:checked');
+
+  if (selected.length === 0) {
+    alert('Please select at least one item.');
+    return;
+  }
+  if (!actionSelect.value) {
+    alert('Please select an action.');
+    return;
+  }
+
+  var selectedIds = Array.from(selected).map(function(cb) { return cb.value; });
+
+  if (actionSelect.value === 'delete_selected') {
+    confirmAction('Delete selected', 'Are you sure you want to delete the selected items?', function() {
+      _sendBulkAction(actionSelect.value, selectedIds);
+    });
+    return;
+  }
+
+  _sendBulkAction(actionSelect.value, selectedIds);
+}
+</script>
+{% endblock %}
