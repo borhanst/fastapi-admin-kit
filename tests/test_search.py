@@ -11,6 +11,7 @@ from sqlalchemy import Column, ForeignKey, Integer, String, create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Session, relationship
 
+from fastapi_admin_kit.admin import Admin
 from fastapi_admin_kit.models.base import Base as AdminBase
 from fastapi_admin_kit.registry import AdminRegistry
 from sqlalchemy.pool import StaticPool
@@ -71,20 +72,19 @@ def _clear_registry():
 def engine():
     import tempfile
     os.environ["SKIP_CREATE_TABLES"] = "false"
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    sync_engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False})
+    AdminBase.metadata.create_all(bind=sync_engine)
+    _Base.metadata.create_all(bind=sync_engine)
+    sync_engine.dispose()
+    async_engine = create_async_engine(
+        f"sqlite+aiosqlite:///{path}",
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
     )
-
-    async def _create_tables():
-        async with engine.begin() as conn:
-            await conn.run_sync(AdminBase.metadata.create_all)
-            await conn.run_sync(_Base.metadata.create_all)
-    run_async(_create_tables())
-
-    yield engine
+    yield async_engine
     os.environ.pop("SKIP_CREATE_TABLES", None)
+    os.unlink(path)
 
 
 @pytest.fixture()
@@ -102,15 +102,16 @@ async def admin_app(app, engine):
     admin.register(_SelfRef)
     await admin.setup()
 
-    async with AsyncSession(engine) as session:
+    sync_eng = create_engine(f"sqlite:///{engine.url.database}", connect_args={"check_same_thread": False})
+    with Session(sync_eng) as session:
         from fastapi_admin_kit.auth.models import AdminRole, AdminUser
-        from sqlalchemy import select
-        result = await session.execute(select(AdminRole).limit(1))
+        from sqlalchemy import select as sa_select
+        result = session.execute(sa_select(AdminRole).limit(1))
         role = result.scalar_one_or_none()
         if role is None:
             role = AdminRole(name="SuperAdmin")
             session.add(role)
-            await session.flush()
+            session.flush()
         user = AdminUser(
             email="admin@test.com",
             hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
@@ -120,25 +121,25 @@ async def admin_app(app, engine):
         )
         user.roles.append(role)
         session.add(user)
-        await session.commit()
-        await session.refresh(user)
+        session.commit()
+        session.refresh(user)
 
-    async with AsyncSession(engine) as session:
         cat1 = _Category(name="Electronics")
         cat2 = _Category(name="Books")
         session.add_all([cat1, cat2])
-        await session.flush()
+        session.flush()
         p1 = _Product(name="Laptop", description="Gaming laptop", category_id=cat1.id)
         p2 = _Product(name="Phone", description="Smart phone", category_id=cat1.id)
         p3 = _Product(name="Novel", description="Fiction book", category_id=cat2.id)
         session.add_all([p1, p2, p3])
-        await session.flush()
+        session.flush()
         parent = _SelfRef(name="Parent")
         session.add(parent)
-        await session.flush()
+        session.flush()
         child = _SelfRef(name="Child", parent_id=parent.id)
         session.add(child)
-        await session.commit()
+        session.commit()
+    sync_eng.dispose()
 
     return app
 
