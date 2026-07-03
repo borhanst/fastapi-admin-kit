@@ -322,7 +322,7 @@ class ProductAdmin(ModelAdmin):
 
 ## Customizing Built-in Admin Models
 
-FastAPI Console ships with default admin classes for built-in models (users, roles, audit logs, etc.). You can customize these by inheriting from the default classes.
+FastAPI Admin Kit ships with default admin classes for built-in models (users, roles, audit logs, etc.). You can customize these by inheriting from the default classes.
 
 ### Available Built-in Admin Classes
 

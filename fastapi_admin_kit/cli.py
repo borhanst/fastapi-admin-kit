@@ -1,4 +1,4 @@
-"""CLI commands for FastAPI Console."""
+"""CLI commands for FastAPI Admin Kit."""
 
 from __future__ import annotations
 
@@ -21,8 +21,8 @@ def _resolve_database_url(url: str | None = None) -> str:
     sys.exit(1)
 
 
-async def _create_superadmin(args: argparse.Namespace) -> None:
-    """Create a superadmin user."""
+async def _create_superuser(args: argparse.Namespace) -> None:
+    """Create a superuser."""
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
 
@@ -160,7 +160,7 @@ def main() -> None:
 
         prog="fconsole",
 
-        description="FastAPI Console CLI — manage admin users and database.",
+        description="FastAPI Admin Kit CLI — manage admin users and database.",
     )
     subparsers = parser.add_subparsers(
         dest="command", help="Available commands"
@@ -168,7 +168,7 @@ def main() -> None:
 
     # create-superuser
     create_parser = subparsers.add_parser(
-        "create-superuser", help="Create a new superuser"
+        "createsuperuser", help="Create a new superuser"
     )
     create_parser.add_argument(
         "-e", "--email", required=True, help="Email address for the superuser"
@@ -188,7 +188,7 @@ def main() -> None:
 
     # list-users
     list_parser = subparsers.add_parser(
-        "list-users", help="List all admin users"
+        "users", help="List all admin users"
     )
     list_parser.add_argument(
         "-d",
@@ -220,9 +220,9 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
-    if args.command == "create-superuser":
-        asyncio.run(_create_superadmin(args))
-    elif args.command == "list-users":
+    if args.command == "createsuperuser":
+        asyncio.run(_create_superuser(args))
+    elif args.command == "users":
         asyncio.run(_list_users(args))
     elif args.command == "changepassword":
         asyncio.run(_change_password(args))

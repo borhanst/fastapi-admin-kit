@@ -1,4 +1,4 @@
-"""FastAPI Console — Drop-in admin panel for FastAPI + SQLAlchemy apps."""
+"""FastAPI Admin Kit — Drop-in admin panel for FastAPI + SQLAlchemy apps."""
 
 from fastapi_admin_kit.admin import Admin
 from fastapi_admin_kit.admin.decorators import column

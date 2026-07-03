@@ -4,7 +4,7 @@ Control how list views paginate results.
 
 ## Overview
 
-FastAPI Console supports three pagination strategies:
+FastAPI Admin Kit supports three pagination strategies:
 
 | Strategy | Best For | How It Works |
 |----------|----------|--------------|

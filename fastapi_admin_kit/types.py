@@ -1,4 +1,4 @@
-"""Core data structures for FastAPI Console — ColumnMeta, RelationMeta, FieldMeta, etc."""
+"""Core data structures for FastAPI Admin Kit — ColumnMeta, RelationMeta, FieldMeta, etc."""
 
 from __future__ import annotations
 

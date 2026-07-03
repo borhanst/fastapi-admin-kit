@@ -1,4 +1,4 @@
-# FastAPI Console
+# FastAPI Admin Kit
 
 [![PyPI version](https://img.shields.io/pypi/v/fastapi-admin-kit.svg)](https://pypi.org/project/fastapi-admin-kit/)
 [![Python versions](https://img.shields.io/pypi/pyversions/fastapi-admin-kit.svg)](https://pypi.org/project/fastapi-admin-kit/)

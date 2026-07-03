@@ -1,4 +1,4 @@
-"""Example usage of FastAPI Console with SQLModel models.
+"""Example usage of FastAPI Admin Kit with SQLModel models.
 
 SQLModel auto-generates __tablename__ from the class name:
   Hero → heroes, Category → categories, etc.
@@ -215,7 +215,7 @@ async_session_maker = sessionmaker(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events."""
-    print("Starting FastAPI Console SQLModel Example...")
+    print("Starting FastAPI Admin Kit SQLModel Example...")
 
     # Create all tables
     async with engine.begin() as conn:
@@ -241,7 +241,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize admin
     await admin.setup(app)
-    print("FastAPI Console initialized successfully!")
+    print("FastAPI Admin Kit initialized successfully!")
 
     yield
 
@@ -252,8 +252,8 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="FastAPI Console SQLModel Example",
-    description="Demonstration of FastAPI Console with SQLModel",
+    title="FastAPI Admin Kit SQLModel Example",
+    description="Demonstration of FastAPI Admin Kit with SQLModel",
     version="2.0.0",
     lifespan=lifespan,
 )
@@ -296,7 +296,7 @@ admin.register(Product, ProductAdmin)
 async def root():
     """Root endpoint."""
     return {
-        "message": "Welcome to FastAPI Console SQLModel Example!",
+        "message": "Welcome to FastAPI Admin Kit SQLModel Example!",
         "docs": "/docs",
         "admin": "/admin",
         "models": ["heroes", "team", "category", "product"],

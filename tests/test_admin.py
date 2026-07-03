@@ -60,7 +60,7 @@ def _make_engine():
 class TestAdminConstruction:
     def test_default_init(self):
         admin = Admin()
-        assert admin.title == "FastAPI Console"
+        assert admin.title == "FastAPI Admin Kit"
         assert admin.admin_path == "/admin"
         assert admin.session_ttl == 28800
         assert admin.auto_discover is True
@@ -162,7 +162,7 @@ class TestAdminSetup:
         # Verify app.state is wired
         assert app.state.admin_engine is engine
         assert app.state.admin_session_backend is not None
-        assert app.state.admin_config["title"] == "FastAPI Console"
+        assert app.state.admin_config["title"] == "FastAPI Admin Kit"
 
     async def test_setup_stores_session_backend(self, engine, app):
         admin = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)

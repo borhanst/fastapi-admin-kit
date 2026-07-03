@@ -11,7 +11,7 @@ class AdminTemplate:
 
     def __init__(
         self,
-        title: str = "FastAPI Console",
+        title: str = "FastAPI Admin Kit",
         logo_url: str | None = None,
         favicon_url: str | None = None,
         primary_color: str = "#0ea5e9",

@@ -15,7 +15,7 @@ def generate_secret() -> str:
     return base64.b32encode(secrets.token_bytes(20)).decode("utf-8").rstrip("=")
 
 
-def get_totp_uri(secret: str, email: str, issuer: str = "FastAPI Console") -> str:
+def get_totp_uri(secret: str, email: str, issuer: str = "FastAPI Admin Kit") -> str:
     """Generate an otpauth:// URI for QR code generation."""
     import urllib.parse
     params = urllib.parse.urlencode({

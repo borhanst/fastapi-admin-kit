@@ -19,7 +19,7 @@ class TestAdminConfig:
         config = AdminConfig()
         assert isinstance(config.ui, UIConfig)
         assert isinstance(config.auth, AuthConfig)
-        assert config.ui.title == "FastAPI Console"
+        assert config.ui.title == "FastAPI Admin Kit"
         assert config.auth.session_ttl == 28800
 
     def test_init_with_custom_configs(self):
@@ -42,14 +42,14 @@ class TestAdminConfig:
         """Test get_ui_context method."""
         config = AdminConfig()
         context = config.get_ui_context()
-        assert context["title"] == "FastAPI Console"
+        assert context["title"] == "FastAPI Admin Kit"
         assert "logo_url" in context
 
     def test_get_branding_config(self):
         """Test get_branding_config method."""
         config = AdminConfig()
         branding = config.get_branding_config()
-        assert branding["title"] == "FastAPI Console"
+        assert branding["title"] == "FastAPI Admin Kit"
         assert branding["primary_color"] == "#0ea5e9"
 
     def test_get_session_config(self):
@@ -200,7 +200,7 @@ class TestAdminTemplate:
     def test_init_with_defaults(self):
         """Test AdminTemplate initialization with default values."""
         template = AdminTemplate()
-        assert template.title == "FastAPI Console"
+        assert template.title == "FastAPI Admin Kit"
         assert template.primary_color == "#0ea5e9"
         assert template._nav_groups_built == []
 

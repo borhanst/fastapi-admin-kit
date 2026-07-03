@@ -1,7 +1,7 @@
 [project]
 name = "fastapi-admin-kit"
 dynamic = ["version"]
-description = "Drop-in admin panel for FastAPI + SQLAlchemy apps"
+description = "Drop-in admin panel for FastAPI + SQLAlchemy + SQLModel apps"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
