@@ -1,0 +1,32 @@
+{# partials/inline_edit_form.html — inline edit accordion row #}
+{% from "macros/form_fields.html" import render_field %}
+<tr class="inline-edit-row" id="inline-edit-{{ obj.id }}">
+  <td colspan="999">
+    <div class="inline-edit-container">
+      <form class="inline-edit-form"
+            hx-post="{{ admin_path }}/{{ table_name }}/{{ obj.id }}/inline-edit/"
+            hx-target="#table-wrapper"
+            hx-swap="outerHTML"
+            hx-headers='{"X-CSRF-Token": "{{ get_csrf_token(request) }}"}'>
+        <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+        <div class="inline-edit-fields">
+          {% for field_ctx in inline_fields %}
+            {{ render_field(field_ctx, table_name) }}
+          {% endfor %}
+        </div>
+        <div class="inline-edit-actions">
+          <button type="submit" class="btn btn-primary btn-sm">
+            Save
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm inline-edit-cancel"
+                  hx-get="{{ admin_path }}/{{ table_name }}/"
+                  hx-target="#table-wrapper"
+                  hx-swap="outerHTML"
+                  hx-include="[name='q'], [name^='filter_']">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  </td>
+</tr>

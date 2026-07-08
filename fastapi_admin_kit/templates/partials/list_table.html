@@ -32,7 +32,7 @@
       <tbody>
         {% if items %}
         {% for obj in items %}
-        <tr class="data-row">
+        <tr class="data-row" id="row-{{ obj.id }}">
           {% if permissions.can_delete %}
           <td class="col-checkbox">
             <input type="checkbox" name="ids[]" value="{{ obj.id }}" class="row-checkbox">
@@ -115,6 +115,16 @@
                    :style="menuStyle"
                    @click.outside="open = false"
                    x-transition>
+                {% if registered.admin.inline_edit and permissions.can_edit %}
+                <button type="button" class="actions-menu-item"
+                        hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/{{ obj.id }}/inline-edit/"
+                        hx-target="#row-{{ obj.id }}"
+                        hx-swap="afterend"
+                        @click="open = false">
+                  {{ icon("pencil", size="16px") }}
+                  Inline Edit
+                </button>
+                {% endif %}
                 {% if permissions.can_edit %}
                 <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/{{ obj.id }}"
                    class="actions-menu-item"

@@ -211,6 +211,8 @@ class ProductAdmin(ModelAdmin):
     list_filter = ["is_active", "category", "created_at", "updated_at"]
     search_fields = ["name", "description"]
     ordering = ["-created_at"]
+    inline_edit = True
+    inline_edit_fields = ["name", "price", "stock", "is_active", "status"]
     fields = [
         "name",
         "description",

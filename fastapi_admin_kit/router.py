@@ -133,6 +133,196 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         ],
     )
 
+    # ── Inline Edit ───────────────────────────────────────────────
+
+    @router.get("/{id}/inline-edit/")
+    async def inline_edit_form(
+        request: Request,
+        id: str,
+        _: None = Depends(require_permission(registered.table_name, "edit")),
+    ):
+        """Load inline edit form for a row."""
+        if not getattr(registered.admin, "inline_edit", False):
+            raise HTTPException(status_code=404, detail="Inline editing not enabled")
+
+        session = get_db_session(request)
+        from sqlalchemy import inspect as sa_inspect
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        mapper = sa_inspect(registered.model)
+        options = [
+            selectinload(getattr(registered.model, r.key))
+            for r in mapper.relationships
+        ]
+        stmt = select(registered.model).options(*options).where(
+            getattr(registered.model, registered.pk_field) == int(id)
+        )
+        result = await session.execute(stmt)
+        obj = result.scalar_one_or_none()
+        if obj is None:
+            raise HTTPException(status_code=404, detail="Not found")
+
+        from fastapi_admin_kit.form.pipeline import build_form_context
+
+        inline_fields = registered.admin.get_inline_edit_fields(
+            obj=obj,
+            request=request,
+            columns=registered.columns,
+            relationships=registered.relationships,
+        )
+
+        form_ctx = build_form_context(
+            registered, obj=obj, request=request, is_create=False
+        )
+        form_ctx.fieldsets[0].fields = [
+            fc for fc in form_ctx.fieldsets[0].fields
+            if fc.meta.name in {f.name for f in inline_fields}
+        ]
+
+        templates = request.app.state.admin_jinja_env
+        return templates.TemplateResponse(
+            request,
+            "partials/inline_edit_form.html",
+            {
+                "obj": obj,
+                "table_name": registered.table_name,
+                "admin_path": request.app.state.admin_config["admin_path"],
+                "display_columns": form_ctx.fieldsets[0].fields,
+                "inline_fields": form_ctx.fieldsets[0].fields,
+            },
+        )
+
+    @router.post("/{id}/inline-edit/")
+    async def inline_edit_save(
+        request: Request,
+        id: str,
+        _csrf: bool = Depends(require_csrf_token),
+        _: None = Depends(require_permission(registered.table_name, "edit")),
+    ):
+        """Save inline edit form."""
+        if not getattr(registered.admin, "inline_edit", False):
+            raise HTTPException(status_code=404, detail="Inline editing not enabled")
+
+        session = get_db_session(request)
+        from sqlalchemy import inspect as sa_inspect
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        mapper = sa_inspect(registered.model)
+        options = [
+            selectinload(getattr(registered.model, r.key))
+            for r in mapper.relationships
+        ]
+        stmt = select(registered.model).options(*options).where(
+            getattr(registered.model, registered.pk_field) == int(id)
+        )
+        result = await session.execute(stmt)
+        obj = result.scalar_one_or_none()
+        if obj is None:
+            raise HTTPException(status_code=404, detail="Not found")
+
+        from fastapi_admin_kit.form.pipeline import build_form_context
+
+        inline_fields = registered.admin.get_inline_edit_fields(
+            obj=obj,
+            request=request,
+            columns=registered.columns,
+            relationships=registered.relationships,
+        )
+
+        form = await request.form()
+        parsed: dict = {}
+        errors: dict = {}
+        for field_meta in inline_fields:
+            widget = registered.get_widget(field_meta.name)
+            raw = form.get(field_meta.name)
+            value = widget.parse(raw)
+            field_errors = widget.validate(value, field_meta)
+            if field_errors:
+                errors[field_meta.name] = field_errors
+            else:
+                parsed[field_meta.name] = value
+
+        if errors:
+            form_ctx = build_form_context(
+                registered, obj=obj, values=parsed, errors=errors,
+                request=request, is_create=False,
+            )
+            form_ctx.fieldsets[0].fields = [
+                fc for fc in form_ctx.fieldsets[0].fields
+                if fc.meta.name in {f.name for f in inline_fields}
+            ]
+            templates = request.app.state.admin_jinja_env
+            return templates.TemplateResponse(
+                request,
+                "partials/inline_edit_form.html",
+                {
+                    "obj": obj,
+                    "table_name": registered.table_name,
+                    "admin_path": request.app.state.admin_config["admin_path"],
+                    "display_columns": form_ctx.fieldsets[0].fields,
+                    "inline_fields": form_ctx.fieldsets[0].fields,
+                    "errors": errors,
+                },
+                status_code=422,
+            )
+
+        try:
+            data = registered.admin.validate_update(obj, parsed, request)
+        except ValueError as e:
+            from fastapi.responses import HTMLResponse
+            msg = f"<div class='inline-edit-error'>{e}</div>"
+            return HTMLResponse(content=msg, status_code=422)
+
+        data = registered.admin.prepare_update_data(data, request)
+        data = registered.admin.process_form_data(data, request)
+
+        registered.admin.on_update(obj, data, request)
+
+        # Apply parsed data — map relationship keys to FK columns
+        from sqlalchemy import inspect as sa_inspect
+
+        col_names = {c.name for c in registered.columns}
+        mapper = sa_inspect(type(obj))
+        rel_fk_map = {}
+        for rel_key, rel_prop in mapper.relationships.items():
+            if rel_prop.direction.name == "MANYTOMANY":
+                continue
+            local_cols = [c.key for c in rel_prop.local_columns]
+            if local_cols:
+                rel_fk_map[rel_key] = local_cols[0]
+        for key, value in data.items():
+            if key in col_names:
+                setattr(obj, key, value)
+            elif key in rel_fk_map:
+                setattr(obj, rel_fk_map[key], value)
+
+        await session.flush()
+        registered.admin.after_update(obj, request)
+
+        # Reload the entire table to avoid greenlet issues in template rendering
+        from fastapi.responses import HTMLResponse
+
+        from fastapi_admin_kit.views.class_views import ListView as _ListView
+        from fastapi_admin_kit.views.factory import _resolve_permission_checker
+
+        list_v = _ListView(registered)
+        checker = await _resolve_permission_checker(request)
+        if checker:
+            await checker.load_permissions(registered.table_name)
+        q = request.query_params.get("q", "")
+        page = int(request.query_params.get("page", 1))
+        ctx = await list_v.get_context(request, q, page, checker)
+        admin_path = request.app.state.admin_config["admin_path"]
+        ctx["admin_path"] = admin_path
+        ctx["registered"] = registered
+        templates = request.app.state.admin_jinja_env
+        html = templates.TemplateResponse(
+            request, "partials/list_table.html", ctx
+        )
+        return html
+
     # ── Custom Actions ─────────────────────────────────────────────
 
     @router.post("/action/{action_name}")
