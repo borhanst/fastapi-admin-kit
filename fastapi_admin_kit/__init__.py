@@ -70,4 +70,4 @@ __all__ = [
     # Per-model assets
     "AdminExtra",
 ]
-__version__ = "0.1.8"
+__version__ = "0.1.0"

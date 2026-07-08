@@ -55,7 +55,8 @@ docs = [
 ]
 
 [project.scripts]
-fconsole = "fastapi_admin_kit.cli:main"
+fastapi-admin-kit = "fastapi_admin_kit.cli:main"
+fak = "fastapi_admin_kit.cli:main"
 
 
 [build-system]

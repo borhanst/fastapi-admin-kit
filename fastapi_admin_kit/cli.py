@@ -157,9 +157,6 @@ async def _change_password(args: argparse.Namespace) -> None:
 def main() -> None:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-
-        prog="fconsole",
-
         description="FastAPI Admin Kit CLI — manage admin users and database.",
     )
     subparsers = parser.add_subparsers(
