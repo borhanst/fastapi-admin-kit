@@ -77,6 +77,7 @@ def client(engine, admin_user):
         auth_model=AdminUser,
         auth_backend=BuiltinAuthBackend(),
         secret_key=SECRET_KEY,
+        auto_discover=False,
     )
     app = FastAPI()
     asyncio.run(admin.setup(app))
@@ -95,12 +96,12 @@ def _login_with_csrf(client, email="test@example.com", password="secret", **extr
     if not csrf_token:
         csrf_token = generate_csrf_token(SECRET_KEY)
         csrf_cookie = csrf_token
+    client.cookies.set("admin_csrf_token", csrf_cookie)
     data = {"email": email, "password": password, "csrf_token": csrf_token}
     data.update(extra_data)
     return client.post(
         "/admin/login",
         data=data,
-        cookies={"admin_csrf_token": csrf_cookie},
         follow_redirects=False,
     )
 
@@ -114,10 +115,8 @@ def test_login_get_redirects_when_authenticated(client):
     """GET /admin/login redirects if already authenticated."""
     response = _login_with_csrf(client)
     assert response.status_code == 302
-    cookie = response.headers["set-cookie"]
     response = client.get(
         "/admin/login",
-        headers={"Cookie": cookie},
         follow_redirects=False,
     )
     assert response.status_code == 302
@@ -165,9 +164,8 @@ def test_logout_post_clears_cookie(client):
     """POST /admin/logout clears the session cookie."""
     response = _login_with_csrf(client)
     assert response.status_code == 302
-    cookie = response.headers["set-cookie"]
 
-    get_resp = client.get("/admin/login", headers={"Cookie": cookie})
+    get_resp = client.get("/admin/login")
     csrf_token = ""
     csrf_cookie = ""
     for part in get_resp.headers.get_list("set-cookie"):
@@ -179,11 +177,10 @@ def test_logout_post_clears_cookie(client):
         csrf_token = generate_csrf_token(SECRET_KEY)
         csrf_cookie = csrf_token
 
+    client.cookies.set("admin_csrf_token", csrf_cookie)
     response = client.post(
         "/admin/logout",
         data={"csrf_token": csrf_token},
-        headers={"Cookie": cookie},
-        cookies={"admin_csrf_token": csrf_cookie},
         follow_redirects=False,
     )
     assert response.status_code == 302

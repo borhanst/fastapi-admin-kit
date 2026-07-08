@@ -444,7 +444,7 @@ class ViewFactory:
             await _apply_m2m_from_data(obj, m2m_data, registered, session)
             await session.flush()
             registered.admin.after_create(obj, request)
-            add_flash(request, "success", f"{registered.verbose_name} created.")
+            await add_flash(request, "success", f"{registered.verbose_name} created.")
             url = f"{request.app.state.admin_config['admin_path']}/{registered.table_name}/"
             return RedirectResponse(url=url, status_code=303)
 
@@ -539,7 +539,7 @@ class ViewFactory:
             await _apply_m2m_from_data(obj, m2m_data, registered, session)
             await session.flush()
             registered.admin.after_update(obj, request)
-            add_flash(request, "success", f"{registered.verbose_name} updated.")
+            await add_flash(request, "success", f"{registered.verbose_name} updated.")
             url = f"{request.app.state.admin_config['admin_path']}/{registered.table_name}/"
             return RedirectResponse(url=url, status_code=303)
 
@@ -563,12 +563,12 @@ class ViewFactory:
                 await session.delete(obj)
                 await session.flush()
                 registered.admin.after_delete(obj, request)
-                add_flash(
+                await add_flash(
                     request, "success", f"{registered.verbose_name} deleted."
                 )
             except Exception as e:
                 await session.rollback()
-                add_flash(request, "error", f"Cannot delete: {str(e)}")
+                await add_flash(request, "error", f"Cannot delete: {str(e)}")
             url = f"{request.app.state.admin_config['admin_path']}/{registered.table_name}/"
             return RedirectResponse(url=url, status_code=303)
 
@@ -610,7 +610,7 @@ class ViewFactory:
                             registered.admin.on_delete(obj, request)
                             await session.delete(obj)
                     await session.flush()
-                    add_flash(
+                    await add_flash(
                         request,
                         "success",
                         f"{len(ids)} {registered.verbose_name}(s) deleted.",
@@ -628,14 +628,14 @@ class ViewFactory:
                         if obj:
                             action_fn(obj)
                     await session.flush()
-                    add_flash(
+                    await add_flash(
                         request,
                         "success",
                         f"Action '{action}' applied to {len(ids)} item(s).",
                     )
             except Exception as e:
                 await session.rollback()
-                add_flash(request, "error", f"Action failed: {str(e)}")
+                await add_flash(request, "error", f"Action failed: {str(e)}")
 
             if is_htmx:
                 ctx = await self.context_builder.build_list_context(

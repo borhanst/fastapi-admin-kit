@@ -1,56 +1,30 @@
-name: Auto Release
+name: Release
 
 on:
   push:
-    branches: [master]
-  workflow_dispatch:
-
-permissions:
-  contents: write
+    tags:
+      - "v*.*.*"
 
 jobs:
-  release:
+  publish:
     runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          fetch-depth: 0
+          python-version: "3.12"
 
-      - name: Get latest tag
-        id: latest
-        run: |
-          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
+      - name: Install build tools
+        run: pip install hatch
 
-      - name: Bump version
-        id: bump
-        run: |
-          TAG="${{ steps.latest.outputs.tag }}"
-          # Remove 'v' prefix, bump patch, re-add 'v'
-          VERSION=$(echo $TAG | sed 's/^v//')
-          MAJOR=$(echo $VERSION | cut -d. -f1)
-          MINOR=$(echo $VERSION | cut -d. -f2)
-          PATCH=$(echo $VERSION | cut -d. -f3)
-          NEW_PATCH=$((PATCH + 1))
-          NEW_TAG="v${MAJOR}.${MINOR}.${NEW_PATCH}"
-          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+      - name: Build package
+        run: hatch build
 
-      - name: Get repo info
-        id: repo
-        run: |
-          REPO_NAME="${{ github.event.repository.name }}"
-          OWNER="${{ github.repository_owner }}"
-          echo "docs_url=https://${OWNER}.github.io/${REPO_NAME}/contributing/" >> $GITHUB_OUTPUT
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.bump.outputs.tag }}
-          name: "Release ${{ steps.bump.outputs.tag }}"
-          body: |
-            ## What's Changed
-            ${{ steps.bump.outputs.tag }}
-
-            📖 **Contributing Guide**: [Read Docs](${{ steps.repo.outputs.docs_url }})
-          generate_release_notes: true
-          make_latest: true
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

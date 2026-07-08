@@ -114,13 +114,16 @@ def _login(test_client):
     if not csrf_token:
         csrf_token = generate_csrf_token(SECRET_KEY)
         csrf_cookie = csrf_token
+    test_client.cookies.set("admin_csrf_token", csrf_cookie)
     response = test_client.post(
         "/admin/login",
         data={"email": "admin@test.com", "password": "password", "csrf_token": csrf_token},
-        cookies={"admin_csrf_token": csrf_cookie},
         follow_redirects=False,
     )
-    return response.cookies.get("admin_session")
+    session_cookie = response.cookies.get("admin_session")
+    if session_cookie:
+        test_client.cookies.set("admin_session", session_cookie)
+    return session_cookie
 
 
 def test_dashboard_view(client):
@@ -130,8 +133,7 @@ def test_dashboard_view(client):
     session_cookie = _login(test_client)
     assert session_cookie is not None
 
-    cookies = {"admin_session": session_cookie}
-    response = test_client.get("/admin/", cookies=cookies)
+    response = test_client.get("/admin/")
     assert response.status_code == 200
     assert "Dashboard" in response.text
     assert "Products" in response.text
@@ -146,12 +148,11 @@ def test_dashboard_stats_filter(client):
     """Test that dashboard_stats config filters which models are shown."""
     test_client, admin, engine = client
 
-    session_cookie = _login(test_client)
-    cookies = {"admin_session": session_cookie} if session_cookie else {}
+    _login(test_client)
 
     test_client.app.state.admin_config["dashboard_stats"] = ["products"]
 
-    response = test_client.get("/admin/", cookies=cookies)
+    response = test_client.get("/admin/")
     assert response.status_code == 200
     assert "3" in response.text
 
@@ -160,14 +161,13 @@ def test_dashboard_charts_toggle(client):
     """Test that dashboard_charts config controls chart visibility."""
     test_client, admin, engine = client
 
-    session_cookie = _login(test_client)
-    cookies = {"admin_session": session_cookie} if session_cookie else {}
+    _login(test_client)
 
-    response = test_client.get("/admin/", cookies=cookies)
+    response = test_client.get("/admin/")
     assert response.status_code == 200
     assert "Charts" in response.text
 
     test_client.app.state.admin_config["dashboard_charts"] = False
 
-    response = test_client.get("/admin/", cookies=cookies)
+    response = test_client.get("/admin/")
     assert response.status_code == 200

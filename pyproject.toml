@@ -5,6 +5,20 @@ description = "Drop-in admin panel for FastAPI + SQLAlchemy + SQLModel apps"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
+authors = [
+    {name = "Borhan", email = "mdborhan.st@gmail.com"},
+]
+keywords = [
+    "fastapi",
+    "admin",
+    "sqlalchemy",
+    "sqlmodel",
+    "admin-panel",
+    "dashboard",
+    "crud",
+    "rbac",
+    "async",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Framework :: FastAPI",
@@ -69,6 +83,11 @@ path = "fastapi_admin_kit/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["fastapi_admin_kit"]
+include = [
+    "fastapi_admin_kit/templates/**",
+    "fastapi_admin_kit/static/**",
+    "fastapi_admin_kit/py.typed",
+]
 
 
 [tool.hatch.build.targets.sdist]

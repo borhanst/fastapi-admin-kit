@@ -436,7 +436,7 @@ class CreateView(BaseView):
             await self._apply_m2m_from_data(obj, m2m_data, session)
             await session.flush()
             self.admin.after_create(obj, request)
-            add_flash(
+            await add_flash(
                 request, "success", f"{self.registered.verbose_name} created."
             )
         except Exception:
@@ -647,7 +647,7 @@ class EditView(BaseView):
             self.admin.on_update(obj, parsed, request)
             await session.flush()
             self.admin.after_update(obj, request)
-            add_flash(
+            await add_flash(
                 request, "success", f"{self.registered.verbose_name} updated."
             )
         except Exception:
@@ -815,7 +815,7 @@ class DeleteView(BaseView):
             await session.delete(obj)
             await session.flush()
             self.admin.after_delete(obj, request)
-            add_flash(
+            await add_flash(
                 request, "success", f"{self.registered.verbose_name} deleted."
             )
         except Exception:
@@ -975,13 +975,27 @@ class BulkView(BaseView):
 class SearchView(BaseView):
     """Orchestrates search/autocomplete for relation pickers."""
 
-    async def html_response(self, request: Request, q: str = "") -> Any:
-        return await self._search(request, q)
+    async def html_response(
+        self,
+        request: Request,
+        q: str = "",
+        limit: int = 20,
+        exclude_id: str = "",
+    ) -> Any:
+        return await self._search(request, q, limit, exclude_id)
 
-    async def api_response(self, request: Request, q: str = "") -> Any:
-        return await self._search(request, q)
+    async def api_response(
+        self,
+        request: Request,
+        q: str = "",
+        limit: int = 20,
+        exclude_id: str = "",
+    ) -> Any:
+        return await self._search(request, q, limit, exclude_id)
 
-    async def _search(self, request: Request, q: str) -> Any:
+    async def _search(
+        self, request: Request, q: str, limit: int = 20, exclude_id: str = ""
+    ) -> Any:
         from fastapi.responses import JSONResponse
         from sqlalchemy import or_, select
 
@@ -1004,7 +1018,12 @@ class SearchView(BaseView):
         if clauses:
             base = base.where(or_(*clauses))
 
-        base = base.limit(20)
+        if exclude_id:
+            pk_col = getattr(model, self.registered.pk_field, None)
+            if pk_col is not None:
+                base = base.where(pk_col != int(exclude_id))
+
+        base = base.limit(limit)
         result = session.execute(base)
         if hasattr(result, "__await__"):
             result = await result

@@ -2,12 +2,29 @@
 
 import pytest
 from fastapi import FastAPI
+from fastapi.routing import APIRoute
 from sqlalchemy import Boolean, Column, Integer, String
 from sqlalchemy.orm import DeclarativeBase
 
 from fastapi_admin_kit.admin import Admin
 from fastapi_admin_kit.auth import models as _auth_models  # noqa: F401 — register AdminRole etc.
 from fastapi_admin_kit.exceptions import ConfigError
+
+
+def _collect_route_paths(app: FastAPI) -> list[str]:
+    """Recursively collect route paths, including those inside _IncludedRouter wrappers."""
+    paths: list[str] = []
+    for route in app.routes:
+        if hasattr(route, "path"):
+            paths.append(route.path)
+        tname = type(route).__name__
+        if tname == "_IncludedRouter":
+            incl = route.include_context
+            prefix = incl.prefix
+            for sub in incl.included_router.routes:
+                if hasattr(sub, "path"):
+                    paths.append(prefix + sub.path)
+    return paths
 
 # ---------------------------------------------------------------------------
 # Test models
@@ -193,16 +210,16 @@ class TestAdminSetup:
         admin = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
         await admin.setup()
 
-        routes = [getattr(r, 'path', '') for r in app.routes]
-        assert any("static" in r for r in routes)
+        paths = _collect_route_paths(app)
+        assert any("static" in p for p in paths)
 
     async def test_setup_builds_router(self, engine, app):
         admin = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
         admin.register(_Product)
         await admin.setup()
 
-        routes = [getattr(r, 'path', '') for r in app.routes]
-        assert any("test_products" in r for r in routes)
+        paths = _collect_route_paths(app)
+        assert any("test_products" in p for p in paths)
 
 
 # ---------------------------------------------------------------------------

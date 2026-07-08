@@ -192,6 +192,12 @@ class Admin:
         else:
             self._csrf_middleware_added = False
 
+        # Default auth backend if none provided
+        if auth_backend is None:
+            from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
+
+            auth_backend = BuiltinAuthBackend()
+
         # Build components from legacy kwargs if components not provided
         if config is None:
             config = AdminConfig(
@@ -479,7 +485,7 @@ class Admin:
 
         # 2. Database tables should be created via Alembic migrations
         skip_create_tables = (
-            os.environ.get("SKIP_CREATE_TABLES", "true").lower() == "true"
+            os.environ.get("SKIP_CREATE_TABLES", "false").lower() == "true"
         )
         if not skip_create_tables:
             await self.database._create_tables()

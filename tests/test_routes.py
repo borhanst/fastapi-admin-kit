@@ -23,18 +23,8 @@ from tests.test_registry import Product
 
 
 def _get_csrf(test_client):
-    get_resp = test_client.get("/admin/login")
-    csrf_token = ""
-    csrf_cookie = ""
-    for part in get_resp.headers.get_list("set-cookie"):
-        if part.startswith("admin_csrf_token="):
-            csrf_token = part.split(";", 1)[0].split("=", 1)[1]
-            csrf_cookie = csrf_token
-            break
-    if not csrf_token:
-        csrf_token = generate_csrf_token(SECRET_KEY)
-        csrf_cookie = csrf_token
-    return csrf_token, csrf_cookie
+    csrf_token = generate_csrf_token(SECRET_KEY)
+    return csrf_token, csrf_token
 
 
 @pytest.fixture(autouse=True)
@@ -127,6 +117,7 @@ def test_create_valid_redirect(client, admin_user):
         "/admin/products/create",
         data={"name": "Test", "csrf_token": csrf_token},
         cookies={"admin_session": cookie, "admin_csrf_token": csrf_cookie},
+        follow_redirects=False,
     )
     assert resp.status_code == 303
 
@@ -139,6 +130,7 @@ def test_create_invalid_422(client, admin_user):
         "/admin/products/create",
         data={"name": "", "csrf_token": csrf_token},
         cookies={"admin_session": cookie, "admin_csrf_token": csrf_cookie},
+        follow_redirects=False,
     )
     assert resp.status_code == 422
 
@@ -148,9 +140,10 @@ def test_edit_updates(client, admin_user, product):
     cookie = create_session_cookie(admin_user.id)
     csrf_token, csrf_cookie = _get_csrf(test_client)
     resp = test_client.post(
-        f"/admin/products/{product.id}/",
+        f"/admin/products/{product.id}",
         data={"name": "Updated", "csrf_token": csrf_token},
         cookies={"admin_session": cookie, "admin_csrf_token": csrf_cookie},
+        follow_redirects=False,
     )
     assert resp.status_code == 303
 
@@ -163,6 +156,7 @@ def test_delete_removes(client, admin_user, product):
         f"/admin/products/{product.id}/delete",
         data={"csrf_token": csrf_token},
         cookies={"admin_session": cookie, "admin_csrf_token": csrf_cookie},
+        follow_redirects=False,
     )
     assert resp.status_code == 303
 

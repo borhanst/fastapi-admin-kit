@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import time
 from abc import ABC, abstractmethod
 from typing import Any
 
-from itsdangerous import BadSignature, SignatureExpired, TimestampSigner
+from itsdangerous import (
+    BadSignature,
+    SignatureExpired,
+    URLSafeTimedSerializer,
+)
 
 
 class SessionBackend(ABC):
@@ -27,8 +30,10 @@ class SessionBackend(ABC):
 class SignedCookieSessionBackend(SessionBackend):
     """Session backend that signs a JSON payload using ``itsdangerous``.
 
-    The cookie value is a ``TimestampSigner``-signed, base64-encoded JSON string
-    containing at minimum ``{"user_id": <int|str>}``.
+    The cookie value is a ``URLSafeTimedSerializer``-serialized string — the JSON
+    payload is base64-encoded so its output is safe for ``Cookie`` headers (unlike
+    raw JSON, which contains ``{``, ``}``, ``\"`` and other characters that break
+    the ``http.cookies.SimpleCookie`` parser).
     """
 
     COOKIE_NAME = "admin_session"
@@ -41,7 +46,9 @@ class SignedCookieSessionBackend(SessionBackend):
         secure: bool = False,
     ) -> None:
         self._secret_key = secret_key
-        self._signer = TimestampSigner(secret_key)
+        self._serializer = URLSafeTimedSerializer(
+            secret_key, salt="admin-session"
+        )
         self._session_ttl = session_ttl
         self.cookie_name = cookie_name
         self.secure = secure
@@ -57,21 +64,16 @@ class SignedCookieSessionBackend(SessionBackend):
         return self._secret_key
 
     def encode(self, payload: dict[str, Any]) -> str:
-        """Sign *payload* and return the signed token.
-
-        Automatically adds ``iat`` (issued-at) timestamp if not present.
-        """
+        """Sign *payload* and return the signed token."""
         if "iat" not in payload:
             payload["iat"] = time.time()
-        data = json.dumps(payload, separators=(",", ":")).encode()
-        return self._signer.sign(data).decode()
+        return self._serializer.dumps(payload)
 
     def decode(self, token: str | None) -> dict[str, Any] | None:
         """Verify *token* and return the decoded payload, or ``None``."""
         if not token:
             return None
         try:
-            data = self._signer.unsign(token, max_age=self._session_ttl)
-            return json.loads(data.decode())
-        except (BadSignature, SignatureExpired, ValueError, json.JSONDecodeError):
+            return self._serializer.loads(token, max_age=self._session_ttl)
+        except (BadSignature, SignatureExpired, ValueError):
             return None

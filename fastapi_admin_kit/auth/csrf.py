@@ -9,7 +9,7 @@ import time
 
 from fastapi import HTTPException, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import RedirectResponse
+from starlette.responses import JSONResponse, RedirectResponse
 
 CSRF_COOKIE_NAME = "admin_csrf_token"
 CSRF_FORM_FIELD = "csrf_token"
@@ -232,4 +232,9 @@ async def auth_redirect_handler(request: Request, exc: HTTPException) -> Respons
                 else:
                     login_url += f"?next={current_path}"
             return RedirectResponse(url=login_url, status_code=302)
+        from starlette.responses import JSONResponse
+        return JSONResponse(
+            status_code=401,
+            content={"detail": exc.detail or "Not authenticated"},
+        )
     raise exc

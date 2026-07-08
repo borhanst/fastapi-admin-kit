@@ -188,8 +188,9 @@
     </div>
   </div>
 
-  {# ─── System Overview (donut chart) ─── #}
-  {% if overview_data %}
+  {# ─── Charts ─── #}
+  {% if overview_data and show_charts %}
+  <h2 style="font-family: var(--font-display); font-size: var(--text-md); font-weight: 700; color: var(--text-primary); margin: 0;">Charts</h2>
   <div class="system-overview-card">
     <div class="overview-header">
       <div class="overview-header-icon">

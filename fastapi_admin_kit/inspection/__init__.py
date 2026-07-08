@@ -104,11 +104,13 @@ def model_display_name(obj: Any) -> str:
     """Return a human-readable label for an ORM object.
 
     Uses the model's ``__str__`` if it has a custom implementation.
-    Falls back to ``ClassName:pk`` when ``__str__`` is the default
-    ``object.__str__``.
+    Falls back to ``name``, ``title``, or ``ClassName:pk``.
     """
     if type(obj).__str__ is not object.__str__:
         return str(obj)
+    label = getattr(obj, "name", None) or getattr(obj, "title", None)
+    if label is not None:
+        return str(label)
     pk = getattr(obj, "id", None)
     return (
         f"{type(obj).__name__}:{pk}" if pk is not None else type(obj).__name__
