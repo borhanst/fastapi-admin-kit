@@ -2,6 +2,7 @@
 
 from fastapi_admin_kit.admin import Admin
 from fastapi_admin_kit.admin.decorators import column
+from fastapi_admin_kit.config import DatabaseConfig, DatabaseType
 from fastapi_admin_kit.exceptions import ConfigError
 from fastapi_admin_kit.nav import (
     BuiltNavGroup,
@@ -40,6 +41,8 @@ __all__ = [
     "Admin",
     "AdminRegistry",
     "ConfigError",
+    "DatabaseConfig",
+    "DatabaseType",
     "RegisteredModel",
     "ModelAdmin",
     "column",
