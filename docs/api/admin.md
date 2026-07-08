@@ -43,6 +43,24 @@
       members_order: source
       heading_level: 3
 
+## DatabaseConfig
+
+::: fastapi_admin_kit.config.DatabaseConfig
+    options:
+      show_source: true
+      show_root_heading: true
+      members_order: source
+      heading_level: 3
+
+## DatabaseType
+
+::: fastapi_admin_kit.config.DatabaseType
+    options:
+      show_source: true
+      show_root_heading: true
+      members_order: source
+      heading_level: 3
+
 ## Configuration Options
 
 ### ThemeConfig

@@ -10,10 +10,15 @@ from fastapi import FastAPI
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session
 
-from fastapi_admin_kit import Admin
+from fastapi_admin_kit import Admin, DatabaseConfig
 
-# Database setup
+# Database setup — pick one:
+
+# Option A: Create engine manually
 engine = create_engine("sqlite:///example.db")
+
+# Option B: Use DatabaseConfig (auto-creates async engine, normalizes URL)
+# db_config = DatabaseConfig(url="sqlite:///example.db")
 
 class Base(DeclarativeBase):
     pass
@@ -35,12 +40,22 @@ Base.metadata.create_all(engine)
 # FastAPI app
 app = FastAPI()
 
-# Initialize admin
+# Initialize admin — pick one:
+
+# Option A: Pass engine directly
 admin = Admin(
     app=app,
     engine=engine,
     secret_key="your-secret-key-change-in-production",
 )
+
+# Option B: Pass database_config (engine created automatically)
+# admin = Admin(
+#     app=app,
+#     database_config=db_config,
+#     secret_key="your-secret-key-change-in-production",
+# )
+
 admin.register(Product)
 ```
 

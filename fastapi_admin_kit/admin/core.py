@@ -21,6 +21,7 @@ from fastapi_admin_kit.config import (
     AuditConfig,
     AuthConfig,
     BehaviorConfig,
+    DatabaseConfig,
     NavConfig,
     StorageConfig,
     ThemeConfig,
@@ -116,6 +117,7 @@ class Admin:
         self,
         app: FastAPI | None = None,
         engine: Engine | None = None,
+        database_config: DatabaseConfig | None = None,
         *,
         # Component instances (new API)
         config: AdminConfig | None = None,
@@ -257,7 +259,9 @@ class Admin:
             )
 
         if database is None:
-            database = AdminDatabase(engine=engine, base=base)
+            database = AdminDatabase(
+                engine=engine, base=base, database_config=database_config
+            )
 
         if router is None:
             router = AdminRouter(
@@ -426,9 +430,12 @@ class Admin:
                 "Admin requires a FastAPI app instance. Pass app= or call setup(app=)."
             )
 
+        self.database._ensure_engine()
+
         if self.database.engine is None:
             raise ConfigError(
-                "Admin requires a SQLAlchemy engine. Pass engine= to Admin()."
+                "Admin requires a SQLAlchemy engine. "
+                "Pass engine= or database_config= to Admin()."
             )
 
         app = self._app

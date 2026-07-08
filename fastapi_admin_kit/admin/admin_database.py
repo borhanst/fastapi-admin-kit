@@ -1,9 +1,10 @@
 """Admin database setup and initialization."""
 
-from typing import TYPE_CHECKING, Any
+from __future__ import annotations
 
-if TYPE_CHECKING:
-    pass
+from typing import Any
+
+from fastapi_admin_kit.config.database import DatabaseConfig
 
 
 class AdminDatabase:
@@ -13,9 +14,17 @@ class AdminDatabase:
         self,
         engine: Any | None = None,
         base: Any | None = None,
+        database_config: DatabaseConfig | None = None,
     ):
         self.engine = engine
         self.base = base
+        self.database_config = database_config
+
+    def _ensure_engine(self) -> Any:
+        """Create the async engine from ``database_config`` if no engine is set."""
+        if self.engine is None and self.database_config is not None:
+            self.engine = self.database_config.create_engine()
+        return self.engine
 
     async def _create_tables(self) -> None:
         """Create all admin database tables (async-safe)."""

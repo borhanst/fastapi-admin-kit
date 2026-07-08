@@ -2,6 +2,83 @@
 
 Customize the admin panel to fit your needs.
 
+## Database Configuration
+
+Configure the database connection using `DatabaseConfig` and `DatabaseType`.
+
+```python
+from fastapi_admin_kit import Admin, DatabaseConfig, DatabaseType
+```
+
+### DatabaseType
+
+| Value | Database | Async Driver |
+|-------|----------|-------------|
+| `DatabaseType.SQLITE` | SQLite | aiosqlite |
+| `DatabaseType.POSTGRESQL` | PostgreSQL | asyncpg |
+| `DatabaseType.MYSQL` | MySQL | aiomysql |
+
+### DatabaseConfig
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `url` | `str` | `None` | Full connection URL (auto-normalized to async driver) |
+| `db_type` | `DatabaseType` | `SQLITE` | Database dialect (used when no URL given) |
+| `host` | `str` | `""` | Database host |
+| `port` | `int` | `None` | Database port |
+| `database` | `str` | `""` | Database name/file path |
+| `username` | `str` | `""` | Database username |
+| `password` | `str` | `""` | Database password |
+| `echo` | `bool` | `False` | Log all SQL statements |
+| `pool_size` | `int` | `5` | Connection pool size (not for SQLite) |
+| `max_overflow` | `int` | `10` | Max overflow connections (not for SQLite) |
+| `pool_pre_ping` | `bool` | `True` | Verify connections before use |
+
+### URL Auto-Normalization
+
+When passing a `url`, `DatabaseConfig` automatically ensures the correct async driver:
+
+| Input URL | Normalized Output |
+|-----------|------------------|
+| `sqlite:///./db.sqlite3` | `sqlite+aiosqlite:///./db.sqlite3` |
+| `sqlite+aiosqlite:///./db.sqlite3` | unchanged |
+| `postgresql://user:pass@localhost/mydb` | `postgresql+asyncpg://user:pass@localhost/mydb` |
+| `postgresql+psycopg2://user:pass@localhost/mydb` | `postgresql+asyncpg://user:pass@localhost/mydb` |
+| `mysql://user:pass@localhost/mydb` | `mysql+aiomysql://user:pass@localhost/mydb` |
+
+### Usage Modes
+
+**Mode 1 — URL string (auto-normalized):**
+
+```python
+db_config = DatabaseConfig(url="sqlite:///./app.db")
+engine = db_config.create_engine()
+```
+
+**Mode 2 — Structured fields:**
+
+```python
+db_config = DatabaseConfig(
+    db_type=DatabaseType.POSTGRESQL,
+    host="localhost",
+    port=5432,
+    database="mydb",
+    username="user",
+    password="secret",
+)
+engine = db_config.create_engine()
+```
+
+**Mode 3 — Pass directly to Admin (engine created automatically):**
+
+```python
+admin = Admin(
+    app=app,
+    database_config=DatabaseConfig(url="sqlite:///./app.db"),
+    secret_key="your-secret-key",
+)
+```
+
 ## Admin Initialization
 
 ```python
@@ -9,7 +86,9 @@ from fastapi_admin_kit import Admin
 
 admin = Admin(
     app=app,
-    engine=engine,
+    engine=engine,           # existing: pass pre-created engine
+    # OR
+    database_config=db_config,  # new: pass config instead
     secret_key="your-secret-key",
     # ... other options
 )
