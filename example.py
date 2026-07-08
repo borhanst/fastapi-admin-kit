@@ -491,8 +491,29 @@ async def custom_dashboard_data(request, session):
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./test_debug.db")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
 
+# Option A: Create engine manually (traditional approach)
 engine = create_async_engine(DATABASE_URL, echo=False)
 async_session_maker = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+# Option B: Use DatabaseConfig — pass url= (auto-normalizes to async driver)
+#   from fastapi_admin_kit import DatabaseConfig
+#   db_config = DatabaseConfig(url="sqlite:///./test_debug.db")  # → sqlite+aiosqlite:///...
+#   engine = db_config.create_engine()
+#
+# Option C: Use DatabaseConfig with structured fields + DatabaseType enum
+#   from fastapi_admin_kit import DatabaseConfig, DatabaseType
+#   db_config = DatabaseConfig(
+#       db_type=DatabaseType.POSTGRESQL,
+#       host="localhost",
+#       port=5432,
+#       database="mydb",
+#       username="user",
+#       password="pass",
+#   )
+#   engine = db_config.create_engine()
+#
+# Option D: Pass database_config directly to Admin (engine created automatically)
+#   admin = Admin(app=app, database_config=db_config, ...)
 
 
 async def seed_demo_data(session: AsyncSession) -> None:
@@ -632,6 +653,8 @@ app = FastAPI(
 from fastapi_admin_kit.nav import NavGroupConfig
 
 # Initialize admin with full UnfoldAdmin configuration
+#   Use database_config= instead of engine= to let Admin create the async engine:
+#   admin = Admin(app=app, database_config=db_config, base=Base, ...)
 admin = Admin(
     app=app,
     engine=engine,
