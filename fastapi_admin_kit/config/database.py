@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import re
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class DatabaseType(str, Enum):
+class DatabaseType(StrEnum):
     """Supported database types for async connections."""
 
     SQLITE = "sqlite"

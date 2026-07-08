@@ -14,7 +14,7 @@ A drop-in admin panel for FastAPI + SQLAlchemy apps, inspired by Django Unfold.
 - Built-in authentication, RBAC, and audit logging
 - Modern UI with Tailwind CSS, HTMX, and Alpine.js
 - Fully customizable widgets, themes, and templates
-- CLI for user management (`fastapi-admin-kit` / `fak` — create superusers, list users, change passwords)
+- CLI for user management (`fak-admin` / `fak` — create superusers, list users, change passwords)
 - Async-first with support for PostgreSQL, MySQL, and SQLite
 
 ## Installation
@@ -86,15 +86,15 @@ Both the full name and the short alias work interchangeably:
 
 ```bash
 # Create a superuser
-fastapi-admin-kit create-superuser -e admin@example.com -p mypassword
-fak create-superuser -e admin@example.com -p mypassword       # short alias
+fak-admin createsuperuser -e admin@example.com -p mypassword
+fak createsuperuser -e admin@example.com -p mypassword       # short alias
 
 # List all admin users
-fastapi-admin-kit users
+fak-admin users
 fak users
 
 # Change a user's password
-fastapi-admin-kit changepassword -e admin@example.com -p newpassword
+fak-admin changepassword -e admin@example.com -p newpassword
 fak changepassword -e admin@example.com -p newpassword
 ```
 
