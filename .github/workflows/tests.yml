@@ -24,8 +24,8 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]"
 
-      - name: Run tests
-        run: pytest
-
       - name: Lint with ruff
         run: ruff check fastapi_admin_kit/
+
+      - name: Run tests
+        run: pytest

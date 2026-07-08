@@ -9,7 +9,7 @@ import time
 
 from fastapi import HTTPException, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse, RedirectResponse
+from starlette.responses import RedirectResponse
 
 CSRF_COOKIE_NAME = "admin_csrf_token"
 CSRF_FORM_FIELD = "csrf_token"
