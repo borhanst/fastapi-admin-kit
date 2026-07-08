@@ -55,7 +55,7 @@ That's it — you now have a full admin panel at `/admin/products/` with list, c
 |---|---|---|
 | **Installation** | **Quick Start** | **Configuration** |
 | Install fastapi-admin-kit with pip | Get up and running in 5 minutes | Customize the admin to fit your needs |
-| [Installation :octicons-arrow-right-24:](getting-started/installation.md) | [Quick Start :octicons-arrow-right-24:](getting-started/quickstart.md) | [Configuration :octicons-arrow-right-24:](getting-started/configuration.md) |
+| [Installation :material-arrow-right:](getting-started/installation.md) | [Quick Start :material-arrow-right:](getting-started/quickstart.md) | [Configuration :material-arrow-right:](getting-started/configuration.md) |
 
 ## How It Works
 
