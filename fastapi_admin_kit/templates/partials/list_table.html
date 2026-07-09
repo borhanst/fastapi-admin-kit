@@ -115,24 +115,17 @@
                    :style="menuStyle"
                    @click.outside="open = false"
                    x-transition>
-                {% if registered.admin.inline_edit and permissions.can_edit %}
+                   {% if registered.admin.inline_edit and permissions.can_edit %}
                 <button type="button" class="actions-menu-item"
                         hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/{{ obj.id }}/inline-edit/"
                         hx-target="#row-{{ obj.id }}"
                         hx-swap="afterend"
                         @click="open = false">
                   {{ icon("pencil", size="16px") }}
-                  Inline Edit
+                  Edit
                 </button>
                 {% endif %}
-                {% if permissions.can_edit %}
-                <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/{{ obj.id }}"
-                   class="actions-menu-item"
-                   @click="open = false">
-                  {{ icon("pencil", size="16px") }}
-                  Edit
-                </a>
-                {% endif %}
+                
                 {% if row_actions %}
                 {% for action in row_actions %}
                 <button type="button" class="actions-menu-item"
