@@ -690,3 +690,15 @@ function confirmAction(title, message, callback) {
     callback();
   }
 }
+
+// ── Inline Edit Keyboard Support ──────────────────────────────
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    const form = e.target.closest('.inline-edit-form');
+    if (form) {
+      const cancelBtn = form.querySelector('.inline-edit-cancel');
+      if (cancelBtn) cancelBtn.click();
+    }
+  }
+});

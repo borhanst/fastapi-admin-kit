@@ -1,0 +1,85 @@
+{# partials/_inline_edit_row.html — updated row after inline edit save #}
+{% set _detail_url = admin_path | default('/admin') ~ '/' ~ registered.table_name ~ '/' ~ obj.id %}
+<tr class="data-row" id="row-{{ obj.id }}">
+  {% if permissions and permissions.can_delete %}
+  <td class="col-checkbox">
+    <input type="checkbox" name="ids[]" value="{{ obj.id }}" class="row-checkbox">
+  </td>
+  {% endif %}
+  {% set _first_col = true %}
+  {% for col in display_columns %}
+    <td class="col-cell">
+      {% set val = col.value(obj) if col.value is defined else none %}
+      {% if _first_col %}
+        {% set _first_col = false %}
+        <a href="{{ _detail_url }}" class="text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)] transition-colors">
+        {% if val is none %}
+          -
+        {% elif val is string or val is number %}
+          {{ val }}
+        {% else %}
+          {{ val | string }}
+        {% endif %}
+        </a>
+      {% else %}
+        {% if val is none %}
+          <span class="text-muted">-</span>
+        {% elif val is string or val is number %}
+          {{ val }}
+        {% else %}
+          {{ val | string }}
+        {% endif %}
+      {% endif %}
+    </td>
+  {% endfor %}
+  <td class="col-actions">
+    <div class="actions-dropdown" x-data="{ open: false, menuStyle: '' }"
+         @actions-close.window="open = false">
+      <button type="button" class="actions-trigger" @click.stop="
+        open = !open;
+        if (open) {
+          $dispatch('actions-close');
+          open = true;
+          $nextTick(() => {
+            const btn = $el;
+            const menu = $el.nextElementSibling;
+            const rect = btn.getBoundingClientRect();
+            const menuRect = menu.getBoundingClientRect();
+            const viewportH = window.innerHeight;
+            let top = rect.bottom + 4;
+            let left = rect.right - menuRect.width;
+            if (top + menuRect.height > viewportH) {
+              top = rect.top - menuRect.height - 4;
+            }
+            if (left < 8) left = 8;
+            menuStyle = 'position:fixed;top:' + top + 'px;left:' + left + 'px;z-index:9999;';
+          });
+        }
+      " title="Actions">
+        {{ icon("ellipsis-vertical", size="16px") }}
+      </button>
+      <div class="actions-menu" x-show="open" x-cloak
+           :style="menuStyle"
+           @click.outside="open = false"
+           x-transition>
+           {% if registered.admin.inline_edit and permissions and permissions.can_edit %}
+        <button type="button" class="actions-menu-item"
+                hx-get="{{ admin_path }}/{{ registered.table_name }}/{{ obj.id }}/inline-edit/"
+                hx-target="#row-{{ obj.id }}"
+                hx-swap="afterend"
+                @click="open = false">
+          {{ icon("pencil", size="16px") }}
+          Inline Edit
+        </button>
+        {% endif %}        
+        {% if permissions and permissions.can_delete %}
+        <button type="button" class="actions-menu-item actions-menu-item--danger"
+                @click="open = false; confirmAction('Delete', 'Are you sure you want to delete this {{ registered.verbose_name | lower }}?', () => { var form = document.createElement('form'); form.method = 'POST'; form.action = '{{ admin_path | default('/admin') }}/{{ registered.table_name }}/{{ obj.id }}/delete'; var csrf = document.createElement('input'); csrf.type = 'hidden'; csrf.name = 'csrf_token'; csrf.value = '{{ get_csrf_token(request) }}'; form.appendChild(csrf); document.body.appendChild(form); form.submit(); })">
+          {{ icon("trash", size="16px") }}
+          Delete
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </td>
+</tr>

@@ -4734,3 +4734,67 @@ img { max-width: 100%; display: block; }
   margin-right: 2px;
 }
 
+/* ── Inline Edit ──────────────────────────────────────────────── */
+
+.inline-edit-row {
+  background: var(--surface-inset);
+}
+
+.inline-edit-row td {
+  padding: 0 !important;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.inline-edit-container {
+  padding: var(--space-4);
+  animation: slideDown 0.15s ease-out;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.inline-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.inline-edit-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.inline-edit-fields .field-wrapper {
+  flex: 1 1 180px;
+  min-width: 150px;
+}
+
+.inline-edit-fields .field-wrapper .field-label {
+  font-size: var(--text-xs);
+  margin-bottom: var(--space-1);
+}
+
+.inline-edit-fields .field-wrapper input,
+.inline-edit-fields .field-wrapper select,
+.inline-edit-fields .field-wrapper textarea {
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+.inline-edit-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--surface-border);
+}
+
+.inline-edit-error {
+  color: var(--color-danger-600);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+

@@ -12,6 +12,7 @@ A drop-in admin panel for FastAPI + SQLAlchemy apps.
 - **Modern UI** — Tailwind CSS, HTMX, and Alpine.js for a fast, responsive experience
 - **Fully Customizable** — Override widgets, templates, routes, and behavior via protocols
 - **Global Search / Command Palette** — Press `⌘K` / `Ctrl+K` to instantly search models and fields
+- **Inline Editing** — Edit records directly from the list view with a 3-dot action menu
 
 ## Quick Example
 

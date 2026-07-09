@@ -16,6 +16,7 @@ A drop-in admin panel for FastAPI + SQLAlchemy apps, inspired by Django Unfold.
 - Built-in authentication, RBAC, and audit logging
 - Modern UI with Tailwind CSS, HTMX, and Alpine.js
 - Fully customizable widgets, themes, and templates
+- Inline editing from list view with 3-dot action menu
 - CLI for user management (`fak-admin` / `fak` — create superusers, list users, change passwords)
 - Async-first with support for PostgreSQL, MySQL, and SQLite
 

@@ -30,6 +30,11 @@ class ModelAdmin:
     list_filter_options: dict[str, dict[str, Any]] = {}
     list_filter_horizontal: bool = False
 
+    # Inline editing config
+    inline_edit: bool = False
+    inline_edit_fields: list[str] | None = None
+    inline_exclude_fields: list[str] | None = None
+
     # Actions config
     actions_list: list[str] = []
     actions_row: list[str] = []
@@ -359,6 +364,27 @@ class ModelAdmin:
 
     def get_submit_line_actions(self) -> list[Any]:
         return self.get_actions_for_location("submit_line")
+
+    # ── Inline edit helpers ────────────────────────────────────────
+
+    def get_inline_edit_fields(
+        self,
+        obj: Any = None,
+        request: Any = None,
+        columns: list[Any] | None = None,
+        relationships: list[Any] | None = None,
+    ) -> list[FieldMeta]:
+        """Return FieldMeta list for the inline edit form."""
+        all_fields = self.get_form_fields(
+            obj=obj, request=request, columns=columns, relationships=relationships
+        )
+        if self.inline_edit_fields is not None:
+            allowed = set(self.inline_edit_fields)
+            return [f for f in all_fields if f.name in allowed]
+        if self.inline_exclude_fields is not None:
+            excluded = set(self.inline_exclude_fields)
+            return [f for f in all_fields if f.name not in excluded]
+        return all_fields
 
     # ── Permission helpers ───────────────────────────────────────────
 
