@@ -623,7 +623,8 @@ class DefaultQueryProvider:
         for rel in mapper.relationships:
             if rel.direction.name == "MANYTOMANY":
                 options.append(selectinload(getattr(self.registered.model, rel.key)))
-        int_id = int(id) if id is not None else None
+        from fastapi_admin_kit.inspection import cast_pk_value
+        int_id = cast_pk_value(self.registered.model, id)
         if options:
             from sqlalchemy import select
             stmt = select(self.registered.model).options(*options).where(
