@@ -22,7 +22,9 @@ async def _require_superuser(
     user: AdminUserProtocol = Depends(get_current_admin_user),
 ) -> AdminUserProtocol:
     if not getattr(user, "is_superuser", False):
-        raise HTTPException(status_code=403, detail="Superuser access required.")
+        raise HTTPException(
+            status_code=403, detail="Superuser access required."
+        )
     return user
 
 
@@ -36,15 +38,13 @@ async def tables_search(
     registry = request.app.state.admin_registry
     models = registry.all()
 
-    results = [
-        {"id": m.table_name, "label": m.verbose_name}
-        for m in models
-    ]
+    results = [{"id": m.table_name, "label": m.verbose_name} for m in models]
 
     if q:
         q_lower = q.lower()
         results = [
-            r for r in results
+            r
+            for r in results
             if q_lower in r["label"].lower() or q_lower in r["id"].lower()
         ]
 
@@ -66,17 +66,22 @@ async def role_list_view(
     role_data = []
     for role in roles:
         user_count = len(role.users)
-        role_data.append({
-            "role": role,
-            "user_count": user_count,
-        })
+        role_data.append(
+            {
+                "role": role,
+                "user_count": user_count,
+            }
+        )
 
     return templates.TemplateResponse(
         request,
         "pages/roles.html",
-        await inject_sidebar_context(request, {
-            "roles": role_data,
-        }),
+        await inject_sidebar_context(
+            request,
+            {
+                "roles": role_data,
+            },
+        ),
     )
 
 
@@ -91,11 +96,14 @@ async def role_create_view(
     return templates.TemplateResponse(
         request,
         "pages/role_form.html",
-        await inject_sidebar_context(request, {
-            "role": None,
-            "perm_data": {},
-            "search_url": f"{request.app.state.admin_config['admin_path']}/tables/search",
-        }),
+        await inject_sidebar_context(
+            request,
+            {
+                "role": None,
+                "perm_data": {},
+                "search_url": f"{request.app.state.admin_config['admin_path']}/tables/search",
+            },
+        ),
     )
 
 
@@ -118,10 +126,16 @@ async def role_edit_view(
     model_map = {m.table_name: m.verbose_name for m in models}
 
     perms = (
-        await session.execute(
-            select(AdminPermission).where(AdminPermission.role_id == role_id)
+        (
+            await session.execute(
+                select(AdminPermission).where(
+                    AdminPermission.role_id == role_id
+                )
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     perm_data = {}
     for p in perms:
@@ -136,11 +150,14 @@ async def role_edit_view(
     return templates.TemplateResponse(
         request,
         "pages/role_form.html",
-        await inject_sidebar_context(request, {
-            "role": role,
-            "perm_data": perm_data,
-            "search_url": f"{request.app.state.admin_config['admin_path']}/tables/search",
-        }),
+        await inject_sidebar_context(
+            request,
+            {
+                "role": role,
+                "perm_data": perm_data,
+                "search_url": f"{request.app.state.admin_config['admin_path']}/tables/search",
+            },
+        ),
     )
 
 
@@ -167,10 +184,16 @@ async def role_save_view(
         perm_data = {}
 
     existing_perms = (
-        await session.execute(
-            select(AdminPermission).where(AdminPermission.role_id == role_id)
+        (
+            await session.execute(
+                select(AdminPermission).where(
+                    AdminPermission.role_id == role_id
+                )
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     existing_perm_map = {p.table_name: p for p in existing_perms}
 
     for table, data in perm_data.items():
@@ -200,7 +223,10 @@ async def role_save_view(
 
     await session.flush()
 
-    return RedirectResponse(url=f"{request.app.state.admin_config['admin_path']}/roles", status_code=302)
+    return RedirectResponse(
+        url=f"{request.app.state.admin_config['admin_path']}/roles",
+        status_code=302,
+    )
 
 
 @router.post("/roles/{role_id}/delete", response_class=RedirectResponse)
@@ -227,4 +253,7 @@ async def role_delete_view(
     await session.delete(role)
     await session.flush()
 
-    return RedirectResponse(url=f"{request.app.state.admin_config['admin_path']}/roles", status_code=302)
+    return RedirectResponse(
+        url=f"{request.app.state.admin_config['admin_path']}/roles",
+        status_code=302,
+    )
