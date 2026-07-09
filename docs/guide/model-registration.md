@@ -95,6 +95,25 @@ class ProductAdmin(ModelAdmin):
 | `compressed_fields` | `bool` | `True` | Compact field layout |
 | `change_form_show_cancel_button` | `bool` | `True` | Show cancel button |
 
+### Inline Editing
+
+Edit records directly from the list view with a 3-dot action menu.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `inline_edit` | `bool` | `False` | Enable inline editing for this model |
+| `inline_edit_fields` | `list[str]` | `None` | Fields shown in inline edit form |
+| `inline_exclude_fields` | `list[str]` | `None` | Fields excluded from inline edit |
+
+```python
+@admin.register(Product)
+class ProductAdmin(ModelAdmin):
+    inline_edit = True
+    inline_edit_fields = ["name", "price", "stock", "status"]
+```
+
+When `inline_edit = True`, a 3-dot menu appears per row with an "Edit" option that expands an inline form below the row. Uses HTMX for seamless save/cancel without page reload.
+
 ### Labels & Navigation
 
 | Option | Type | Default | Description |
