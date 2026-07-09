@@ -6,6 +6,8 @@
 
 A drop-in admin panel for FastAPI + SQLAlchemy apps, inspired by Django Unfold.
 
+> **⚠️ Important Notice:** This project is **not production-ready yet**. It is under active development, and the API and code may massive changes. Use it for development and testing purposes only.
+
 📖 **[Documentation](https://borhanst.github.io/fastapi-admin-kit/)** | 🚀 **[Quick Start](#quick-start)** | 📦 **[PyPI](https://pypi.org/project/fastapi-admin-kit/)**
 
 ## Features
