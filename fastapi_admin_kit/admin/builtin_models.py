@@ -13,7 +13,7 @@ def _get_table_names() -> list[str]:
     return sorted({m.table_name for m in registry.all()})
 
 
-class AdminUserAdmin(ModelAdmin):
+class UserAdmin(ModelAdmin):
     tag = "admin"
     icon = "group"
     verbose_name = "Admin User"
@@ -38,11 +38,11 @@ class AdminUserAdmin(ModelAdmin):
     }
 
     def prepare_create_data(self, data, request=None):
-        from fastapi_admin_kit.auth.backend import pwd_context
+        from fastapi_admin_kit.auth.models import User
 
         password = data.pop("password", None)
         if password:
-            data["hashed_password"] = pwd_context.hash(password)
+            data["hashed_password"] = User.hash_password(password)
         else:
             data["hashed_password"] = ""
         return data
@@ -105,7 +105,7 @@ class AdminUserAdmin(ModelAdmin):
     def get_form_context(self, context, obj=None, request=None):
         from sqlalchemy import select
 
-        from fastapi_admin_kit.auth.models import AdminUserPermission
+        from fastapi_admin_kit.auth.models import UserPermission
         from fastapi_admin_kit.db import get_db_session
 
         perm_data = {}
@@ -116,8 +116,8 @@ class AdminUserAdmin(ModelAdmin):
 
                 async def _load_perms():
                     result = await session.execute(
-                        select(AdminUserPermission).where(
-                            AdminUserPermission.user_id == obj.id
+                        select(UserPermission).where(
+                            UserPermission.user_id == obj.id
                         )
                     )
                     return result.scalars().all()
@@ -182,7 +182,7 @@ class AdminUserAdmin(ModelAdmin):
         return data
 
 
-class AdminRoleAdmin(ModelAdmin):
+class RoleAdmin(ModelAdmin):
     tag = "admin"
     icon = "shield-check"
     verbose_name = "Admin Role"
@@ -191,7 +191,7 @@ class AdminRoleAdmin(ModelAdmin):
     search_fields = ["name"]
 
 
-class AdminRefreshTokenAdmin(ModelAdmin):
+class RefreshTokenAdmin(ModelAdmin):
     tag = "admin"
     icon = "key"
     verbose_name = "Refresh Token"
@@ -199,7 +199,7 @@ class AdminRefreshTokenAdmin(ModelAdmin):
     exclude = ["user"]
 
 
-class AdminPermissionAdmin(ModelAdmin):
+class PermissionAdmin(ModelAdmin):
     tag = "admin"
     icon = "lock"
     verbose_name = "Permission"
@@ -248,7 +248,7 @@ class AuditLogAdmin(ModelAdmin):
     ]
 
 
-class AdminUserTOTPAdmin(ModelAdmin):
+class UserTOTPAdmin(ModelAdmin):
     tag = "admin"
     icon = "lock"
     verbose_name = "2FA Token"
@@ -256,7 +256,7 @@ class AdminUserTOTPAdmin(ModelAdmin):
     list_display = ["id", "user_id", "enabled", "secret_key", "created_at"]
 
 
-class AdminUserPermissionAdmin(ModelAdmin):
+class UserPermissionAdmin(ModelAdmin):
     tag = "admin"
     icon = "lock"
     verbose_name = "User Permission"
@@ -275,7 +275,7 @@ class AdminUserPermissionAdmin(ModelAdmin):
     }
 
 
-class AdminLoginAttemptAdmin(ModelAdmin):
+class LoginAttemptAdmin(ModelAdmin):
     tag = "admin"
     icon = "clock"
     verbose_name = "Login Attempt"

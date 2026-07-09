@@ -5,9 +5,9 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from fastapi_admin_kit.auth.models import (
-    AdminPermission,
-    AdminRole,
-    AdminUser,
+    Permission,
+    Role,
+    User,
 )
 from fastapi_admin_kit.auth.permissions import PermissionChecker
 from fastapi_admin_kit.models import Base
@@ -34,7 +34,7 @@ async def session(engine):
 
 @pytest_asyncio.fixture
 async def editor_role(session):
-    role = AdminRole(name="Editor")
+    role = Role(name="Editor")
     session.add(role)
     await session.flush()
     return role
@@ -42,7 +42,7 @@ async def editor_role(session):
 
 @pytest_asyncio.fixture
 async def viewer_role(session):
-    role = AdminRole(name="Viewer")
+    role = Role(name="Viewer")
     session.add(role)
     await session.flush()
     return role
@@ -50,7 +50,7 @@ async def viewer_role(session):
 
 @pytest_asyncio.fixture
 async def superuser(session, editor_role):
-    user = AdminUser(
+    user = User(
         email="super@example.com",
         hashed_password="hash",
         full_name="Super Admin",
@@ -66,7 +66,7 @@ async def superuser(session, editor_role):
 
 @pytest_asyncio.fixture
 async def normal_user(session, editor_role):
-    user = AdminUser(
+    user = User(
         email="editor@example.com",
         hashed_password="hash",
         full_name="Editor",
@@ -82,7 +82,7 @@ async def normal_user(session, editor_role):
 
 @pytest_asyncio.fixture
 async def multi_role_user(session, editor_role, viewer_role):
-    user = AdminUser(
+    user = User(
         email="multi@example.com",
         hashed_password="hash",
         full_name="Multi Role",
@@ -99,7 +99,7 @@ async def multi_role_user(session, editor_role, viewer_role):
 
 @pytest_asyncio.fixture
 async def no_role_user(session):
-    user = AdminUser(
+    user = User(
         email="norole@example.com",
         hashed_password="hash",
         full_name="No Role",
@@ -151,7 +151,7 @@ class TestHasPermissionNoRole:
 class TestHasPermissionNormalUser:
     @pytest.mark.asyncio
     async def test_with_permission_granted(self, session, editor_role, normal_user):
-        perm = AdminPermission(
+        perm = Permission(
             role_id=editor_role.id,
             table_name="products",
             can_view=True,
@@ -175,7 +175,7 @@ class TestHasPermissionNormalUser:
 
     @pytest.mark.asyncio
     async def test_wrong_table_denied(self, session, editor_role, normal_user):
-        perm = AdminPermission(
+        perm = Permission(
             role_id=editor_role.id,
             table_name="products",
             can_view=True,
@@ -197,7 +197,7 @@ class TestHasPermissionMultiRole:
     async def test_permissions_merged_from_all_roles(
         self, session, editor_role, viewer_role, multi_role_user
     ):
-        editor_perm = AdminPermission(
+        editor_perm = Permission(
             role_id=editor_role.id,
             table_name="products",
             can_view=True,
@@ -205,7 +205,7 @@ class TestHasPermissionMultiRole:
             can_edit=False,
             can_delete=False,
         )
-        viewer_perm = AdminPermission(
+        viewer_perm = Permission(
             role_id=viewer_role.id,
             table_name="products",
             can_view=True,
@@ -226,12 +226,12 @@ class TestHasPermissionMultiRole:
     async def test_different_tables_per_role(
         self, session, editor_role, viewer_role, multi_role_user
     ):
-        editor_perm = AdminPermission(
+        editor_perm = Permission(
             role_id=editor_role.id,
             table_name="products",
             can_view=True,
         )
-        viewer_perm = AdminPermission(
+        viewer_perm = Permission(
             role_id=viewer_role.id,
             table_name="orders",
             can_view=True,
@@ -253,7 +253,7 @@ class TestHasPermissionMultiRole:
 class TestHasPermissionCaching:
     @pytest.mark.asyncio
     async def test_result_is_cached(self, session, editor_role, normal_user):
-        perm = AdminPermission(
+        perm = Permission(
             role_id=editor_role.id,
             table_name="products",
             can_view=True,
@@ -270,7 +270,7 @@ class TestHasPermissionCaching:
 
     @pytest.mark.asyncio
     async def test_different_actions_not_shared(self, session, editor_role, normal_user):
-        perm = AdminPermission(
+        perm = Permission(
             role_id=editor_role.id,
             table_name="products",
             can_view=True,

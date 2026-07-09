@@ -93,13 +93,13 @@ class AdminTemplate:
                         from sqlalchemy import select
                         from sqlalchemy.orm import Session
 
-                        from fastapi_admin_kit.auth.models import AdminPermission
+                        from fastapi_admin_kit.auth.models import Permission
 
                         engine = request.app.state.admin_engine
                         with Session(engine) as s:
                             result = s.execute(
-                                select(AdminPermission).filter(
-                                    AdminPermission.role_id.in_(role_ids)
+                                select(Permission).filter(
+                                    Permission.role_id.in_(role_ids)
                                 )
                             )
                             rows = result.scalars().all()

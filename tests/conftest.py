@@ -46,15 +46,15 @@ def app():
 @pytest.fixture
 def admin_user(engine):
     from sqlalchemy.orm import sessionmaker
-    from fastapi_admin_kit.auth.models import AdminRole, AdminUser
+    from fastapi_admin_kit.auth.models import Role, User
 
     SessionLocal = sessionmaker(engine)
     session = SessionLocal()
     try:
-        role = AdminRole(name="SuperAdmin")
+        role = Role(name="SuperAdmin")
         session.add(role)
         session.flush()
-        user = AdminUser(
+        user = User(
             email="admin@test.com",
             hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
             full_name="Admin",

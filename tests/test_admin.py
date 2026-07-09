@@ -7,7 +7,7 @@ from sqlalchemy import Boolean, Column, Integer, String
 from sqlalchemy.orm import DeclarativeBase
 
 from fastapi_admin_kit.admin import Admin
-from fastapi_admin_kit.auth import models as _auth_models  # noqa: F401 — register AdminRole etc.
+from fastapi_admin_kit.auth import models as _auth_models  # noqa: F401 — register Role etc.
 from fastapi_admin_kit.exceptions import ConfigError
 
 
@@ -247,14 +247,14 @@ class TestSeedRoles:
     async def test_default_roles_seeded(self, engine, app):
         from sqlalchemy.orm import Session
 
-        from fastapi_admin_kit.auth.models import AdminRole
+        from fastapi_admin_kit.auth.models import Role
 
         admin = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
         await admin.setup()
 
         session = Session(bind=engine)
         try:
-            roles = session.query(AdminRole).all()
+            roles = session.query(Role).all()
             role_names = {r.name for r in roles}
             assert "SuperAdmin" in role_names
             assert "Admin" in role_names
@@ -266,7 +266,7 @@ class TestSeedRoles:
     async def test_roles_not_reseeded_by_default(self, engine, app):
         from sqlalchemy.orm import Session
 
-        from fastapi_admin_kit.auth.models import AdminRole
+        from fastapi_admin_kit.auth.models import Role
 
         # First setup — seeds roles
         admin1 = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
@@ -274,7 +274,7 @@ class TestSeedRoles:
 
         session = Session(bind=engine)
         try:
-            count1 = session.query(AdminRole).count()
+            count1 = session.query(Role).count()
         finally:
             session.close()
 
@@ -285,7 +285,7 @@ class TestSeedRoles:
 
         session = Session(bind=engine)
         try:
-            count2 = session.query(AdminRole).count()
+            count2 = session.query(Role).count()
             assert count2 == count1
         finally:
             session.close()
@@ -293,7 +293,7 @@ class TestSeedRoles:
     async def test_roles_overwrite(self, engine, app):
         from sqlalchemy.orm import Session
 
-        from fastapi_admin_kit.auth.models import AdminRole
+        from fastapi_admin_kit.auth.models import Role
 
         # First setup
         admin1 = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
@@ -301,7 +301,7 @@ class TestSeedRoles:
 
         session = Session(bind=engine)
         try:
-            count1 = session.query(AdminRole).count()
+            count1 = session.query(Role).count()
             assert count1 == 4
         finally:
             session.close()
@@ -322,7 +322,7 @@ class TestSeedRoles:
 
         session = Session(bind=engine)
         try:
-            roles = session.query(AdminRole).all()
+            roles = session.query(Role).all()
             assert len(roles) == 1
             assert roles[0].name == "OnlyThis"
         finally:
@@ -331,7 +331,7 @@ class TestSeedRoles:
     async def test_custom_seed_roles_with_permissions(self, engine, app):
         from sqlalchemy.orm import Session
 
-        from fastapi_admin_kit.auth.models import AdminPermission, AdminRole
+        from fastapi_admin_kit.auth.models import Permission, Role
         from fastapi_admin_kit.types import SeedRole
 
         admin = Admin(
@@ -353,11 +353,11 @@ class TestSeedRoles:
 
         session = Session(bind=engine)
         try:
-            role = session.query(AdminRole).filter_by(name="Finance").first()
+            role = session.query(Role).filter_by(name="Finance").first()
             assert role is not None
             assert role.description == "Finance team"
 
-            perms = session.query(AdminPermission).filter_by(role_id=role.id).all()
+            perms = session.query(Permission).filter_by(role_id=role.id).all()
             assert len(perms) == 1
             assert perms[0].table_name == "invoices"
             assert perms[0].can_view is True
@@ -496,10 +496,10 @@ class TestLifespan:
 class TestAuthModelValidation:
     def test_valid_auth_model(self):
         """A model with the right attrs should not raise."""
-        from fastapi_admin_kit.auth.models import AdminUser
+        from fastapi_admin_kit.auth.models import User
 
-        # AdminUser has id, email, is_active, is_superuser, role_id
-        admin = Admin(auth_model=AdminUser)
+        # User has id, email, is_active, is_superuser, role_id
+        admin = Admin(auth_model=User)
         # _validate_auth_model should not raise
         admin._validate_auth_model()
 

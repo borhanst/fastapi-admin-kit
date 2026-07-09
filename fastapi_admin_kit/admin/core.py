@@ -621,14 +621,14 @@ class Admin:
 
         Useful for overriding built-in admin models::
 
-            from fastapi_admin_kit.auth.models import AdminUser
-            from fastapi_admin_kit.admin.builtin_models import AdminUserAdmin
+            from fastapi_admin_kit.auth.models import User
+            from fastapi_admin_kit.admin.builtin_models import UserAdmin
 
-            class MyAdminUserAdmin(AdminUserAdmin):
+            class MyUserAdmin(UserAdmin):
                 list_display = ["id", "email", "full_name"]
 
-            admin.unregister(AdminUser)
-            admin.register(AdminUser, MyAdminUserAdmin)
+            admin.unregister(User)
+            admin.register(User, MyUserAdmin)
         """
         table_name = model.__tablename__
         self.registry._models.pop(table_name, None)
@@ -952,34 +952,34 @@ class Admin:
     def _register_builtin_models(self) -> None:
         """Auto-register built-in admin models with default admin classes."""
         from fastapi_admin_kit.admin.builtin_models import (
-            AdminLoginAttemptAdmin,
-            AdminPermissionAdmin,
-            AdminRefreshTokenAdmin,
-            AdminRoleAdmin,
-            AdminUserAdmin,
-            AdminUserPermissionAdmin,
-            AdminUserTOTPAdmin,
+            LoginAttemptAdmin,
+            PermissionAdmin,
+            RefreshTokenAdmin,
+            RoleAdmin,
+            UserAdmin,
+            UserPermissionAdmin,
+            UserTOTPAdmin,
             AuditLogAdmin,
         )
         from fastapi_admin_kit.audit.models import AuditLog
         from fastapi_admin_kit.auth.models import (
-            AdminLoginAttempt,
-            AdminPermission,
-            AdminRefreshToken,
-            AdminRole,
-            AdminUser,
-            AdminUserPermission,
-            AdminUserTOTP,
+            LoginAttempt,
+            Permission,
+            RefreshToken,
+            Role,
+            User,
+            UserPermission,
+            UserTOTP,
         )
 
         builtin_models = [
-            (AdminUser, AdminUserAdmin),
-            (AdminRole, AdminRoleAdmin),
-            (AdminRefreshToken, AdminRefreshTokenAdmin),
-            (AdminPermission, AdminPermissionAdmin),
-            (AdminUserPermission, AdminUserPermissionAdmin),
-            (AdminUserTOTP, AdminUserTOTPAdmin),
-            (AdminLoginAttempt, AdminLoginAttemptAdmin),
+            (User, UserAdmin),
+            (Role, RoleAdmin),
+            (RefreshToken, RefreshTokenAdmin),
+            (Permission, PermissionAdmin),
+            (UserPermission, UserPermissionAdmin),
+            (UserTOTP, UserTOTPAdmin),
+            (LoginAttempt, LoginAttemptAdmin),
             (AuditLog, AuditLogAdmin),
         ]
 

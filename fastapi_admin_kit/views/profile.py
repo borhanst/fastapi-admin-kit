@@ -43,7 +43,7 @@ async def profile_update(
     _csrf: bool = Depends(require_csrf_token),
 ):
     """Update profile (full_name, email)."""
-    from fastapi_admin_kit.auth.backend import pwd_context
+    from fastapi_admin_kit.auth.models import User
 
     session = get_db_session(request)
     form = await request.form()
@@ -66,7 +66,7 @@ async def profile_update(
             ),
         )
 
-    if not pwd_context.verify(password, user.hashed_password):
+    if not user.verify_password(password):
         templates = request.app.state.admin_jinja_env
         return templates.TemplateResponse(
             request,
@@ -128,7 +128,7 @@ async def password_change_post(
     _csrf: bool = Depends(require_csrf_token),
 ):
     """Handle password change."""
-    from fastapi_admin_kit.auth.backend import pwd_context
+    from fastapi_admin_kit.auth.models import User
     from fastapi_admin_kit.auth.password import validate_password_strength
 
     session = get_db_session(request)
@@ -138,7 +138,7 @@ async def password_change_post(
     new_password = form.get("new_password", "")
     confirm_password = form.get("confirm_password", "")
 
-    if not pwd_context.verify(current_password, user.hashed_password):
+    if not user.verify_password(current_password):
         templates = request.app.state.admin_jinja_env
         return templates.TemplateResponse(
             request,
@@ -178,20 +178,20 @@ async def password_change_post(
             ),
         )
 
-    user.hashed_password = pwd_context.hash(new_password)
+    user.hashed_password = User.hash_password(new_password)
     user.password_changed_at = datetime.now(UTC)
     await session.flush()
 
     # Revoke all refresh tokens for this user
     from sqlalchemy import update
 
-    from fastapi_admin_kit.auth.models import AdminRefreshToken
+    from fastapi_admin_kit.auth.models import RefreshToken
 
     await session.execute(
-        update(AdminRefreshToken)
+        update(RefreshToken)
         .where(
-            AdminRefreshToken.user_id == user.id,
-            AdminRefreshToken.revoked_at.is_(None),
+            RefreshToken.user_id == user.id,
+            RefreshToken.revoked_at.is_(None),
         )
         .values(revoked_at=datetime.now(UTC))
     )

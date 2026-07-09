@@ -340,7 +340,7 @@ class Admin:
         """Validate that auth_model satisfies AdminUserProtocol."""
         model = self.auth_model
         if model is None:
-            # Default — no validation needed, built-in AdminUser is used
+            # Default — no validation needed, built-in User is used
             return
 
         required_attrs = ["id", "email", "is_active", "is_superuser", "roles"]
@@ -383,7 +383,7 @@ class Admin:
         from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
         from sqlalchemy.orm import Session, sessionmaker
 
-        from fastapi_admin_kit.auth.models import AdminPermission, AdminRole
+        from fastapi_admin_kit.auth.models import Permission, Role
 
         is_async = isinstance(self.engine, AsyncEngine)
 
@@ -394,17 +394,17 @@ class Admin:
             )
             async with session_local() as session:
                 # Check existing count
-                result = await session.execute(select(AdminRole))
+                result = await session.execute(select(Role))
                 existing_count = len(result.scalars().all())
 
                 if existing_count > 0 and not self.seed_roles_overwrite:
                     return
 
                 if self.seed_roles_overwrite:
-                    await session.execute(select(AdminRole).delete())
+                    await session.execute(select(Role).delete())
 
                 for role_spec in self.seed_roles:
-                    role = AdminRole(
+                    role = Role(
                         name=role_spec.name, description=role_spec.description
                     )
                     session.add(role)
@@ -412,7 +412,7 @@ class Admin:
 
                     if role_spec.permissions:
                         for table_name, perms in role_spec.permissions.items():
-                            perm = AdminPermission(
+                            perm = Permission(
                                 role_id=role.id,
                                 table_name=table_name,
                                 can_view=perms.get("view", False),
@@ -427,16 +427,16 @@ class Admin:
             # Use sync Session for sync engine
             session = Session(bind=self.engine)
             try:
-                existing_count = session.query(AdminRole).count()
+                existing_count = session.query(Role).count()
 
                 if existing_count > 0 and not self.seed_roles_overwrite:
                     return
 
                 if self.seed_roles_overwrite:
-                    session.query(AdminRole).delete()
+                    session.query(Role).delete()
 
                 for role_spec in self.seed_roles:
-                    role = AdminRole(
+                    role = Role(
                         name=role_spec.name, description=role_spec.description
                     )
                     session.add(role)
@@ -444,7 +444,7 @@ class Admin:
 
                     if role_spec.permissions:
                         for table_name, perms in role_spec.permissions.items():
-                            perm = AdminPermission(
+                            perm = Permission(
                                 role_id=role.id,
                                 table_name=table_name,
                                 can_view=perms.get("view", False),
@@ -655,14 +655,14 @@ class Admin:
                         from sqlalchemy.orm import Session
 
                         from fastapi_admin_kit.auth.models import (
-                            AdminPermission,
+                            Permission,
                         )
 
                         engine = request.app.state.admin_engine
                         with Session(engine) as s:
                             result = s.execute(
-                                select(AdminPermission).filter(
-                                    AdminPermission.role_id.in_(role_ids)
+                                select(Permission).filter(
+                                    Permission.role_id.in_(role_ids)
                                 )
                             )
                             rows = result.scalars().all()

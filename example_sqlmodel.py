@@ -23,7 +23,7 @@ from fastapi_admin_kit.actions import action
 # Import audit models to register them with metadata
 from fastapi_admin_kit.audit.models import AuditLog  # noqa: F401
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
-from fastapi_admin_kit.auth.models import AdminUser
+from fastapi_admin_kit.auth.models import User
 from fastapi_admin_kit.config import ThemeConfig
 from fastapi_admin_kit.models.base import Base as AdminBase
 
@@ -225,10 +225,10 @@ async def lifespan(app: FastAPI):
 
     # Seed default admin user
     async with async_session_maker() as session:
-        result = await session.execute(select(AdminUser).limit(1))
+        result = await session.execute(select(User).limit(1))
         if result.scalars().first() is None:
             hashed = bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode()
-            admin_user = AdminUser(
+            admin_user = User(
                 email="admin@example.com",
                 hashed_password=hashed,
                 full_name="Admin",

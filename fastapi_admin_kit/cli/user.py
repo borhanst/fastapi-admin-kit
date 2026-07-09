@@ -26,8 +26,8 @@ async def _create_superuser(args: argparse.Namespace) -> None:
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
 
-    from fastapi_admin_kit.auth.backend import pwd_context
-    from fastapi_admin_kit.auth.models import AdminUser
+    from fastapi_admin_kit.auth.models import User
+    from fastapi_admin_kit.auth.models import User
     from fastapi_admin_kit.models.base import Base
 
     database_url = _resolve_database_url(args.database_url)
@@ -44,7 +44,7 @@ async def _create_superuser(args: argparse.Namespace) -> None:
         from sqlalchemy import select
 
         result = await session.execute(
-            select(AdminUser).where(AdminUser.email == args.email)
+            select(User).where(User.email == args.email)
         )
         existing = result.scalar_one_or_none()
         if existing:
@@ -52,8 +52,8 @@ async def _create_superuser(args: argparse.Namespace) -> None:
             await engine.dispose()
             sys.exit(1)
 
-        hashed_password = pwd_context.hash(args.password)
-        user = AdminUser(
+        hashed_password = User.hash_password(args.password)
+        user = User(
             email=args.email,
             hashed_password=hashed_password,
             full_name=args.name or "",
@@ -77,7 +77,7 @@ async def _list_users(args: argparse.Namespace) -> None:
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
 
-    from fastapi_admin_kit.auth.models import AdminUser
+    from fastapi_admin_kit.auth.models import User
     from fastapi_admin_kit.models.base import Base
 
     database_url = _resolve_database_url(args.database_url)
@@ -93,7 +93,7 @@ async def _list_users(args: argparse.Namespace) -> None:
     async with async_session() as session:
         from sqlalchemy import select
 
-        result = await session.execute(select(AdminUser))
+        result = await session.execute(select(User))
         users = result.scalars().all()
 
         if not users:
@@ -120,8 +120,8 @@ async def _change_password(args: argparse.Namespace) -> None:
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
 
-    from fastapi_admin_kit.auth.backend import pwd_context
-    from fastapi_admin_kit.auth.models import AdminUser
+    from fastapi_admin_kit.auth.models import User
+    from fastapi_admin_kit.auth.models import User
     from fastapi_admin_kit.models.base import Base
 
     database_url = _resolve_database_url(args.database_url)
@@ -138,7 +138,7 @@ async def _change_password(args: argparse.Namespace) -> None:
         from sqlalchemy import select
 
         result = await session.execute(
-            select(AdminUser).where(AdminUser.email == args.email)
+            select(User).where(User.email == args.email)
         )
         user = result.scalar_one_or_none()
 
@@ -147,7 +147,7 @@ async def _change_password(args: argparse.Namespace) -> None:
             await engine.dispose()
             sys.exit(1)
 
-        user.hashed_password = pwd_context.hash(args.password)
+        user.hashed_password = User.hash_password(args.password)
         await session.commit()
 
         print(f"Password changed successfully for '{user.email}'!")

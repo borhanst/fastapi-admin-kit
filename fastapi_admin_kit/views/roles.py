@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from fastapi_admin_kit.auth.csrf import require_csrf_token
 from fastapi_admin_kit.auth.dependencies import get_current_admin_user
-from fastapi_admin_kit.auth.models import AdminPermission, AdminRole
+from fastapi_admin_kit.auth.models import Permission, Role
 from fastapi_admin_kit.auth.protocol import AdminUserProtocol
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.views.sidebar import inject_sidebar_context
@@ -60,7 +60,7 @@ async def role_list_view(
     templates = request.app.state.admin_jinja_env
     session = get_db_session(request)
 
-    result = await session.execute(select(AdminRole))
+    result = await session.execute(select(Role))
     roles = list(result.scalars().all())
 
     role_data = []
@@ -110,7 +110,7 @@ async def role_edit_view(
     session = get_db_session(request)
     registry = request.app.state.admin_registry
 
-    role = await session.get(AdminRole, role_id)
+    role = await session.get(Role, role_id)
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
 
@@ -119,7 +119,7 @@ async def role_edit_view(
 
     perms = (
         await session.execute(
-            select(AdminPermission).where(AdminPermission.role_id == role_id)
+            select(Permission).where(Permission.role_id == role_id)
         )
     ).scalars().all()
 
@@ -154,7 +154,7 @@ async def role_save_view(
     """Save role permissions from form submission."""
     session = get_db_session(request)
 
-    role = await session.get(AdminRole, role_id)
+    role = await session.get(Role, role_id)
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
 
@@ -168,7 +168,7 @@ async def role_save_view(
 
     existing_perms = (
         await session.execute(
-            select(AdminPermission).where(AdminPermission.role_id == role_id)
+            select(Permission).where(Permission.role_id == role_id)
         )
     ).scalars().all()
     existing_perm_map = {p.table_name: p for p in existing_perms}
@@ -183,7 +183,7 @@ async def role_save_view(
             perm.can_edit = data.get("edit", False)
             perm.can_delete = data.get("delete", False)
         else:
-            perm = AdminPermission(
+            perm = Permission(
                 role_id=role_id,
                 table_name=table,
                 can_view=data.get("view", False),
@@ -213,7 +213,7 @@ async def role_delete_view(
     """Delete role (refuse if users assigned)."""
     session = get_db_session(request)
 
-    role = await session.get(AdminRole, role_id)
+    role = await session.get(Role, role_id)
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
 

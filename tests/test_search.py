@@ -104,15 +104,15 @@ async def admin_app(app, engine):
 
     sync_eng = create_engine(f"sqlite:///{engine.url.database}", connect_args={"check_same_thread": False})
     with Session(sync_eng) as session:
-        from fastapi_admin_kit.auth.models import AdminRole, AdminUser
+        from fastapi_admin_kit.auth.models import Role, User
         from sqlalchemy import select as sa_select
-        result = session.execute(sa_select(AdminRole).limit(1))
+        result = session.execute(sa_select(Role).limit(1))
         role = result.scalar_one_or_none()
         if role is None:
-            role = AdminRole(name="SuperAdmin")
+            role = Role(name="SuperAdmin")
             session.add(role)
             session.flush()
-        user = AdminUser(
+        user = User(
             email="admin@test.com",
             hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
             full_name="Admin",

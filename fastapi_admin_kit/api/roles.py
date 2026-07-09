@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from fastapi_admin_kit.api.deps import require_api_superuser
-from fastapi_admin_kit.auth.models import AdminRole
+from fastapi_admin_kit.auth.models import Role
 from fastapi_admin_kit.db import get_db_session
 
 router = APIRouter(prefix="/roles", tags=["api-roles"])
@@ -39,7 +39,7 @@ async def list_roles(
 ) -> list[RoleResponse]:
     """GET /api/roles/ — list all roles (superuser only)."""
     db_session = get_db_session(request)
-    result = await db_session.execute(select(AdminRole))
+    result = await db_session.execute(select(Role))
     roles = result.scalars().all()
     return [
         RoleResponse(
@@ -62,12 +62,12 @@ async def create_role(
     db_session = get_db_session(request)
 
     existing = await db_session.execute(
-        select(AdminRole).where(AdminRole.name == body.name)
+        select(Role).where(Role.name == body.name)
     )
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Role name already exists.")
 
-    role = AdminRole(name=body.name, description=body.description)
+    role = Role(name=body.name, description=body.description)
     db_session.add(role)
     await db_session.flush()
     await db_session.refresh(role)
@@ -86,7 +86,7 @@ async def update_role(
 ) -> RoleResponse:
     """PUT /api/roles/{id} — update a role (superuser only)."""
     db_session = get_db_session(request)
-    role = await db_session.get(AdminRole, role_id)
+    role = await db_session.get(Role, role_id)
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found.")
 
@@ -114,7 +114,7 @@ async def delete_role(
 ) -> None:
     """DELETE /api/roles/{id} — delete a role (superuser only)."""
     db_session = get_db_session(request)
-    role = await db_session.get(AdminRole, role_id)
+    role = await db_session.get(Role, role_id)
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found.")
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi_admin_kit.auth.models import AdminPermission, AdminUserPermission
+from fastapi_admin_kit.auth.models import Permission, UserPermission
 from fastapi_admin_kit.types import PermissionSet
 
 if TYPE_CHECKING:
@@ -21,7 +21,7 @@ class PermissionChecker:
 
     Merges permissions from:
     1. All assigned roles (M2M via admin_user_roles)
-    2. Direct per-user overrides (AdminUserPermission)
+    2. Direct per-user overrides (UserPermission)
 
     Role permissions are OR'd together, then direct overrides are OR'd on top.
     """
@@ -62,8 +62,8 @@ class PermissionChecker:
         from sqlalchemy import select
 
         result = await self.session.execute(
-            select(AdminPermission).where(
-                AdminPermission.role_id.in_(self._role_ids)
+            select(Permission).where(
+                Permission.role_id.in_(self._role_ids)
             )
         )
         for perm in result.scalars():
@@ -94,8 +94,8 @@ class PermissionChecker:
         from sqlalchemy import select
 
         result = await self.session.execute(
-            select(AdminUserPermission).where(
-                AdminUserPermission.user_id == self._user_id
+            select(UserPermission).where(
+                UserPermission.user_id == self._user_id
             )
         )
         for perm in result.scalars():

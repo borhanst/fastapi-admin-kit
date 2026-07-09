@@ -9,10 +9,10 @@ from fastapi_admin_kit.auth.csrf import (
     set_csrf_cookie,
 )
 from fastapi_admin_kit.auth.models import (
-    AdminPermission,
-    AdminRole,
-    AdminUser,
-    AdminUserPermission,
+    Permission,
+    Role,
+    User,
+    UserPermission,
 )
 from fastapi_admin_kit.auth.session import (
     SessionBackend,
@@ -20,10 +20,10 @@ from fastapi_admin_kit.auth.session import (
 )
 
 __all__ = [
-    "AdminPermission",
-    "AdminRole",
-    "AdminUser",
-    "AdminUserPermission",
+    "Permission",
+    "Role",
+    "User",
+    "UserPermission",
     "AuthBackend",
     "BuiltinAuthBackend",
     "SessionBackend",

@@ -8,7 +8,7 @@ The admin framework historically had *three* parallel implementations of
    with a process-global cache on ``app.state`` that leaked identity across
    requests)
 3. :func:`fastapi_admin_kit.api.crud._get_current_user` (bearer JWT, hardcoded to
-   the built-in ``AdminUser`` model and so bypassing the ``AuthBackend`` seam)
+   the built-in ``User`` model and so bypassing the ``AuthBackend`` seam)
 
 This module is the deep seam they all delegate to. The two credential
 transports (signed cookie, bearer JWT) become thin internal adapters; the

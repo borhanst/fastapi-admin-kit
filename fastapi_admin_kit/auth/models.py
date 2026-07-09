@@ -16,7 +16,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
-from fastapi_admin_kit.modeladmin import ModelAdmin
 from fastapi_admin_kit.models.base import Base
 
 # Junction table — no ORM model needed
@@ -38,7 +37,7 @@ admin_user_roles = Table(
 )
 
 
-class AdminRole(Base):
+class Role(Base):
     __tablename__ = "admin_roles"
 
     id = Column(Integer, primary_key=True)
@@ -47,20 +46,20 @@ class AdminRole(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     users = relationship(
-        "AdminUser", secondary=admin_user_roles, back_populates="roles"
+        "User", secondary=admin_user_roles, back_populates="roles"
     )
     permissions = relationship(
-        "AdminPermission", back_populates="role", cascade="all, delete-orphan"
+        "Permission", back_populates="role", cascade="all, delete-orphan"
     )
 
     def __str__(self) -> str:
         return str(self.name)
 
     def __repr__(self) -> str:
-        return f"<AdminRole {self.name!r}>"
+        return f"<Role {self.name!r}>"
 
 
-class AdminUser(Base):
+class User(Base):
     __tablename__ = "admin_users"
 
     id = Column(Integer, primary_key=True)
@@ -75,19 +74,19 @@ class AdminUser(Base):
 
     # Many-to-many roles
     roles = relationship(
-        "AdminRole", secondary=admin_user_roles, back_populates="users"
+        "Role", secondary=admin_user_roles, back_populates="users"
     )
     # Direct permission overrides
     direct_permissions = relationship(
-        "AdminUserPermission",
+        "UserPermission",
         back_populates="user",
         cascade="all, delete-orphan",
     )
     refresh_tokens = relationship(
-        "AdminRefreshToken", back_populates="user", cascade="all, delete-orphan"
+        "RefreshToken", back_populates="user", cascade="all, delete-orphan"
     )
     totp = relationship(
-        "AdminUserTOTP",
+        "UserTOTP",
         back_populates="user",
         uselist=False,
         cascade="all, delete-orphan",
@@ -97,14 +96,32 @@ class AdminUser(Base):
     def role_ids(self) -> list[int]:
         return [r.id for r in self.roles]
 
+    @classmethod
+    def hash_password(cls, password: str) -> str:
+        """Hash a plaintext password using bcrypt."""
+        import bcrypt
+
+        return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+    def verify_password(self, password: str) -> bool:
+        """Check if plaintext password matches the stored hash."""
+        import bcrypt
+
+        try:
+            return bcrypt.checkpw(
+                password.encode(), self.hashed_password.encode()
+            )
+        except (ValueError, TypeError):
+            return False
+
     def __str__(self) -> str:
         return str(self.email)
 
     def __repr__(self) -> str:
-        return f"<AdminUser {self.email!r}>"
+        return f"<User {self.email!r}>"
 
 
-class AdminPermission(Base):
+class Permission(Base):
     """Permission matrix per role per model."""
 
     __tablename__ = "admin_permissions"
@@ -126,18 +143,18 @@ class AdminPermission(Base):
     can_edit = Column(Boolean, default=False)
     can_delete = Column(Boolean, default=False)
 
-    role = relationship("AdminRole", back_populates="permissions")
+    role = relationship("Role", back_populates="permissions")
 
     def __str__(self) -> str:
         return f"{self.table_name} (role {self.role_id})"
 
     def __repr__(self) -> str:
         return (
-            f"<AdminPermission role={self.role_id} table={self.table_name!r}>"
+            f"<Permission role={self.role_id} table={self.table_name!r}>"
         )
 
 
-class AdminUserPermission(Base):
+class UserPermission(Base):
     """Direct per-user permission overrides — merged with role permissions."""
 
     __tablename__ = "admin_user_permissions"
@@ -159,16 +176,16 @@ class AdminUserPermission(Base):
     can_edit = Column(Boolean, default=False)
     can_delete = Column(Boolean, default=False)
 
-    user = relationship("AdminUser", back_populates="direct_permissions")
+    user = relationship("User", back_populates="direct_permissions")
 
     def __str__(self) -> str:
         return f"{self.table_name} (user {self.user_id})"
 
     def __repr__(self) -> str:
-        return f"<AdminUserPermission user={self.user_id} table={self.table_name!r}>"
+        return f"<UserPermission user={self.user_id} table={self.table_name!r}>"
 
 
-class AdminRefreshToken(Base):
+class RefreshToken(Base):
     __tablename__ = "admin_refresh_tokens"
 
     id = Column(Integer, primary_key=True)
@@ -182,7 +199,7 @@ class AdminRefreshToken(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     revoked_at = Column(DateTime(timezone=True), nullable=True)
 
-    user = relationship("AdminUser", back_populates="refresh_tokens")
+    user = relationship("User", back_populates="refresh_tokens")
 
     __table_args__ = (
         UniqueConstraint(
@@ -194,14 +211,10 @@ class AdminRefreshToken(Base):
         return f"Token {self.token_hash[:8]}..."
 
     def __repr__(self) -> str:
-        return f"<AdminRefreshToken user={self.user_id}>"
+        return f"<RefreshToken user={self.user_id}>"
 
 
-class AdminRefreshTokenAdmin(ModelAdmin):
-    exclude = ["user"]
-
-
-class AdminUserTOTP(Base):
+class UserTOTP(Base):
     __tablename__ = "admin_user_totp"
 
     id = Column(Integer, primary_key=True)
@@ -216,16 +229,16 @@ class AdminUserTOTP(Base):
     backup_codes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    user = relationship("AdminUser", back_populates="totp")
+    user = relationship("User", back_populates="totp")
 
     def __str__(self) -> str:
         return f"TOTP for user {self.user_id}"
 
     def __repr__(self) -> str:
-        return f"<AdminUserTOTP user={self.user_id}>"
+        return f"<UserTOTP user={self.user_id}>"
 
 
-class AdminLoginAttempt(Base):
+class LoginAttempt(Base):
     __tablename__ = "admin_login_attempts"
 
     id = Column(Integer, primary_key=True)
@@ -242,5 +255,5 @@ class AdminLoginAttempt(Base):
 
     def __repr__(self) -> str:
         return (
-            f"<AdminLoginAttempt email={self.email!r} success={self.success}>"
+            f"<LoginAttempt email={self.email!r} success={self.success}>"
         )

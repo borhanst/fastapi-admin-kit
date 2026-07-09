@@ -20,8 +20,8 @@ from fastapi_admin_kit.audit.logger import AuditLogger
 from fastapi_admin_kit.audit.models import AuditLog
 from fastapi_admin_kit.audit.sqlalchemy_logger import SqlAlchemyAuditLogger
 from fastapi_admin_kit.auth.models import (  # noqa: F401 — ensure tables exist
-    AdminRole,
-    AdminUser,
+    Role,
+    User,
 )
 from fastapi_admin_kit.models.base import Base
 

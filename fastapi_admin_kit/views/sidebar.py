@@ -25,7 +25,7 @@ async def inject_sidebar_context(request: Request, context: dict[str, Any]) -> d
             try:
                 from sqlalchemy import select
 
-                from fastapi_admin_kit.auth.models import AdminPermission, AdminUserPermission
+                from fastapi_admin_kit.auth.models import Permission, UserPermission
                 from fastapi_admin_kit.db import get_db_session
                 from fastapi_admin_kit.types import PermissionSet
 
@@ -46,8 +46,8 @@ async def inject_sidebar_context(request: Request, context: dict[str, Any]) -> d
                 # Load permissions from all roles, merge with OR logic
                 if role_ids:
                     result = await session.execute(
-                        select(AdminPermission).where(
-                            AdminPermission.role_id.in_(role_ids)
+                        select(Permission).where(
+                            Permission.role_id.in_(role_ids)
                         )
                     )
                     for perm in result.scalars():
@@ -70,8 +70,8 @@ async def inject_sidebar_context(request: Request, context: dict[str, Any]) -> d
                 # Load direct user permission overrides, merge on top
                 if user_id is not None:
                     result = await session.execute(
-                        select(AdminUserPermission).where(
-                            AdminUserPermission.user_id == user_id
+                        select(UserPermission).where(
+                            UserPermission.user_id == user_id
                         )
                     )
                     for perm in result.scalars():

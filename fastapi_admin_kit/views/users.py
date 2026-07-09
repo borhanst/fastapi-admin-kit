@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import or_, select
 
 from fastapi_admin_kit.auth.dependencies import get_current_admin_user
-from fastapi_admin_kit.auth.models import AdminRole
+from fastapi_admin_kit.auth.models import Role
 from fastapi_admin_kit.auth.protocol import AdminUserProtocol
 from fastapi_admin_kit.db import get_db_session
 
@@ -39,22 +39,22 @@ async def roles_search(
             int(i.strip()) for i in ids.split(",") if i.strip().isdigit()
         ]
         result = await session.execute(
-            select(AdminRole).where(AdminRole.id.in_(id_list))
+            select(Role).where(Role.id.in_(id_list))
         )
     elif q:
         result = await session.execute(
-            select(AdminRole)
+            select(Role)
             .where(
                 or_(
-                    AdminRole.name.ilike(f"%{q}%"),
-                    AdminRole.description.ilike(f"%{q}%"),
+                    Role.name.ilike(f"%{q}%"),
+                    Role.description.ilike(f"%{q}%"),
                 )
             )
             .limit(20)
         )
     else:
         result = await session.execute(
-            select(AdminRole).order_by(AdminRole.name).limit(20)
+            select(Role).order_by(Role.name).limit(20)
         )
 
     roles = result.scalars().all()
@@ -71,7 +71,7 @@ async def roles_search(
 #     session = get_db_session(request)
 
 #     result = await session.execute(
-#         select(AdminUser).options(selectinload(AdminUser.roles)).order_by(AdminUser.id)
+#         select(User).options(selectinload(User.roles)).order_by(User.id)
 #     )
 #     users = list(result.scalars().all())
 
@@ -96,7 +96,7 @@ async def roles_search(
 #     templates = request.app.state.admin_jinja_env
 #     session = get_db_session(request)
 
-#     result = await session.execute(select(AdminRole).order_by(AdminRole.name))
+#     result = await session.execute(select(Role).order_by(Role.name))
 #     roles = list(result.scalars().all())
 
 #     return templates.TemplateResponse(
@@ -134,7 +134,7 @@ async def roles_search(
 #         raise HTTPException(status_code=400, detail="Email is required.")
 
 #     existing = await session.execute(
-#         select(AdminUser).where(AdminUser.email == email)
+#         select(User).where(User.email == email)
 #     )
 #     if existing.scalar_one_or_none():
 #         raise HTTPException(status_code=400, detail="Email already exists.")
@@ -143,7 +143,7 @@ async def roles_search(
 #     if password_errors:
 #         templates = request.app.state.admin_jinja_env
 #         result = await session.execute(
-#             select(AdminRole).order_by(AdminRole.name)
+#             select(Role).order_by(Role.name)
 #         )
 #         roles = list(result.scalars().all())
 #         return templates.TemplateResponse(
@@ -159,9 +159,9 @@ async def roles_search(
 #             ),
 #         )
 
-#     user = AdminUser(
+#     user = User(
 #         email=email,
-#         hashed_password=pwd_context.hash(password),
+#         hashed_password=User.hash_password(password),
 #         full_name=full_name,
 #         is_superuser=is_superuser,
 #     )
@@ -185,7 +185,7 @@ async def roles_search(
 #             role_id_strs = [raw_role_ids]
 #         for rid in role_id_strs:
 #             try:
-#                 role = await session.get(AdminRole, int(rid))
+#                 role = await session.get(Role, int(rid))
 #                 if role:
 #                     user.roles.append(role)
 #             except (ValueError, TypeError):
@@ -207,15 +207,15 @@ async def roles_search(
 #     session = get_db_session(request)
 
 #     result = await session.execute(
-#         select(AdminUser)
-#         .options(selectinload(AdminUser.roles))
-#         .where(AdminUser.id == user_id)
+#         select(User)
+#         .options(selectinload(User.roles))
+#         .where(User.id == user_id)
 #     )
 #     user = result.scalar_one_or_none()
 #     if user is None:
 #         raise HTTPException(status_code=404, detail="User not found.")
 
-#     result = await session.execute(select(AdminRole).order_by(AdminRole.name))
+#     result = await session.execute(select(Role).order_by(Role.name))
 #     roles = list(result.scalars().all())
 
 #     return templates.TemplateResponse(
@@ -243,7 +243,7 @@ async def roles_search(
 #     from fastapi_admin_kit.auth.password import validate_password_strength
 
 #     session = get_db_session(request)
-#     user = await session.get(AdminUser, user_id)
+#     user = await session.get(User, user_id)
 #     if user is None:
 #         raise HTTPException(status_code=404, detail="User not found.")
 
@@ -278,7 +278,7 @@ async def roles_search(
 #         if password_errors:
 #             templates = request.app.state.admin_jinja_env
 #             result = await session.execute(
-#                 select(AdminRole).order_by(AdminRole.name)
+#                 select(Role).order_by(Role.name)
 #             )
 #             roles = list(result.scalars().all())
 #             return templates.TemplateResponse(
@@ -293,7 +293,7 @@ async def roles_search(
 #                     },
 #                 ),
 #             )
-#         user.hashed_password = pwd_context.hash(password)
+#         user.hashed_password = User.hash_password(password)
 
 #     # Update roles: clear existing, add selected
 #     import json as _json
@@ -313,7 +313,7 @@ async def roles_search(
 #             role_id_strs = [raw_role_ids]
 #         for rid in role_id_strs:
 #             try:
-#                 role = await session.get(AdminRole, int(rid))
+#                 role = await session.get(Role, int(rid))
 #                 if role:
 #                     user.roles.append(role)
 #             except (ValueError, TypeError):
@@ -332,7 +332,7 @@ async def roles_search(
 # ):
 #     """Soft-delete user (set is_active=False)."""
 #     session = get_db_session(request)
-#     user = await session.get(AdminUser, user_id)
+#     user = await session.get(User, user_id)
 #     if user is None:
 #         raise HTTPException(status_code=404, detail="User not found.")
 

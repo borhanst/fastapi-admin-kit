@@ -27,7 +27,7 @@ from fastapi_admin_kit.audit.models import (
     AuditLog,  # noqa: F401 — ensure table is created
 )
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
-from fastapi_admin_kit.auth.models import AdminUser
+from fastapi_admin_kit.auth.models import User
 from fastapi_admin_kit.config import ThemeConfig
 from fastapi_admin_kit.dashboard import (
     CardComponent,
@@ -598,12 +598,12 @@ async def seed_demo_data(session: AsyncSession) -> None:
 
 async def seed_admin_user(session: AsyncSession) -> None:
     """Create a default superadmin if none exists."""
-    result = await session.execute(select(AdminUser).limit(1))
+    result = await session.execute(select(User).limit(1))
     if result.scalars().first() is not None:
         return
 
     hashed = bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode()
-    admin_user = AdminUser(
+    admin_user = User(
         email="admin@example.com",
         hashed_password=hashed,
         full_name="Admin",

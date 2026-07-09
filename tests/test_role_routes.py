@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 
 from fastapi_admin_kit.admin import Admin
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
-from fastapi_admin_kit.auth.models import AdminRole, AdminUser
+from fastapi_admin_kit.auth.models import Role, User
 from fastapi_admin_kit.auth.session import SignedCookieSessionBackend
 from fastapi_admin_kit.models.base import Base as AdminBase
 from fastapi_admin_kit.views.roles import router as roles_router
@@ -53,7 +53,7 @@ def test_role_list_view_requires_auth(client: TestClient, db: Session):
 
 
 def test_role_list_view_lists_roles(client: TestClient, db: Session):
-    db.add(AdminRole(name="Admin", description="Admins"))
+    db.add(Role(name="Admin", description="Admins"))
     db.commit()
     response = client.get("/admin/roles", cookies={"admin_session": "dummy"})
     assert response.status_code == 401

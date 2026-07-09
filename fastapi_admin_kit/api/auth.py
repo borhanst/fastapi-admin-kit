@@ -66,13 +66,13 @@ async def _build_user_permissions(
 
     from sqlalchemy import select
 
-    from fastapi_admin_kit.auth.models import AdminPermission, AdminUserPermission
+    from fastapi_admin_kit.auth.models import Permission, UserPermission
 
     # Collect permissions from all assigned roles (OR merge)
     role_ids = getattr(user, "role_ids", [])
     if role_ids:
         result = await db_session.execute(
-            select(AdminPermission).where(AdminPermission.role_id.in_(role_ids))
+            select(Permission).where(Permission.role_id.in_(role_ids))
         )
         for perm in result.scalars():
             actions = []
@@ -91,8 +91,8 @@ async def _build_user_permissions(
     user_id = getattr(user, "id", None)
     if user_id is not None:
         result = await db_session.execute(
-            select(AdminUserPermission).where(
-                AdminUserPermission.user_id == user_id
+            select(UserPermission).where(
+                UserPermission.user_id == user_id
             )
         )
         for perm in result.scalars():
@@ -196,13 +196,13 @@ async def obtain_token(
     )
 
     # Create refresh token
-    from fastapi_admin_kit.auth.models import AdminRefreshToken
+    from fastapi_admin_kit.auth.models import RefreshToken
 
     refresh_jti = str(uuid.uuid4())
     refresh_hash = _hash_token(refresh_jti)
     refresh_expires = datetime.now(UTC) + timedelta(seconds=_get_refresh_ttl())
 
-    refresh_record = AdminRefreshToken(
+    refresh_record = RefreshToken(
         user_id=user.id,
         token_hash=refresh_hash,
         expires_at=refresh_expires,
@@ -231,13 +231,13 @@ async def refresh_token(
 
     from sqlalchemy import select
 
-    from fastapi_admin_kit.auth.models import AdminRefreshToken, AdminUser
+    from fastapi_admin_kit.auth.models import RefreshToken, User
 
     refresh_hash = _hash_token(body.refresh_token)
     result = await db_session.execute(
-        select(AdminRefreshToken).where(
-            AdminRefreshToken.token_hash == refresh_hash,
-            AdminRefreshToken.revoked_at.is_(None),
+        select(RefreshToken).where(
+            RefreshToken.token_hash == refresh_hash,
+            RefreshToken.revoked_at.is_(None),
         )
     )
     refresh_record = result.scalar_one_or_none()
@@ -250,9 +250,9 @@ async def refresh_token(
 
     # Load user
     user_result = await db_session.execute(
-        select(AdminUser).where(
-            AdminUser.id == refresh_record.user_id,
-            AdminUser.is_active,
+        select(User).where(
+            User.id == refresh_record.user_id,
+            User.is_active,
         )
     )
     user = user_result.scalar_one_or_none()
@@ -273,7 +273,7 @@ async def refresh_token(
 
     new_refresh_jti = str(uuid.uuid4())
     new_refresh_hash = _hash_token(new_refresh_jti)
-    new_refresh_record = AdminRefreshToken(
+    new_refresh_record = RefreshToken(
         user_id=user.id,
         token_hash=new_refresh_hash,
         expires_at=datetime.now(UTC) + timedelta(seconds=_get_refresh_ttl()),
@@ -299,13 +299,13 @@ async def api_logout(
         if db_session:
             from sqlalchemy import select
 
-            from fastapi_admin_kit.auth.models import AdminRefreshToken
+            from fastapi_admin_kit.auth.models import RefreshToken
 
             refresh_hash = _hash_token(body.refresh_token)
             result = await db_session.execute(
-                select(AdminRefreshToken).where(
-                    AdminRefreshToken.token_hash == refresh_hash,
-                    AdminRefreshToken.revoked_at.is_(None),
+                select(RefreshToken).where(
+                    RefreshToken.token_hash == refresh_hash,
+                    RefreshToken.revoked_at.is_(None),
                 )
             )
             refresh_record = result.scalar_one_or_none()

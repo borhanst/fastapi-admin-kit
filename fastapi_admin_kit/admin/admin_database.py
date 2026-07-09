@@ -58,7 +58,7 @@ class AdminDatabase:
         from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
         from sqlalchemy.orm import Session, sessionmaker
 
-        from fastapi_admin_kit.auth.models import AdminPermission, AdminRole
+        from fastapi_admin_kit.auth.models import Permission, Role
 
         is_async = isinstance(self.engine, AsyncEngine)
 
@@ -69,17 +69,17 @@ class AdminDatabase:
             )
             async with session_local() as session:
                 # Check existing count
-                result = await session.execute(select(AdminRole))
+                result = await session.execute(select(Role))
                 existing_count = len(result.scalars().all())
 
                 if existing_count > 0 and not seed_roles_overwrite:
                     return
 
                 if seed_roles_overwrite:
-                    await session.execute(select(AdminRole).delete())
+                    await session.execute(select(Role).delete())
 
                 for role_spec in seed_roles:
-                    role = AdminRole(
+                    role = Role(
                         name=role_spec.name, description=role_spec.description
                     )
                     session.add(role)
@@ -87,7 +87,7 @@ class AdminDatabase:
 
                     if role_spec.permissions:
                         for table_name, perms in role_spec.permissions.items():
-                            perm = AdminPermission(
+                            perm = Permission(
                                 role_id=role.id,
                                 table_name=table_name,
                                 can_view=perms.get("view", False),
@@ -102,16 +102,16 @@ class AdminDatabase:
             # Use sync Session for sync engine
             session = Session(bind=self.engine)
             try:
-                existing_count = session.query(AdminRole).count()
+                existing_count = session.query(Role).count()
 
                 if existing_count > 0 and not seed_roles_overwrite:
                     return
 
                 if seed_roles_overwrite:
-                    session.query(AdminRole).delete()
+                    session.query(Role).delete()
 
                 for role_spec in seed_roles:
-                    role = AdminRole(
+                    role = Role(
                         name=role_spec.name, description=role_spec.description
                     )
                     session.add(role)
@@ -119,7 +119,7 @@ class AdminDatabase:
 
                     if role_spec.permissions:
                         for table_name, perms in role_spec.permissions.items():
-                            perm = AdminPermission(
+                            perm = Permission(
                                 role_id=role.id,
                                 table_name=table_name,
                                 can_view=perms.get("view", False),

@@ -53,25 +53,25 @@ class AuthBackend(ABC):
 
 
 class BuiltinAuthBackend(AuthBackend):
-    """Default backend that works with the built-in ``AdminUser`` model."""
+    """Default backend that works with the built-in ``User`` model."""
 
     async def authenticate(
         self, email: str, password: str, session: Any
     ) -> AdminUserProtocol | None:
         from sqlalchemy import select
 
-        from fastapi_admin_kit.auth.models import AdminUser
+        from fastapi_admin_kit.auth.models import User
 
         result = await session.execute(
-            select(AdminUser).where(
-                AdminUser.email == email, AdminUser.is_active.is_(True)
+            select(User).where(
+                User.email == email, User.is_active.is_(True)
             )
         )
         user = result.scalar_one_or_none()
 
         if not user:
             return None
-        if not pwd_context.verify(password, user.hashed_password):
+        if not user.verify_password(password):
             return None
         return user
 
@@ -81,12 +81,12 @@ class BuiltinAuthBackend(AuthBackend):
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
 
-        from fastapi_admin_kit.auth.models import AdminUser
+        from fastapi_admin_kit.auth.models import User
 
         result = await session.execute(
-            select(AdminUser)
-            .options(selectinload(AdminUser.roles))
-            .where(AdminUser.id == user_id, AdminUser.is_active.is_(True))
+            select(User)
+            .options(selectinload(User.roles))
+            .where(User.id == user_id, User.is_active.is_(True))
         )
         return result.scalar_one_or_none()
 

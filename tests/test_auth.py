@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import Session
 
 from fastapi_admin_kit.auth.backend import AuthBackend, BuiltinAuthBackend, _PasswordHasher
-from fastapi_admin_kit.auth.models import AdminRole, AdminUser
+from fastapi_admin_kit.auth.models import Role, User
 from fastapi_admin_kit.auth.session import SessionBackend, SignedCookieSessionBackend
 from fastapi_admin_kit.models import Base
 
@@ -38,7 +38,7 @@ def session_backend():
 
 @pytest.fixture
 def role(session):
-    role = AdminRole(name="Editor")
+    role = Role(name="Editor")
     session.add(role)
     session.flush()
     return role
@@ -46,7 +46,7 @@ def role(session):
 
 @pytest.fixture
 def user(session, role):
-    user = AdminUser(
+    user = User(
         email="admin@example.com",
         hashed_password=_PasswordHasher.hash("secret123"),
         full_name="Test Admin",
@@ -194,11 +194,11 @@ class TestBuiltinAuthBackend:
     async def test_authenticate_success(self, backend, async_session_factory):
         async for session in async_session_factory():
             # Create role and user in async session
-            role = AdminRole(name="Editor")
+            role = Role(name="Editor")
             session.add(role)
             await session.flush()
 
-            user = AdminUser(
+            user = User(
                 email="admin@example.com",
                 hashed_password=_PasswordHasher.hash("secret123"),
                 full_name="Test Admin",
@@ -216,11 +216,11 @@ class TestBuiltinAuthBackend:
     @pytest.mark.asyncio
     async def test_authenticate_wrong_password(self, backend, async_session_factory):
         async for session in async_session_factory():
-            role = AdminRole(name="Editor")
+            role = Role(name="Editor")
             session.add(role)
             await session.flush()
 
-            user = AdminUser(
+            user = User(
                 email="admin@example.com",
                 hashed_password=_PasswordHasher.hash("secret123"),
                 full_name="Test Admin",
@@ -237,11 +237,11 @@ class TestBuiltinAuthBackend:
     @pytest.mark.asyncio
     async def test_authenticate_unknown_email(self, backend, async_session_factory):
         async for session in async_session_factory():
-            role = AdminRole(name="Editor")
+            role = Role(name="Editor")
             session.add(role)
             await session.flush()
 
-            user = AdminUser(
+            user = User(
                 email="admin@example.com",
                 hashed_password=_PasswordHasher.hash("secret123"),
                 full_name="Test Admin",
@@ -258,11 +258,11 @@ class TestBuiltinAuthBackend:
     @pytest.mark.asyncio
     async def test_authenticate_inactive_user(self, backend, async_session_factory):
         async for session in async_session_factory():
-            role = AdminRole(name="Editor")
+            role = Role(name="Editor")
             session.add(role)
             await session.flush()
 
-            user = AdminUser(
+            user = User(
                 email="admin@example.com",
                 hashed_password=_PasswordHasher.hash("secret123"),
                 full_name="Test Admin",
@@ -279,11 +279,11 @@ class TestBuiltinAuthBackend:
     @pytest.mark.asyncio
     async def test_get_user_success(self, backend, async_session_factory):
         async for session in async_session_factory():
-            role = AdminRole(name="Editor")
+            role = Role(name="Editor")
             session.add(role)
             await session.flush()
 
-            user = AdminUser(
+            user = User(
                 email="admin@example.com",
                 hashed_password=_PasswordHasher.hash("secret123"),
                 full_name="Test Admin",
@@ -309,11 +309,11 @@ class TestBuiltinAuthBackend:
     @pytest.mark.asyncio
     async def test_get_user_inactive(self, backend, async_session_factory):
         async for session in async_session_factory():
-            role = AdminRole(name="Editor")
+            role = Role(name="Editor")
             session.add(role)
             await session.flush()
 
-            user = AdminUser(
+            user = User(
                 email="admin@example.com",
                 hashed_password=_PasswordHasher.hash("secret123"),
                 full_name="Test Admin",

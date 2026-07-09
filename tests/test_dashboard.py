@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 from fastapi_admin_kit import Admin
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
 from fastapi_admin_kit.auth.csrf import generate_csrf_token
-from fastapi_admin_kit.auth.models import AdminRole, AdminUser
+from fastapi_admin_kit.auth.models import Role, User
 from fastapi_admin_kit.audit.models import AuditLog  # noqa: F401 - ensure table is registered
 from fastapi_admin_kit.models.base import Base as AdminBase
 from tests.conftest import SECRET_KEY, create_session_cookie, run_async
@@ -51,10 +51,10 @@ def engine():
 def admin_user(engine):
     async def _create():
         async with AsyncSession(engine) as session:
-            role = AdminRole(name="SuperAdmin")
+            role = Role(name="SuperAdmin")
             session.add(role)
             await session.flush()
-            user = AdminUser(
+            user = User(
                 email="admin@test.com",
                 hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
                 full_name="Admin",
