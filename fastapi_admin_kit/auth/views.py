@@ -45,7 +45,8 @@ async def login_get(
 ) -> HTMLResponse:
     """GET /admin/login — show login page, redirect if already logged in."""
     if session_payload is not None:
-        target = next if _is_safe_url(next) else "/admin/"
+        admin_path = request.app.state.admin_config["admin_path"]
+        target = next if _is_safe_url(next) else f"{admin_path}/"
         return RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
 
     jinja_env = request.app.state.admin_jinja_env
@@ -90,7 +91,8 @@ async def login_post(
         if next and _is_safe_url(next):
             redirect_url = next
         else:
-            redirect_url = "/admin/"
+            admin_path = request.app.state.admin_config["admin_path"]
+            redirect_url = f"{admin_path}/"
 
         samesite = getattr(
             request.app.state.admin_state, "session_samesite", "strict"
@@ -149,7 +151,8 @@ async def logout_post(
         request.app.state.admin_state, "session_samesite", "strict"
     )
     response = RedirectResponse(
-        url="/admin/login", status_code=status.HTTP_302_FOUND
+        url=f"{request.app.state.admin_config['admin_path']}/login",
+        status_code=status.HTTP_302_FOUND
     )
     response.delete_cookie(
         key=session_backend.cookie_name,

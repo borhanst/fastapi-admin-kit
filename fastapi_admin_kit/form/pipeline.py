@@ -74,6 +74,11 @@ def build_form_context(
         widget_macro = widget.macro_name
         widget_ctx = widget.render_context(field_meta, value)
         widget_ctx["is_create"] = is_create
+        if request is not None:
+            admin_path = request.app.state.admin_config["admin_path"]
+            widget_ctx["admin_path"] = admin_path
+            if "search_url" in widget_ctx:
+                widget_ctx["search_url"] = widget_ctx["search_url"].replace("/admin/", f"{admin_path}/")
         if obj is not None:
             widget_ctx["obj_id"] = getattr(obj, "id", "")
         if rel is not None and rel_labels:

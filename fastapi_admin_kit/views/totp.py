@@ -189,7 +189,7 @@ async def totp_disable_post(
     totp_record.backup_codes = None
     await session.flush()
 
-    return RedirectResponse(url="/admin/profile/2fa", status_code=302)
+    return RedirectResponse(url=f"{request.app.state.admin_config['admin_path']}/profile/2fa", status_code=302)
 
 
 @router.post("/profile/2fa/backup-codes")

@@ -94,7 +94,7 @@ async def role_create_view(
         await inject_sidebar_context(request, {
             "role": None,
             "perm_data": {},
-            "search_url": "/admin/tables/search",
+            "search_url": f"{request.app.state.admin_config['admin_path']}/tables/search",
         }),
     )
 
@@ -139,7 +139,7 @@ async def role_edit_view(
         await inject_sidebar_context(request, {
             "role": role,
             "perm_data": perm_data,
-            "search_url": "/admin/tables/search",
+            "search_url": f"{request.app.state.admin_config['admin_path']}/tables/search",
         }),
     )
 
@@ -200,7 +200,7 @@ async def role_save_view(
 
     await session.flush()
 
-    return RedirectResponse(url="/admin/roles", status_code=302)
+    return RedirectResponse(url=f"{request.app.state.admin_config['admin_path']}/roles", status_code=302)
 
 
 @router.post("/roles/{role_id}/delete", response_class=RedirectResponse)
@@ -227,4 +227,4 @@ async def role_delete_view(
     await session.delete(role)
     await session.flush()
 
-    return RedirectResponse(url="/admin/roles", status_code=302)
+    return RedirectResponse(url=f"{request.app.state.admin_config['admin_path']}/roles", status_code=302)
