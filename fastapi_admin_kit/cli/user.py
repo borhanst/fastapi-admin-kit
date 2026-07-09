@@ -1,4 +1,4 @@
-"""CLI commands for FastAPI Admin Kit."""
+"""User management CLI commands."""
 
 from __future__ import annotations
 
@@ -79,6 +79,7 @@ async def _list_users(args: argparse.Namespace) -> None:
 
     from fastapi_admin_kit.auth.models import AdminUser
     from fastapi_admin_kit.models.base import Base
+
     database_url = _resolve_database_url(args.database_url)
     engine = create_async_engine(database_url)
 
@@ -154,16 +155,9 @@ async def _change_password(args: argparse.Namespace) -> None:
     await engine.dispose()
 
 
-def main() -> None:
-    """Main CLI entry point."""
-    parser = argparse.ArgumentParser(
-        description="FastAPI Admin Kit CLI — manage admin users and database.",
-    )
-    subparsers = parser.add_subparsers(
-        dest="command", help="Available commands"
-    )
-
-    # create-superuser
+def register_user_commands(subparsers) -> None:
+    """Register user management subcommands."""
+    # createsuperuser
     create_parser = subparsers.add_parser(
         "createsuperuser", help="Create a new superuser"
     )
@@ -183,7 +177,7 @@ def main() -> None:
         help="Database URL (or set DATABASE_URL env var)",
     )
 
-    # list-users
+    # users
     list_parser = subparsers.add_parser(
         "users", help="List all admin users"
     )
@@ -211,19 +205,12 @@ def main() -> None:
         help="Database URL (or set DATABASE_URL env var)",
     )
 
-    args = parser.parse_args()
 
-    if args.command is None:
-        parser.print_help()
-        sys.exit(1)
-
+def handle_user_command(args: argparse.Namespace) -> None:
+    """Dispatch user management commands."""
     if args.command == "createsuperuser":
         asyncio.run(_create_superuser(args))
     elif args.command == "users":
         asyncio.run(_list_users(args))
     elif args.command == "changepassword":
         asyncio.run(_change_password(args))
-
-
-if __name__ == "__main__":
-    main()
