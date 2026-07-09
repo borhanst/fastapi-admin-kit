@@ -150,13 +150,14 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
 
+        from fastapi_admin_kit.inspection import cast_pk_value
         mapper = sa_inspect(registered.model)
         options = [
             selectinload(getattr(registered.model, r.key))
             for r in mapper.relationships
         ]
         stmt = select(registered.model).options(*options).where(
-            getattr(registered.model, registered.pk_field) == int(id)
+            getattr(registered.model, registered.pk_field) == cast_pk_value(registered.model, id)
         )
         result = await session.execute(stmt)
         obj = result.scalar_one_or_none()
@@ -209,13 +210,14 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
 
+        from fastapi_admin_kit.inspection import cast_pk_value
         mapper = sa_inspect(registered.model)
         options = [
             selectinload(getattr(registered.model, r.key))
             for r in mapper.relationships
         ]
         stmt = select(registered.model).options(*options).where(
-            getattr(registered.model, registered.pk_field) == int(id)
+            getattr(registered.model, registered.pk_field) == cast_pk_value(registered.model, id)
         )
         result = await session.execute(stmt)
         obj = result.scalar_one_or_none()
@@ -377,7 +379,8 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         if not action_obj:
             raise HTTPException(status_code=404, detail=f"Unknown action: {action_name}")
 
-        obj = await session.get(registered.model, int(id))
+        from fastapi_admin_kit.inspection import cast_pk_value
+        obj = await session.get(registered.model, cast_pk_value(registered.model, id))
         if not obj:
             raise HTTPException(status_code=404, detail="Not found")
 
@@ -484,7 +487,8 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
 
         session = get_db_session(request)
         try:
-            obj = await session.get(registered.model, int(id))
+            from fastapi_admin_kit.inspection import cast_pk_value
+            obj = await session.get(registered.model, cast_pk_value(registered.model, id))
             if obj is None:
                 raise HTTPException(status_code=404, detail="Object not found")
 

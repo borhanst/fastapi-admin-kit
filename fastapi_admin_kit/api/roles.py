@@ -106,7 +106,7 @@ async def update_role(
     )
 
 
-@router.delete("/{role_id}", status_code=204)
+@router.delete("/{role_id}", status_code=204, response_model=None)
 async def delete_role(
     request: Request,
     role_id: int,

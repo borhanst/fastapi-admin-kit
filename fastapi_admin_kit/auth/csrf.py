@@ -224,9 +224,10 @@ async def auth_redirect_handler(request: Request, exc: HTTPException) -> Respons
     if exc.status_code == 401:
         accept = request.headers.get("accept", "")
         if "text/html" in accept:
-            login_url = "/admin/login"
+            admin_path = request.app.state.admin_config["admin_path"]
+            login_url = f"{admin_path}/login"
             current_path = request.url.path
-            if current_path != "/admin/login":
+            if current_path != f"{admin_path}/login":
                 if request.url.query:
                     login_url += f"?next={current_path}%3F{request.url.query}"
                 else:

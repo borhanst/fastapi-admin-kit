@@ -565,7 +565,7 @@ document.addEventListener('alpine:init', () => {
         return;
       }
       try {
-        const resp = await fetch(`/admin/search/suggestions?q=${encodeURIComponent(q)}`);
+        const resp = await fetch(`${window.__ADMIN_PATH__}/search/suggestions?q=${encodeURIComponent(q)}`);
         if (resp.ok) {
           const data = await resp.json();
           this.results = data.suggestions || [];

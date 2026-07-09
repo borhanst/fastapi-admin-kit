@@ -104,7 +104,10 @@ async def profile_update(
     user.full_name = full_name
     await session.flush()
 
-    return RedirectResponse(url="/admin/profile", status_code=302)
+    return RedirectResponse(
+        url=f"{request.app.state.admin_config['admin_path']}/profile",
+        status_code=302,
+    )
 
 
 @router.get("/profile/password", response_class=HTMLResponse)
@@ -200,7 +203,10 @@ async def password_change_post(
     # Clear session and redirect to login
     from fastapi_admin_kit.auth.csrf import CSRF_COOKIE_NAME
 
-    response = RedirectResponse(url="/admin/login", status_code=302)
+    response = RedirectResponse(
+        url=f"{request.app.state.admin_config['admin_path']}/login",
+        status_code=302,
+    )
     session_backend = request.app.state.admin_session_backend
     samesite = getattr(
         request.app.state.admin_state, "session_samesite", "strict"

@@ -67,6 +67,34 @@ def get_pk_field(model: type) -> str | None:
     return tuple(col.key for col in pk_cols)
 
 
+def cast_pk_value(model: type, value: Any) -> Any:
+    """Cast a string primary key value to the correct Python type.
+
+    Inspects the model's primary key column type and converts the value
+    accordingly. Supports Integer, BigInteger, String, and UUID types.
+    Returns the original value if type cannot be determined.
+    """
+    if value is None:
+        return None
+    mapper = inspect(model)
+    pk_cols = mapper.primary_key
+    if not pk_cols or len(pk_cols) != 1:
+        return value
+    pk_col = pk_cols[0]
+    from sqlalchemy import BigInteger, Integer
+    from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+    from sqlalchemy.types import Uuid
+
+    col_type = type(pk_col.type)
+    if col_type in (Integer, BigInteger):
+        return int(value)
+    if col_type in (PG_UUID, Uuid):
+        from uuid import UUID
+
+        return UUID(str(value))
+    return value
+
+
 def auto_label(name: str) -> str:
     """Auto-generate a human-readable label from a field name.
 

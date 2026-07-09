@@ -96,6 +96,7 @@ exclude = [
     "docs/",
     "example.py",
     "example_sqlmodel.py",
+    "list/",
     "*.db",
     ".*",
 ]

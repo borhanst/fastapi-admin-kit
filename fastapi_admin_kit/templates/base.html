@@ -136,6 +136,9 @@
   <script>{{ _ui2.custom_js }}</script>
   {% endif %}
 
+  <script>
+    window.__ADMIN_PATH__ = {{ admin_path | default('/admin') | tojson }};
+  </script>
   <script src="/static/js/htmx-config.js"></script>
   <script src="/static/js/admin.js?v={{ static_version }}"></script>
 </body>
