@@ -2,6 +2,7 @@
 
 from fastapi_admin_kit.admin import Admin
 from fastapi_admin_kit.admin.decorators import column
+from fastapi_admin_kit.auth.mixins import AutoModelMixin
 from fastapi_admin_kit.config import DatabaseConfig, DatabaseType
 from fastapi_admin_kit.exceptions import ConfigError
 from fastapi_admin_kit.nav import (
@@ -40,6 +41,7 @@ from fastapi_admin_kit.views import (
 __all__ = [
     "Admin",
     "AdminRegistry",
+    "AutoModelMixin",
     "ConfigError",
     "DatabaseConfig",
     "DatabaseType",

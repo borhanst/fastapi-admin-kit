@@ -32,9 +32,13 @@ pwd_context = _PasswordHasher()
 class AuthBackend(ABC):
     """Abstract authentication backend — verify credentials & load users."""
 
+    def __init__(self, auth_model: type | None = None) -> None:
+        self._auth_model = auth_model
+
     @abstractmethod
     async def authenticate(
-        self, email: str, password: str, session: Any
+        self, credential: str, password: str, session: Any,
+        login_field: str = "email",
     ) -> AdminUserProtocol | None:
         """Verify credentials. Return user object if valid, ``None`` otherwise."""
         ...
@@ -53,19 +57,29 @@ class AuthBackend(ABC):
 
 
 class BuiltinAuthBackend(AuthBackend):
-    """Default backend that works with the built-in ``User`` model."""
+    """Default backend that works with the built-in ``User`` model or custom auth_model."""
+
+    def _get_model(self) -> type:
+        if self._auth_model is not None:
+            return self._auth_model
+        from fastapi_admin_kit.auth.models import User
+        return User
 
     async def authenticate(
-        self, email: str, password: str, session: Any
+        self, credential: str, password: str, session: Any,
+        login_field: str = "email",
     ) -> AdminUserProtocol | None:
         from sqlalchemy import select
 
-        from fastapi_admin_kit.auth.models import User
+        model = self._get_model()
+        field = getattr(model, login_field, None)
+        if field is None:
+            field = getattr(model, "email", None)
+        if field is None:
+            return None
 
         result = await session.execute(
-            select(User).where(
-                User.email == email, User.is_active.is_(True)
-            )
+            select(model).where(field == credential, model.is_active.is_(True))
         )
         user = result.scalar_one_or_none()
 
@@ -81,13 +95,14 @@ class BuiltinAuthBackend(AuthBackend):
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
 
-        from fastapi_admin_kit.auth.models import User
+        model = self._get_model()
+        query = select(model).where(model.id == user_id, model.is_active.is_(True))
 
-        result = await session.execute(
-            select(User)
-            .options(selectinload(User.roles))
-            .where(User.id == user_id, User.is_active.is_(True))
-        )
+        # Eagerly load roles if the model has a roles relationship
+        if hasattr(model, "roles"):
+            query = query.options(selectinload(model.roles))
+
+        result = await session.execute(query)
         return result.scalar_one_or_none()
 
     async def on_logout(self, user_id: int | str | None = None) -> None:

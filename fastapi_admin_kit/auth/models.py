@@ -257,6 +257,7 @@ class LoginAttempt(Base):
     ip_address = Column(String(45), nullable=False)
     user_agent = Column(String(512), nullable=True)
     success = Column(Boolean, default=False)
+    note = Column(Text, nullable=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (UniqueConstraint("id", name="uq_admin_login_attempt_id"),)

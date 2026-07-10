@@ -683,6 +683,10 @@ class Admin:
                 session_factory = sync_sessionmaker(bind=engine, expire_on_commit=False)
                 db_session = session_factory()
 
+        # Inject auth_model into the backend if provided
+        if self.config.auth.auth_backend is not None and self.config.auth.auth_model is not None:
+            self.config.auth.auth_backend._auth_model = self.config.auth.auth_model
+
         state = AdminState(
             engine=engine,
             session_backend=self._session_backend,

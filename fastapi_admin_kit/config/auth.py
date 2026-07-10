@@ -55,10 +55,45 @@ class AuthConfig:
         if model is None:
             return
 
-        required_attrs = ["id", "email", "is_active", "is_superuser", "roles"]
+        # Required: id, email
+        required_attrs = ["id", "email"]
         missing = [attr for attr in required_attrs if not hasattr(model, attr)]
         if missing:
             raise ConfigError(
-                f"auth_model {model.__name__!r} does not satisfy AdminUserProtocol. "
-                f"Missing attributes: {', '.join(missing)}"
+                f"auth_model {model.__name__!r} is missing required attributes: "
+                f"{', '.join(missing)}. Every auth model must have id and email."
+            )
+
+        # Required: is_active, is_superuser (can be provided by AutoModelMixin)
+        missing_flags = []
+        if not hasattr(model, "is_active"):
+            missing_flags.append("is_active")
+        if not hasattr(model, "is_superuser"):
+            missing_flags.append("is_superuser")
+        if missing_flags:
+            raise ConfigError(
+                f"auth_model {model.__name__!r} is missing: {', '.join(missing_flags)}. "
+                f"Use AutoModelMixin or add these columns to your model."
+            )
+
+        # Required: roles or role_ids (for RBAC)
+        if not hasattr(model, "roles") and not hasattr(model, "role_ids"):
+            raise ConfigError(
+                f"auth_model {model.__name__!r} has no 'roles' relationship or "
+                f"'role_ids' property. RBAC requires role lookups. "
+                f"Use AutoModelMixin or define a roles relationship on your model."
+            )
+
+        # Check password-related attributes for authentication
+        missing_auth = []
+        if not hasattr(model, "hashed_password"):
+            missing_auth.append("hashed_password")
+        if not callable(getattr(model, "verify_password", None)):
+            missing_auth.append("verify_password()")
+        if missing_auth:
+            raise ConfigError(
+                f"auth_model {model.__name__!r} is missing password-related "
+                f"attributes: {', '.join(missing_auth)}. "
+                f"Use AutoModelMixin or implement hashed_password (str) and "
+                f"verify_password(password) -> bool."
             )

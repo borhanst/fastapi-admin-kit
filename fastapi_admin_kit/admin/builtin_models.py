@@ -278,5 +278,5 @@ class LoginAttemptAdmin(ModelAdmin):
     icon = "clock"
     verbose_name = "Login Attempt"
     verbose_name_plural = "Login Attempts"
-    list_display = ["id", "email", "ip_address", "success", "timestamp"]
+    list_display = ["id", "email", "ip_address", "success", "note", "timestamp"]
     search_fields = ["email", "ip_address"]

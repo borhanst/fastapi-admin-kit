@@ -97,7 +97,7 @@ def _login_with_csrf(client, email="test@example.com", password="secret", **extr
         csrf_token = generate_csrf_token(SECRET_KEY)
         csrf_cookie = csrf_token
     client.cookies.set("admin_csrf_token", csrf_cookie)
-    data = {"email": email, "password": password, "csrf_token": csrf_token}
+    data = {"username": email, "password": password, "csrf_token": csrf_token}
     data.update(extra_data)
     return client.post(
         "/admin/login",
@@ -143,7 +143,7 @@ def test_login_post_failed(client):
     """POST /admin/login with invalid credentials re-renders with error."""
     response = _login_with_csrf(client, password="wrong")
     assert response.status_code == 200
-    assert "Invalid email or password" in response.text
+    assert "Invalid credentials" in response.text
 
 
 def test_login_post_next_redirect(client):

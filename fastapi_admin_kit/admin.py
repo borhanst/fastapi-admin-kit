@@ -498,6 +498,7 @@ class Admin:
             "dashboard_charts": self.dashboard_charts,
             "admin_path": self.admin_path,
             "superuser_emails": self.superuser_emails,
+            "login_field": self.login_field,
         }
         app.state.admin = self
 
