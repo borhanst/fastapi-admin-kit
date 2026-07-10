@@ -14,11 +14,15 @@ def validate_password_strength(
     require_digit: bool = True,
     require_special: bool = True,
 ) -> list[str]:
-    """Validate password strength. Returns a list of error messages (empty = valid)."""
+    """
+    Validate password strength. Returns a list of error messages (empty = valid)
+    """
     errors: list[str] = []
 
     if len(password) < min_length:
-        errors.append(f"Password must be at least {min_length} characters long.")
+        errors.append(
+            f"Password must be at least {min_length} characters long."
+        )
 
     if require_uppercase and not re.search(r"[A-Z]", password):
         errors.append("Password must contain at least one uppercase letter.")
@@ -29,7 +33,9 @@ def validate_password_strength(
     if require_digit and not re.search(r"\d", password):
         errors.append("Password must contain at least one digit.")
 
-    if require_special and not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?]", password):
+    if require_special and not re.search(
+        r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?]", password
+    ):
         errors.append("Password must contain at least one special character.")
 
     return errors

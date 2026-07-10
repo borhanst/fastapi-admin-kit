@@ -7,11 +7,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import Session
 
-from fastapi_admin_kit.auth.backend import AuthBackend, BuiltinAuthBackend, _PasswordHasher
+from fastapi_admin_kit.auth.backend import AuthBackend, BuiltinAuthBackend
 from fastapi_admin_kit.auth.models import Role, User
-from fastapi_admin_kit.auth.session import SessionBackend, SignedCookieSessionBackend
+from fastapi_admin_kit.auth.session import (
+    SessionBackend,
+    SignedCookieSessionBackend,
+)
 from fastapi_admin_kit.models import Base
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -33,7 +35,9 @@ def session(engine):
 
 @pytest.fixture
 def session_backend():
-    return SignedCookieSessionBackend(secret_key="test-secret-key", session_ttl=3600)
+    return SignedCookieSessionBackend(
+        secret_key="test-secret-key", session_ttl=3600
+    )
 
 
 @pytest.fixture
@@ -48,7 +52,7 @@ def role(session):
 def user(session, role):
     user = User(
         email="admin@example.com",
-        hashed_password=_PasswordHasher.hash("secret123"),
+        hashed_password=User.hash_password("secret123"),
         full_name="Test Admin",
         is_active=True,
     )
@@ -69,6 +73,7 @@ def async_session_factory():
         return engine
 
     import asyncio
+
     loop = asyncio.new_event_loop()
     loop.run_until_complete(_init())
 
@@ -139,16 +144,15 @@ class TestSignedCookieSessionBackend:
 
     def test_decode_returns_none_for_expired_token(self):
         short_ttl = SignedCookieSessionBackend(
-            secret_key="test-secret-key-long-enough-for-security!", session_ttl=1
+            secret_key="test-secret-key-long-enough-for-security!",
+            session_ttl=1,
         )
         token = short_ttl.encode({"user_id": 1})
         time.sleep(2)
         assert short_ttl.decode(token) is None
 
     def test_custom_cookie_name(self):
-        sb = SignedCookieSessionBackend(
-            secret_key="k", cookie_name="my_cookie"
-        )
+        sb = SignedCookieSessionBackend(secret_key="k", cookie_name="my_cookie")
         assert sb.cookie_name == "my_cookie"
 
     def test_default_cookie_name(self, session_backend):
@@ -200,7 +204,7 @@ class TestBuiltinAuthBackend:
 
             user = User(
                 email="admin@example.com",
-                hashed_password=_PasswordHasher.hash("secret123"),
+                hashed_password=User.hash_password("secret123"),
                 full_name="Test Admin",
                 is_active=True,
             )
@@ -208,13 +212,17 @@ class TestBuiltinAuthBackend:
             session.add(user)
             await session.commit()
 
-            result = await backend.authenticate("admin@example.com", "secret123", session)
+            result = await backend.authenticate(
+                "admin@example.com", "secret123", session
+            )
             assert result is not None
             assert result.email == "admin@example.com"
             break
 
     @pytest.mark.asyncio
-    async def test_authenticate_wrong_password(self, backend, async_session_factory):
+    async def test_authenticate_wrong_password(
+        self, backend, async_session_factory
+    ):
         async for session in async_session_factory():
             role = Role(name="Editor")
             session.add(role)
@@ -222,7 +230,7 @@ class TestBuiltinAuthBackend:
 
             user = User(
                 email="admin@example.com",
-                hashed_password=_PasswordHasher.hash("secret123"),
+                hashed_password=User.hash_password("secret123"),
                 full_name="Test Admin",
                 is_active=True,
             )
@@ -230,12 +238,16 @@ class TestBuiltinAuthBackend:
             session.add(user)
             await session.commit()
 
-            result = await backend.authenticate("admin@example.com", "wrong", session)
+            result = await backend.authenticate(
+                "admin@example.com", "wrong", session
+            )
             assert result is None
             break
 
     @pytest.mark.asyncio
-    async def test_authenticate_unknown_email(self, backend, async_session_factory):
+    async def test_authenticate_unknown_email(
+        self, backend, async_session_factory
+    ):
         async for session in async_session_factory():
             role = Role(name="Editor")
             session.add(role)
@@ -243,7 +255,7 @@ class TestBuiltinAuthBackend:
 
             user = User(
                 email="admin@example.com",
-                hashed_password=_PasswordHasher.hash("secret123"),
+                hashed_password=User.hash_password("secret123"),
                 full_name="Test Admin",
                 is_active=True,
             )
@@ -251,12 +263,16 @@ class TestBuiltinAuthBackend:
             session.add(user)
             await session.commit()
 
-            result = await backend.authenticate("nobody@example.com", "secret123", session)
+            result = await backend.authenticate(
+                "nobody@example.com", "secret123", session
+            )
             assert result is None
             break
 
     @pytest.mark.asyncio
-    async def test_authenticate_inactive_user(self, backend, async_session_factory):
+    async def test_authenticate_inactive_user(
+        self, backend, async_session_factory
+    ):
         async for session in async_session_factory():
             role = Role(name="Editor")
             session.add(role)
@@ -264,7 +280,7 @@ class TestBuiltinAuthBackend:
 
             user = User(
                 email="admin@example.com",
-                hashed_password=_PasswordHasher.hash("secret123"),
+                hashed_password=User.hash_password("secret123"),
                 full_name="Test Admin",
                 is_active=False,
             )
@@ -272,7 +288,9 @@ class TestBuiltinAuthBackend:
             session.add(user)
             await session.commit()
 
-            result = await backend.authenticate("admin@example.com", "secret123", session)
+            result = await backend.authenticate(
+                "admin@example.com", "secret123", session
+            )
             assert result is None
             break
 
@@ -285,7 +303,7 @@ class TestBuiltinAuthBackend:
 
             user = User(
                 email="admin@example.com",
-                hashed_password=_PasswordHasher.hash("secret123"),
+                hashed_password=User.hash_password("secret123"),
                 full_name="Test Admin",
                 is_active=True,
             )
@@ -315,7 +333,7 @@ class TestBuiltinAuthBackend:
 
             user = User(
                 email="admin@example.com",
-                hashed_password=_PasswordHasher.hash("secret123"),
+                hashed_password=User.hash_password("secret123"),
                 full_name="Test Admin",
                 is_active=False,
             )
@@ -336,14 +354,26 @@ class TestBuiltinAuthBackend:
 
 class TestPasswordHashing:
     def test_hash_and_verify(self):
-        hashed = _PasswordHasher.hash("mypassword")
-        assert _PasswordHasher.verify("mypassword", hashed)
+        hashed = User.hash_password("mypassword")
+        user = User(
+            email="test@test.com",
+            hashed_password=hashed,
+            is_active=True,
+            is_superuser=False,
+        )
+        assert user.verify_password("mypassword")
 
     def test_wrong_password_fails(self):
-        hashed = _PasswordHasher.hash("mypassword")
-        assert not _PasswordHasher.verify("wrongpassword", hashed)
+        hashed = User.hash_password("mypassword")
+        user = User(
+            email="test@test.com",
+            hashed_password=hashed,
+            is_active=True,
+            is_superuser=False,
+        )
+        assert not user.verify_password("wrongpassword")
 
     def test_different_hashes(self):
-        h1 = _PasswordHasher.hash("same")
-        h2 = _PasswordHasher.hash("same")
+        h1 = User.hash_password("same")
+        h2 = User.hash_password("same")
         assert h1 != h2
