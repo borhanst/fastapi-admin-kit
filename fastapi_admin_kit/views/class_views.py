@@ -171,7 +171,8 @@ class BaseView:
                 if not pk:
                     continue
                 try:
-                    loaded = await session.get(target_model, int(pk))
+                    from fastapi_admin_kit.inspection import cast_pk_value
+                    loaded = await session.get(target_model, cast_pk_value(target_model, pk))
                     if loaded:
                         objs.append(loaded)
                 except (ValueError, TypeError):
@@ -1021,7 +1022,8 @@ class SearchView(BaseView):
         if exclude_id:
             pk_col = getattr(model, self.registered.pk_field, None)
             if pk_col is not None:
-                base = base.where(pk_col != int(exclude_id))
+                from fastapi_admin_kit.inspection import cast_pk_value
+                base = base.where(pk_col != cast_pk_value(model, exclude_id))
 
         base = base.limit(limit)
         result = session.execute(base)

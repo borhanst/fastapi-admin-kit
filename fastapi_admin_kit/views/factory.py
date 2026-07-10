@@ -104,7 +104,8 @@ async def _apply_m2m_from_data(
             if not pk:
                 continue
             try:
-                loaded = await session.get(target_model, int(pk))
+                from fastapi_admin_kit.inspection import cast_pk_value
+                loaded = await session.get(target_model, cast_pk_value(target_model, pk))
                 if loaded:
                     objs.append(loaded)
             except (ValueError, TypeError):
@@ -457,7 +458,8 @@ class ViewFactory:
         async def edit_form(request: Request, id: str, _: Any = None):
             templates = request.app.state.admin_jinja_env
             session = get_db_session(request)
-            obj = await session.get(registered.model, int(id))
+            from fastapi_admin_kit.inspection import cast_pk_value
+            obj = await session.get(registered.model, cast_pk_value(registered.model, id))
             if not obj:
                 raise HTTPException(status_code=404, detail="Not found")
             checker = await _resolve_permission_checker(request)
@@ -483,7 +485,8 @@ class ViewFactory:
         async def edit_submit(request: Request, id: str, _: Any = None):
             templates = request.app.state.admin_jinja_env
             session = get_db_session(request)
-            obj = await session.get(registered.model, int(id))
+            from fastapi_admin_kit.inspection import cast_pk_value
+            obj = await session.get(registered.model, cast_pk_value(registered.model, id))
             if not obj:
                 raise HTTPException(status_code=404, detail="Not found")
             form_data = await request.form()
@@ -555,7 +558,8 @@ class ViewFactory:
                 await session.rollback()
             except Exception:
                 pass
-            obj = await session.get(registered.model, int(id))
+            from fastapi_admin_kit.inspection import cast_pk_value
+            obj = await session.get(registered.model, cast_pk_value(registered.model, id))
             if not obj:
                 raise HTTPException(status_code=404, detail="Not found")
             try:

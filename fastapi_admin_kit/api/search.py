@@ -56,6 +56,7 @@ async def get_search_suggestions(
     if registry is None or not q.strip():
         return {"suggestions": [], "query": q}
 
+    admin_path = request.app.state.admin_config["admin_path"]
     query_lower = q.strip().lower()
     suggestions: list[dict[str, Any]] = []
 
@@ -79,7 +80,7 @@ async def get_search_suggestions(
                     "model": table_name,
                     "label": verbose_name_plural,
                     "sublabel": table_name,
-                    "url": f"/admin/{table_name}",
+                    "url": f"{admin_path}/{table_name}",
                 }
             )
 
@@ -120,7 +121,7 @@ async def get_search_suggestions(
                         "field": field_name,
                         "label": f"{verbose_name_plural} → {field_label}",
                         "sublabel": f"{table_name}.{field_name}",
-                        "url": f"/admin/{table_name}?q={q}",
+                        "url": f"{admin_path}/{table_name}?q={q}",
                     }
                 )
 

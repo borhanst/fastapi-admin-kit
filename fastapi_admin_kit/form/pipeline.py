@@ -27,8 +27,13 @@ def build_form_context(
     fieldsets: list[FieldsetContext] = [FieldsetContext(fields=[])]
 
     for field_meta in registered.form_fields:
-        col = next((c for c in registered.columns if c.name == field_meta.name), None)
-        rel = next((r for r in registered.relationships if r.name == field_meta.name), None)
+        col = next(
+            (c for c in registered.columns if c.name == field_meta.name), None
+        )
+        rel = next(
+            (r for r in registered.relationships if r.name == field_meta.name),
+            None,
+        )
         widget = registered.get_widget(field_meta.name)
 
         value = values.get(field_meta.name)
@@ -39,6 +44,7 @@ def build_form_context(
             if value is None and rel is not None:
                 try:
                     from sqlalchemy import inspect as sa_inspect
+
                     mapper = sa_inspect(type(obj))
                     rel_prop = mapper.relationships.get(rel.name)
                     if rel_prop is not None:
@@ -62,9 +68,13 @@ def build_form_context(
             ):
                 try:
                     from sqlalchemy import inspect as sa_inspect
+
                     mapper = sa_inspect(type(obj))
                     rel_prop = mapper.relationships.get(rel.name)
-                    if rel_prop is not None and rel_prop.direction.name == "MANYTOMANY":
+                    if (
+                        rel_prop is not None
+                        and rel_prop.direction.name == "MANYTOMANY"
+                    ):
                         value = [str(item.id) for item in value]
                 except Exception:
                     pass
@@ -74,6 +84,13 @@ def build_form_context(
         widget_macro = widget.macro_name
         widget_ctx = widget.render_context(field_meta, value)
         widget_ctx["is_create"] = is_create
+        if request is not None:
+            admin_path = request.app.state.admin_config["admin_path"]
+            widget_ctx["admin_path"] = admin_path
+            if "search_url" in widget_ctx:
+                widget_ctx["search_url"] = widget_ctx["search_url"].replace(
+                    "/admin/", f"{admin_path}/"
+                )
         if obj is not None:
             widget_ctx["obj_id"] = getattr(obj, "id", "")
         if rel is not None and rel_labels:
