@@ -714,6 +714,11 @@ class Admin:
         # Unified signing-key source for sessions, CSRF, and JWT (see AdminState).
         app.state.admin_secret_key = state.secret_key
 
+        # Wire the password hasher to the User model
+        from fastapi_admin_kit.auth.models import User
+
+        User.set_hasher(self.config.auth.get_hasher())
+
     def _mount_static(self, app: FastAPI) -> None:
         """Mount the static files directory and uploads directory."""
         static_dir = Path(__file__).parent.parent / "static"

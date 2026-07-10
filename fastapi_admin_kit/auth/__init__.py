@@ -8,6 +8,7 @@ from fastapi_admin_kit.auth.csrf import (
     require_csrf_token,
     set_csrf_cookie,
 )
+from fastapi_admin_kit.auth.hasher import BcryptHasher, PasswordHasher
 from fastapi_admin_kit.auth.models import (
     Permission,
     Role,
@@ -20,7 +21,9 @@ from fastapi_admin_kit.auth.session import (
 )
 
 __all__ = [
+    "BcryptHasher",
     "Permission",
+    "PasswordHasher",
     "Role",
     "User",
     "UserPermission",

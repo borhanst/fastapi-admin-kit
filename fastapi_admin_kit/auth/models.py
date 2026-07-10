@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from sqlalchemy import (
     Boolean,
     Column,
@@ -62,6 +64,8 @@ class Role(Base):
 class User(Base):
     __tablename__ = "admin_users"
 
+    _hasher: ClassVar[type | None] = None
+
     id = Column(Integer, primary_key=True)
     email = Column(String(255), unique=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
@@ -98,21 +102,28 @@ class User(Base):
 
     @classmethod
     def hash_password(cls, password: str) -> str:
-        """Hash a plaintext password using bcrypt."""
-        import bcrypt
-
-        return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        """Hash a plaintext password using the configured hasher."""
+        hasher = cls._get_hasher()
+        return hasher.hash(password)
 
     def verify_password(self, password: str) -> bool:
         """Check if plaintext password matches the stored hash."""
-        import bcrypt
+        hasher = self._get_hasher()
+        return hasher.verify(password, self.hashed_password)
 
-        try:
-            return bcrypt.checkpw(
-                password.encode(), self.hashed_password.encode()
-            )
-        except (ValueError, TypeError):
-            return False
+    @classmethod
+    def _get_hasher(cls) -> type:
+        """Return the configured hasher class, or default BcryptHasher."""
+        if cls._hasher is not None:
+            return cls._hasher
+        from fastapi_admin_kit.auth.hasher import BcryptHasher
+
+        return BcryptHasher
+
+    @classmethod
+    def set_hasher(cls, hasher: type) -> None:
+        """Set the password hasher class for this User model."""
+        cls._hasher = hasher
 
     def __str__(self) -> str:
         return str(self.email)

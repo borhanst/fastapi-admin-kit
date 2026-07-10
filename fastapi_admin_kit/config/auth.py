@@ -15,6 +15,7 @@ class AuthConfig:
         self,
         auth_model: type | None = None,
         auth_backend: Any | None = None,
+        password_hasher: Any | None = None,
         session_ttl: int = 28800,
         session_cookie_name: str = "admin_session",
         session_secure: bool = False,
@@ -28,6 +29,7 @@ class AuthConfig:
     ):
         self.auth_model = auth_model
         self.auth_backend = auth_backend
+        self.password_hasher = password_hasher
         self.session_ttl = session_ttl
         self.session_cookie_name = session_cookie_name
         self.session_secure = session_secure
@@ -38,6 +40,14 @@ class AuthConfig:
         self.password_require_digit = password_require_digit
         self.password_require_special = password_require_special
         self.session_samesite = session_samesite
+
+    def get_hasher(self) -> Any:
+        """Return the configured password hasher, or default BcryptHasher."""
+        if self.password_hasher is not None:
+            return self.password_hasher
+        from fastapi_admin_kit.auth.hasher import BcryptHasher
+
+        return BcryptHasher
 
     def validate_auth_model(self) -> None:
         """Validate that auth_model satisfies AdminUserProtocol."""
