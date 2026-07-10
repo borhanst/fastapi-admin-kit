@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -170,9 +171,14 @@ class AdminRegistry:
 
         admin = admin_class() if admin_class else ModelAdmin()
         table_name = model.__tablename__
-        verbose_name = (
-            admin.verbose_name or table_name.replace("_", " ").title()
-        )
+        if admin.verbose_name:
+            verbose_name = admin.verbose_name
+        else:
+            class_name = getattr(model, "__name__", None)
+            if class_name and not class_name.startswith("_"):
+                verbose_name = re.sub(r"([A-Z])", r" \1", class_name).strip().title()
+            else:
+                verbose_name = table_name.replace("_", " ").title()
         if admin.verbose_name_plural:
             verbose_name_plural = admin.verbose_name_plural
         elif (

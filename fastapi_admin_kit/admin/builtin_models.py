@@ -185,8 +185,6 @@ class UserAdmin(ModelAdmin):
 class RoleAdmin(ModelAdmin):
     tag = "admin"
     icon = "shield-check"
-    verbose_name = "Admin Role"
-    verbose_name_plural = "Admin Roles"
     list_display = ["id", "name", "description"]
     search_fields = ["name"]
 
