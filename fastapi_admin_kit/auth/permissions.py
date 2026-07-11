@@ -42,9 +42,7 @@ class PermissionChecker:
         self._role_ids: list[int] = (
             snap["role_ids"] if "role_ids" in snap else getattr(user, "role_ids", [])
         )
-        self._user_id: int | str | None = (
-            snap.get("id") if snap else getattr(user, "id", None)
-        )
+        self._user_id: int | str | None = snap.get("id") if snap else getattr(user, "id", None)
         self._role_cache: dict[str, PermissionSet | None] | None = None
         self._direct_cache: dict[str, PermissionSet | None] | None = None
         self._cache: dict[tuple[str, str], bool] = {}
@@ -62,9 +60,7 @@ class PermissionChecker:
         from sqlalchemy import select
 
         result = await self.session.execute(
-            select(Permission).where(
-                Permission.role_id.in_(self._role_ids)
-            )
+            select(Permission).where(Permission.role_id.in_(self._role_ids))
         )
         for perm in result.scalars():
             table = perm.table_name
@@ -94,9 +90,7 @@ class PermissionChecker:
         from sqlalchemy import select
 
         result = await self.session.execute(
-            select(UserPermission).where(
-                UserPermission.user_id == self._user_id
-            )
+            select(UserPermission).where(UserPermission.user_id == self._user_id)
         )
         for perm in result.scalars():
             table = perm.table_name

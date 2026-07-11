@@ -83,7 +83,6 @@ async def login_post(
     if user is not None:
         _login_rate_limiter.reset(client_ip)
         user.last_login = datetime.now(UTC)
-        await session.merge(user)
         await session.flush()
 
         from fastapi_admin_kit.auth.models import LoginAttempt

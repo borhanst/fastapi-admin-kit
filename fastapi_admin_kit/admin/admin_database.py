@@ -46,18 +46,18 @@ class AdminDatabase:
                 if self.base is not None:
                     await conn.run_sync(self.base.metadata.create_all)
                 # Auto-migrate: add missing columns
-                await conn.run_sync(self._auto_migrate, AdminBase)
+                await conn.run_sync(self._auto_migrate, AdminBase.metadata)
                 if self.base is not None:
-                    await conn.run_sync(self._auto_migrate, self.base)
+                    await conn.run_sync(self._auto_migrate, self.base.metadata)
         else:
             # Sync engine - direct call
             AdminBase.metadata.create_all(bind=self.engine)
             if self.base is not None:
                 self.base.metadata.create_all(bind=self.engine)
             # Auto-migrate: add missing columns
-            self._auto_migrate_sync(AdminBase)
+            self._auto_migrate_sync(AdminBase.metadata)
             if self.base is not None:
-                self._auto_migrate_sync(self.base)
+                self._auto_migrate_sync(self.base.metadata)
 
     def _auto_migrate_sync(self, metadata: Any) -> None:
         """Sync version of auto-migrate."""
@@ -86,36 +86,33 @@ class AdminDatabase:
                     with self.engine.begin() as conn:
                         conn.execute(sql)
 
-    async def _auto_migrate(self, conn: Any, metadata: Any) -> None:
-        """Add missing columns to existing tables."""
+    def _auto_migrate(self, sync_conn: Any, metadata: Any) -> None:
+        """Add missing columns to existing tables (sync, called via run_sync)."""
         from sqlalchemy import inspect as sa_inspect, text
 
-        dialect = conn.bind.dialect if hasattr(conn, "bind") else None
+        dialect = sync_conn.dialect if hasattr(sync_conn, "dialect") else None
         if dialect is None:
             return
 
-        def _run(sync_conn):
-            inspector = sa_inspect(sync_conn)
-            for table_name, table in metadata.tables.items():
-                if not inspector.has_table(table_name):
-                    continue
-                existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
-                for col in table.columns:
-                    if col.name not in existing_cols:
-                        col_type = col.type.compile(dialect)
-                        nullable = "NULL" if col.nullable else "NOT NULL"
-                        default = ""
-                        if col.server_default is not None:
-                            default_sql = col.server_default.arg
-                            if hasattr(default_sql, "text"):
-                                default_sql = default_sql.text
-                            default = f" DEFAULT {default_sql}"
-                        sql = text(
-                            f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type} {nullable}{default}"
-                        )
-                        sync_conn.execute(sql)
-
-        await conn.run_sync(_run)
+        inspector = sa_inspect(sync_conn)
+        for table_name, table in metadata.tables.items():
+            if not inspector.has_table(table_name):
+                continue
+            existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+            for col in table.columns:
+                if col.name not in existing_cols:
+                    col_type = col.type.compile(dialect)
+                    nullable = "NULL" if col.nullable else "NOT NULL"
+                    default = ""
+                    if col.server_default is not None:
+                        default_sql = col.server_default.arg
+                        if hasattr(default_sql, "text"):
+                            default_sql = default_sql.text
+                        default = f" DEFAULT {default_sql}"
+                    sql = text(
+                        f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type} {nullable}{default}"
+                    )
+                    sync_conn.execute(sql)
 
     async def _seed_roles(
         self, seed_roles: list, seed_roles_overwrite: bool = False

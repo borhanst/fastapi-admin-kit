@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     pass
 
 
-class AutoModelMixin:
+class AuthModelMixin:
     """Mixin for custom user models to work with admin's built-in RBAC.
 
     Provides: hashed_password, is_active, is_superuser columns,
@@ -82,3 +82,7 @@ class AutoModelMixin:
     def set_hasher(cls, hasher: type) -> None:
         """Set the password hasher class for this model."""
         cls._hasher = hasher
+
+
+# Backward-compatible alias
+

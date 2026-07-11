@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 from sqlalchemy import (
     Boolean,
     Column,
@@ -18,6 +16,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
+from fastapi_admin_kit.auth.mixins import AuthModelMixin
 from fastapi_admin_kit.models.base import Base
 
 # Junction table — no ORM model needed
@@ -61,17 +60,18 @@ class Role(Base):
         return f"<Role {self.name!r}>"
 
 
-class User(Base):
-    __tablename__ = "admin_users"
+class User(AuthModelMixin, Base):
+    """Admin user model with authentication support via AuthModelMixin.
 
-    _hasher: ClassVar[type | None] = None
+    The mixin provides: hashed_password, is_active, is_superuser columns,
+    role_ids property, verify_password() and hash_password() methods.
+    """
+
+    __tablename__ = "admin_users"
 
     id = Column(Integer, primary_key=True)
     email = Column(String(255), unique=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255))
-    is_superuser = Column(Boolean, default=False)
-    is_active = Column(Boolean, default=True)
     last_login = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     password_changed_at = Column(DateTime(timezone=True), nullable=True)
@@ -95,35 +95,6 @@ class User(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
-
-    @property
-    def role_ids(self) -> list[int]:
-        return [r.id for r in self.roles]
-
-    @classmethod
-    def hash_password(cls, password: str) -> str:
-        """Hash a plaintext password using the configured hasher."""
-        hasher = cls._get_hasher()
-        return hasher.hash(password)
-
-    def verify_password(self, password: str) -> bool:
-        """Check if plaintext password matches the stored hash."""
-        hasher = self._get_hasher()
-        return hasher.verify(password, self.hashed_password)
-
-    @classmethod
-    def _get_hasher(cls) -> type:
-        """Return the configured hasher class, or default BcryptHasher."""
-        if cls._hasher is not None:
-            return cls._hasher
-        from fastapi_admin_kit.auth.hasher import BcryptHasher
-
-        return BcryptHasher
-
-    @classmethod
-    def set_hasher(cls, hasher: type) -> None:
-        """Set the password hasher class for this User model."""
-        cls._hasher = hasher
 
     def __str__(self) -> str:
         return str(self.email)

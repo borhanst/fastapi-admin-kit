@@ -20,6 +20,7 @@ class UserAdmin(ModelAdmin):
     verbose_name_plural = "Admin Users"
     list_display = ["id", "email", "full_name", "is_superuser", "is_active"]
     search_fields = ["email", "full_name"]
+    inline_edit=True
     exclude = ["hashed_password", "password_changed_at"]
     extra_fields = [
         ExtraField(
@@ -257,8 +258,8 @@ class UserTOTPAdmin(ModelAdmin):
 class UserPermissionAdmin(ModelAdmin):
     tag = "admin"
     icon = "lock"
-    verbose_name = "User Permission"
-    verbose_name_plural = "User Permissions"
+    verbose_name = "User Permission---"
+    verbose_name_plural = "User Permissions---"
     list_display = [
         "id",
         "user",

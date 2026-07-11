@@ -29,7 +29,7 @@ async def audit_list_view(
     request: Request,
     model: str | None = Query(None, description="Filter by model name"),
     user_id: int | None = Query(None),
-    action: str | None = Query(None, regex="^(CREATE|UPDATE|DELETE)$"),
+    action: str | None = Query(None, pattern="^(CREATE|UPDATE|DELETE)$"),
     from_date: date | None = Query(None),
     to_date: date | None = Query(None),
     object_id: str | None = Query(None),

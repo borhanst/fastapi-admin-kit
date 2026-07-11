@@ -40,14 +40,27 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy import Column, Float, Integer, String
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 
 from fastapi_admin_kit import Admin
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
+from fastapi_admin_kit.auth.mixins import AuthModelMixin
+from fastapi_admin_kit.auth.models import Role, admin_user_roles
 
 
 class Base(DeclarativeBase):
     pass
+
+
+class User(AuthModelMixin, Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), unique=True, nullable=False)
+    full_name = Column(String(255))
+
+    roles = relationship(
+        "Role", secondary=admin_user_roles, back_populates="users"
+    )
 
 
 class Product(Base):
@@ -68,6 +81,7 @@ async_session = sessionmaker(engine, class_=AsyncSession)
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await admin.setup()
     yield
     await engine.dispose()
 
@@ -78,6 +92,7 @@ admin = Admin(
     engine=engine,
     base=Base,
     secret_key=SECRET_KEY,
+    auth_model=User,
     auth_backend=BuiltinAuthBackend(),
 )
 admin.register(Product)

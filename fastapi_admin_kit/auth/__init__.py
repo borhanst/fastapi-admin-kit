@@ -9,7 +9,7 @@ from fastapi_admin_kit.auth.csrf import (
     set_csrf_cookie,
 )
 from fastapi_admin_kit.auth.hasher import BcryptHasher, PasswordHasher
-from fastapi_admin_kit.auth.mixins import AutoModelMixin
+from fastapi_admin_kit.auth.mixins import AuthModelMixin
 from fastapi_admin_kit.auth.models import (
     Permission,
     Role,
@@ -22,7 +22,7 @@ from fastapi_admin_kit.auth.session import (
 )
 
 __all__ = [
-    "AutoModelMixin",
+    "AuthModelMixin",
     "BcryptHasher",
     "Permission",
     "PasswordHasher",
