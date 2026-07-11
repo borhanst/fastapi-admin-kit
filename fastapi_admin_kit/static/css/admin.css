@@ -412,7 +412,7 @@ img { max-width: 100%; display: block; }
 }
 
 .admin-content__inner {
-  max-width: var(--content-max-width);
+  max-width: none;
   margin: 0 auto;
   padding: var(--space-8) var(--content-padding);
 }

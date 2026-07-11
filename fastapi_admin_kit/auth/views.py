@@ -45,9 +45,36 @@ async def login_get(
 ) -> HTMLResponse:
     """GET /admin/login — show login page, redirect if already logged in."""
     if session_payload is not None:
-        admin_path = request.app.state.admin_config["admin_path"]
-        target = next if _is_safe_url(next) else f"{admin_path}/"
-        return RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
+        # Validate the session actually resolves to a real user.
+        # If the DB was reset, the old cookie is stale — show the login
+        # page instead of looping between /admin/login ↔ /admin.
+        from fastapi_admin_kit.auth.identity import resolve_user
+
+        user = await resolve_user(request, session_payload.get("user_id"))
+        if user is not None:
+            admin_path = request.app.state.admin_config["admin_path"]
+            target = next if _is_safe_url(next) else f"{admin_path}/"
+            return RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
+        # Stale session — clear the cookie so we don't loop
+        session_backend = getattr(request.app.state, "admin_session_backend", None)
+        if session_backend is not None:
+            from fastapi_admin_kit.auth.csrf import CSRF_COOKIE_NAME
+
+            samesite = getattr(
+                request.app.state.admin_state, "session_samesite", "strict"
+            )
+            response = RedirectResponse(
+                url=str(request.url), status_code=status.HTTP_302_FOUND
+            )
+            response.delete_cookie(
+                key=session_backend.cookie_name,
+                path="/",
+                secure=session_backend.secure,
+                httponly=True,
+                samesite=samesite,
+            )
+            response.delete_cookie(key=CSRF_COOKIE_NAME, path="/")
+            return response
 
     jinja_env = request.app.state.admin_jinja_env
     template = jinja_env.get_template("pages/login.html")

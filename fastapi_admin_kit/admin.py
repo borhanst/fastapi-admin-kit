@@ -657,13 +657,19 @@ class Admin:
 
                         from fastapi_admin_kit.auth.models import (
                             Permission,
+                            admin_role_permissions,
                         )
 
                         engine = request.app.state.admin_engine
                         with Session(engine) as s:
                             result = s.execute(
-                                select(Permission).filter(
-                                    Permission.role_id.in_(role_ids)
+                                select(Permission)
+                                .join(
+                                    admin_role_permissions,
+                                    Permission.id == admin_role_permissions.c.permission_id,
+                                )
+                                .filter(
+                                    admin_role_permissions.c.role_id.in_(role_ids)
                                 )
                             )
                             rows = result.scalars().all()

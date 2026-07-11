@@ -267,6 +267,14 @@ document.addEventListener('alpine:init', () => {
       this.permData[tableId].delete = on;
     },
 
+    toggleAllTables(action, on) {
+      for (const table of this.selectedTables) {
+        if (this.permData[table.id]) {
+          this.permData[table.id][action] = on;
+        }
+      }
+    },
+
     get serializedPermData() {
       const out = {};
       for (const [table, data] of Object.entries(this.permData)) {

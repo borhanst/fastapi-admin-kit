@@ -125,16 +125,9 @@ async def role_edit_view(
     models = registry.all()
     model_map = {m.table_name: m.verbose_name for m in models}
 
-    perms = (
-        await session.execute(
-            select(Permission).where(Permission.role_id == role_id)
-        )
-        .scalars()
-        .all()
-    )
-
+    # Get permissions via M2M relationship
     perm_data = {}
-    for p in perms:
+    for p in role.permissions:
         perm_data[p.table_name] = {
             "_label": model_map.get(p.table_name, p.table_name),
             "view": p.can_view,
@@ -179,27 +172,33 @@ async def role_save_view(
     except (json.JSONDecodeError, TypeError):
         perm_data = {}
 
-    existing_perms = (
-        await session.execute(
-            select(Permission).where(Permission.role_id == role_id)
-        )
-        .scalars()
-        .all()
-    )
-    existing_perm_map = {p.table_name: p for p in existing_perms}
+    # Build set of table_names from form data
+    tables_in_form = set(perm_data.keys())
 
+    # Get existing permissions for this role via M2M
+    existing_perms = {p.table_name: p for p in role.permissions}
+
+    # Process each table in form data
     for table, data in perm_data.items():
-        if not any(data.get(a) for a in ["view", "create", "edit", "delete"]):
+        has_any_perm = any(data.get(a) for a in ["view", "create", "edit", "delete"])
+
+        if not has_any_perm:
+            # Remove permission from this role if it exists
+            if table in existing_perms:
+                role.permissions.remove(existing_perms[table])
             continue
-        if table in existing_perm_map:
-            perm = existing_perm_map[table]
-            perm.can_view = data.get("view", False)
-            perm.can_create = data.get("create", False)
-            perm.can_edit = data.get("edit", False)
-            perm.can_delete = data.get("delete", False)
-        else:
+
+        # Find or create a Permission for this table (shared across roles)
+        from fastapi_admin_kit.auth.models import Permission
+
+        result = await session.execute(
+            select(Permission).where(Permission.table_name == table)
+        )
+        perm = result.scalar_one_or_none()
+
+        if perm is None:
+            # Create new permission
             perm = Permission(
-                role_id=role_id,
                 table_name=table,
                 can_view=data.get("view", False),
                 can_create=data.get("create", False),
@@ -207,11 +206,26 @@ async def role_save_view(
                 can_delete=data.get("delete", False),
             )
             session.add(perm)
+            await session.flush()
+        else:
+            # Update existing permission flags (OR with current values)
+            if data.get("view"):
+                perm.can_view = True
+            if data.get("create"):
+                perm.can_create = True
+            if data.get("edit"):
+                perm.can_edit = True
+            if data.get("delete"):
+                perm.can_delete = True
 
-    tables_in_form = set(perm_data.keys())
-    for table, perm in existing_perm_map.items():
+        # Link permission to role if not already linked
+        if table not in existing_perms:
+            role.permissions.append(perm)
+
+    # Remove permissions not in form data
+    for table, perm in existing_perms.items():
         if table not in tables_in_form:
-            await session.delete(perm)
+            role.permissions.remove(perm)
 
     await session.flush()
 

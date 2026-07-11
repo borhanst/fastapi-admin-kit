@@ -59,8 +59,15 @@ class PermissionChecker:
 
         from sqlalchemy import select
 
+        from fastapi_admin_kit.auth.models import admin_role_permissions
+
         result = await self.session.execute(
-            select(Permission).where(Permission.role_id.in_(self._role_ids))
+            select(Permission)
+            .join(
+                admin_role_permissions,
+                Permission.id == admin_role_permissions.c.permission_id,
+            )
+            .where(admin_role_permissions.c.role_id.in_(self._role_ids))
         )
         for perm in result.scalars():
             table = perm.table_name

@@ -126,12 +126,7 @@ def test_admin_user_defaults(session):
 
 
 def test_admin_permission_create(session):
-    role = Role(name="Editor")
-    session.add(role)
-    session.flush()
-
     perm = Permission(
-        role_id=role.id,
         table_name="products",
         can_view=True,
         can_create=True,
@@ -144,17 +139,13 @@ def test_admin_permission_create(session):
 
 
 def test_admin_permission_unique_constraint(session):
-    role = Role(name="Editor")
-    session.add(role)
-    session.flush()
-
     session.add(
-        Permission(role_id=role.id, table_name="products", can_view=True)
+        Permission(table_name="products", can_view=True)
     )
     session.flush()
     with pytest.raises(Exception):
         session.add(
-            Permission(role_id=role.id, table_name="products", can_view=False)
+            Permission(table_name="products", can_view=False)
         )
         session.flush()
 
@@ -163,17 +154,15 @@ def test_admin_permission_cascade_delete(session):
     role = Role(name="Temp")
     session.add(role)
     session.flush()
-    perm_id = (
-        session.add(
-            Permission(role_id=role.id, table_name="t", can_view=True)
-        )
-        or None
-    )
+    perm = Permission(table_name="t", can_view=True)
+    session.add(perm)
+    role.permissions.append(perm)
     session.flush()
 
     session.delete(role)
     session.flush()
-    assert session.query(Permission).count() == 0
+    # Permission still exists (not cascade deleted from M2M)
+    assert session.query(Permission).count() == 1
 
 
 # ── AuditLog ─────────────────────────────────────────────────────────────

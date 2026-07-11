@@ -66,13 +66,18 @@ async def _build_user_permissions(
 
     from sqlalchemy import select
 
-    from fastapi_admin_kit.auth.models import Permission, UserPermission
+    from fastapi_admin_kit.auth.models import Permission, UserPermission, admin_role_permissions
 
     # Collect permissions from all assigned roles (OR merge)
     role_ids = getattr(user, "role_ids", [])
     if role_ids:
         result = await db_session.execute(
-            select(Permission).where(Permission.role_id.in_(role_ids))
+            select(Permission)
+            .join(
+                admin_role_permissions,
+                Permission.id == admin_role_permissions.c.permission_id,
+            )
+            .where(admin_role_permissions.c.role_id.in_(role_ids))
         )
         for perm in result.scalars():
             actions = []

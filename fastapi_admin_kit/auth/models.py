@@ -19,7 +19,7 @@ from sqlalchemy.sql import func
 from fastapi_admin_kit.auth.mixins import AuthModelMixin
 from fastapi_admin_kit.models.base import Base
 
-# Junction table — no ORM model needed
+# Junction tables — no ORM models needed
 admin_user_roles = Table(
     "admin_user_roles",
     Base.metadata,
@@ -37,6 +37,23 @@ admin_user_roles = Table(
     ),
 )
 
+admin_role_permissions = Table(
+    "admin_role_permissions",
+    Base.metadata,
+    Column(
+        "role_id",
+        Integer,
+        ForeignKey("admin_roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "permission_id",
+        Integer,
+        ForeignKey("admin_permissions.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
 
 class Role(Base):
     __tablename__ = "admin_roles"
@@ -50,7 +67,7 @@ class Role(Base):
         "User", secondary=admin_user_roles, back_populates="roles"
     )
     permissions = relationship(
-        "Permission", back_populates="role", cascade="all, delete-orphan"
+        "Permission", secondary=admin_role_permissions, back_populates="roles"
     )
 
     def __str__(self) -> str:
@@ -104,36 +121,31 @@ class User(AuthModelMixin, Base):
 
 
 class Permission(Base):
-    """Permission matrix per role per model."""
+    """Permission matrix per model — shared across roles via M2M."""
 
     __tablename__ = "admin_permissions"
     __table_args__ = (
         UniqueConstraint(
-            "role_id", "table_name", name="uq_admin_perm_role_table"
+            "table_name", name="uq_admin_perm_table"
         ),
     )
 
     id = Column(Integer, primary_key=True)
-    role_id = Column(
-        Integer,
-        ForeignKey("admin_roles.id", ondelete="CASCADE"),
-        nullable=False,
-    )
     table_name = Column(String(255), nullable=False)
     can_view = Column(Boolean, default=False)
     can_create = Column(Boolean, default=False)
     can_edit = Column(Boolean, default=False)
     can_delete = Column(Boolean, default=False)
 
-    role = relationship("Role", back_populates="permissions")
+    roles = relationship(
+        "Role", secondary=admin_role_permissions, back_populates="permissions"
+    )
 
     def __str__(self) -> str:
-        return f"{self.table_name} (role {self.role_id})"
+        return str(self.table_name)
 
     def __repr__(self) -> str:
-        return (
-            f"<Permission role={self.role_id} table={self.table_name!r}>"
-        )
+        return f"<Permission table={self.table_name!r}>"
 
 
 class UserPermission(Base):

@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 
+from fastapi_admin_kit.admin.builtin_models import flush_pending_perm_ops
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.flash import add_flash
 from fastapi_admin_kit.registry import RegisteredModel
@@ -437,6 +438,7 @@ class CreateView(BaseView):
             await self._apply_m2m_from_data(obj, m2m_data, session)
             await session.flush()
             self.admin.after_create(obj, request)
+            await flush_pending_perm_ops(request)
             await add_flash(
                 request, "success", f"{self.registered.verbose_name} created."
             )
@@ -507,6 +509,7 @@ class CreateView(BaseView):
         session.add(obj)
         await session.flush()
         self.admin.after_create(obj, request)
+        await flush_pending_perm_ops(request)
         return await self.api_renderer.render(request, self._serialize(obj))
 
 
@@ -648,6 +651,7 @@ class EditView(BaseView):
             self.admin.on_update(obj, parsed, request)
             await session.flush()
             self.admin.after_update(obj, request)
+            await flush_pending_perm_ops(request)
             await add_flash(
                 request, "success", f"{self.registered.verbose_name} updated."
             )
@@ -796,6 +800,7 @@ class EditView(BaseView):
             self.admin.on_update(obj, parsed, request)
             await session.flush()
             self.admin.after_update(obj, request)
+            await flush_pending_perm_ops(request)
         except Exception:
             session = get_db_session(request)
             await session.rollback()

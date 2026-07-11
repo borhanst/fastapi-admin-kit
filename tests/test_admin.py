@@ -357,7 +357,8 @@ class TestSeedRoles:
             assert role is not None
             assert role.description == "Finance team"
 
-            perms = session.query(Permission).filter_by(role_id=role.id).all()
+            # Get permissions via M2M relationship
+            perms = role.permissions
             assert len(perms) == 1
             assert perms[0].table_name == "invoices"
             assert perms[0].can_view is True

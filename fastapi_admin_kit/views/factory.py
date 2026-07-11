@@ -8,6 +8,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse
 from starlette.datastructures import UploadFile
 
+from fastapi_admin_kit.admin.builtin_models import flush_pending_perm_ops
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.flash import add_flash
 from fastapi_admin_kit.registry import RegisteredModel
@@ -445,6 +446,7 @@ class ViewFactory:
             await _apply_m2m_from_data(obj, m2m_data, registered, session)
             await session.flush()
             registered.admin.after_create(obj, request)
+            await flush_pending_perm_ops(request)
             await add_flash(request, "success", f"{registered.verbose_name} created.")
             url = f"{request.app.state.admin_config['admin_path']}/{registered.table_name}/"
             return RedirectResponse(url=url, status_code=303)
@@ -542,6 +544,7 @@ class ViewFactory:
             await _apply_m2m_from_data(obj, m2m_data, registered, session)
             await session.flush()
             registered.admin.after_update(obj, request)
+            await flush_pending_perm_ops(request)
             await add_flash(request, "success", f"{registered.verbose_name} updated.")
             url = f"{request.app.state.admin_config['admin_path']}/{registered.table_name}/"
             return RedirectResponse(url=url, status_code=303)

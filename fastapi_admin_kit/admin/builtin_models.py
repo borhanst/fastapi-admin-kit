@@ -6,6 +6,27 @@ from fastapi_admin_kit.widgets.inputs import AutocompleteWidget, PasswordWidget
 from fastapi_admin_kit.widgets.relation import MultiRelationWidget
 
 
+async def flush_pending_perm_ops(request):
+    """Execute any pending direct-permission writes on the request's session.
+
+    Called after ``after_create`` / ``after_update`` so the ops run on the
+    same session (and thus the same SQLite connection) as the main request.
+    """
+    from sqlalchemy import text
+
+    from fastapi_admin_kit.db import get_db_session
+
+    ops = getattr(request.state, "_admin_perm_pending_ops", None)
+    if not ops:
+        return
+    request.state._admin_perm_pending_ops = []
+    session = get_db_session(request)
+    if session is None:
+        return
+    for sql_str, params in ops:
+        await session.execute(text(sql_str), params)
+
+
 def _get_table_names() -> list[str]:
     from fastapi_admin_kit.registry.core import AdminRegistry
 
@@ -69,39 +90,36 @@ class UserAdmin(ModelAdmin):
             self._save_direct_permissions_after_commit(obj, perm_data, request)
 
     def _save_direct_permissions_after_commit(self, obj, perm_data, request):
-        import os
-        import sqlite3
+        delete_sql = "DELETE FROM admin_user_permissions WHERE user_id = :uid"
+        insert_sql = (
+            "INSERT INTO admin_user_permissions"
+            " (user_id, table_name, can_view, can_create, can_edit, can_delete)"
+            " VALUES (:uid, :tn, :cv, :cc, :ce, :cd)"
+        )
 
-        db_url = os.getenv("DATABASE_URL", "")
-        if "sqlite" in db_url or not db_url:
-            db_path = db_url.split("///")[-1] if "///" in db_url else "test_debug.db"
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
+        ops = []
+        ops.append((delete_sql, {"uid": obj.id}))
 
-            cursor.execute(
-                "DELETE FROM admin_user_permissions WHERE user_id = ?",
-                (obj.id,),
+        for table_name, perms in perm_data.items():
+            if not any(perms.get(a) for a in ["view", "create", "edit", "delete"]):
+                continue
+            ops.append(
+                (
+                    insert_sql,
+                    {
+                        "uid": obj.id,
+                        "tn": table_name,
+                        "cv": 1 if perms.get("view") else 0,
+                        "cc": 1 if perms.get("create") else 0,
+                        "ce": 1 if perms.get("edit") else 0,
+                        "cd": 1 if perms.get("delete") else 0,
+                    },
+                )
             )
 
-            for table_name, perms in perm_data.items():
-                if not any(perms.get(a) for a in ["view", "create", "edit", "delete"]):
-                    continue
-                cursor.execute(
-                    """INSERT INTO admin_user_permissions
-                       (user_id, table_name, can_view, can_create, can_edit, can_delete)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (
-                        obj.id,
-                        table_name,
-                        1 if perms.get("view") else 0,
-                        1 if perms.get("create") else 0,
-                        1 if perms.get("edit") else 0,
-                        1 if perms.get("delete") else 0,
-                    ),
-                )
-
-            conn.commit()
-            conn.close()
+        if not hasattr(request.state, "_admin_perm_pending_ops"):
+            request.state._admin_perm_pending_ops = []
+        request.state._admin_perm_pending_ops.extend(ops)
 
     def get_form_context(self, context, obj=None, request=None):
         from sqlalchemy import select
@@ -205,7 +223,6 @@ class PermissionAdmin(ModelAdmin):
     verbose_name_plural = "Permissions"
     list_display = [
         "id",
-        "role",
         "table_name",
         "can_view",
         "can_create",

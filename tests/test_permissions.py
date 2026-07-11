@@ -152,7 +152,6 @@ class TestHasPermissionNormalUser:
     @pytest.mark.asyncio
     async def test_with_permission_granted(self, session, editor_role, normal_user):
         perm = Permission(
-            role_id=editor_role.id,
             table_name="products",
             can_view=True,
             can_create=True,
@@ -160,6 +159,11 @@ class TestHasPermissionNormalUser:
             can_delete=False,
         )
         session.add(perm)
+        await session.flush()
+        # Refresh role to load M2M relationship
+        await session.refresh(editor_role, ["permissions"])
+        # Link permission to role via M2M
+        editor_role.permissions.append(perm)
         await session.flush()
 
         checker = PermissionChecker(session=session, user=normal_user)
@@ -176,11 +180,15 @@ class TestHasPermissionNormalUser:
     @pytest.mark.asyncio
     async def test_wrong_table_denied(self, session, editor_role, normal_user):
         perm = Permission(
-            role_id=editor_role.id,
             table_name="products",
             can_view=True,
         )
         session.add(perm)
+        await session.flush()
+        # Refresh role to load M2M relationship
+        await session.refresh(editor_role, ["permissions"])
+        # Link permission to role via M2M
+        editor_role.permissions.append(perm)
         await session.flush()
 
         checker = PermissionChecker(session=session, user=normal_user)
@@ -197,8 +205,8 @@ class TestHasPermissionMultiRole:
     async def test_permissions_merged_from_all_roles(
         self, session, editor_role, viewer_role, multi_role_user
     ):
+        # Create permissions for different tables (M2M means one permission per table)
         editor_perm = Permission(
-            role_id=editor_role.id,
             table_name="products",
             can_view=True,
             can_create=True,
@@ -206,8 +214,7 @@ class TestHasPermissionMultiRole:
             can_delete=False,
         )
         viewer_perm = Permission(
-            role_id=viewer_role.id,
-            table_name="products",
+            table_name="orders",
             can_view=True,
             can_create=False,
             can_edit=True,
@@ -215,28 +222,41 @@ class TestHasPermissionMultiRole:
         )
         session.add_all([editor_perm, viewer_perm])
         await session.flush()
+        # Refresh roles to load M2M relationships
+        await session.refresh(editor_role, ["permissions"])
+        await session.refresh(viewer_role, ["permissions"])
+        # Link permissions to roles via M2M
+        editor_role.permissions.append(editor_perm)
+        viewer_role.permissions.append(viewer_perm)
+        await session.flush()
 
         checker = PermissionChecker(session=session, user=multi_role_user)
         assert await checker.has_permission("products", "view") is True
         assert await checker.has_permission("products", "create") is True
-        assert await checker.has_permission("products", "edit") is True
-        assert await checker.has_permission("products", "delete") is False
+        assert await checker.has_permission("orders", "view") is True
+        assert await checker.has_permission("orders", "edit") is True
+        assert await checker.has_permission("orders", "delete") is False
 
     @pytest.mark.asyncio
     async def test_different_tables_per_role(
         self, session, editor_role, viewer_role, multi_role_user
     ):
         editor_perm = Permission(
-            role_id=editor_role.id,
             table_name="products",
             can_view=True,
         )
         viewer_perm = Permission(
-            role_id=viewer_role.id,
             table_name="orders",
             can_view=True,
         )
         session.add_all([editor_perm, viewer_perm])
+        await session.flush()
+        # Refresh roles to load M2M relationships
+        await session.refresh(editor_role, ["permissions"])
+        await session.refresh(viewer_role, ["permissions"])
+        # Link permissions to roles via M2M
+        editor_role.permissions.append(editor_perm)
+        viewer_role.permissions.append(viewer_perm)
         await session.flush()
 
         checker = PermissionChecker(session=session, user=multi_role_user)
@@ -254,11 +274,15 @@ class TestHasPermissionCaching:
     @pytest.mark.asyncio
     async def test_result_is_cached(self, session, editor_role, normal_user):
         perm = Permission(
-            role_id=editor_role.id,
             table_name="products",
             can_view=True,
         )
         session.add(perm)
+        await session.flush()
+        # Refresh role to load M2M relationship
+        await session.refresh(editor_role, ["permissions"])
+        # Link permission to role via M2M
+        editor_role.permissions.append(perm)
         await session.flush()
 
         checker = PermissionChecker(session=session, user=normal_user)
@@ -271,12 +295,16 @@ class TestHasPermissionCaching:
     @pytest.mark.asyncio
     async def test_different_actions_not_shared(self, session, editor_role, normal_user):
         perm = Permission(
-            role_id=editor_role.id,
             table_name="products",
             can_view=True,
             can_delete=False,
         )
         session.add(perm)
+        await session.flush()
+        # Refresh role to load M2M relationship
+        await session.refresh(editor_role, ["permissions"])
+        # Link permission to role via M2M
+        editor_role.permissions.append(perm)
         await session.flush()
 
         checker = PermissionChecker(session=session, user=normal_user)

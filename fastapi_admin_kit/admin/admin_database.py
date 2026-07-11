@@ -148,18 +148,32 @@ class AdminDatabase:
                     )
                     session.add(role)
                     await session.flush()  # get role.id
+                    # Eagerly load M2M relationship for async session
+                    await session.refresh(role, ["permissions"])
 
                     if role_spec.permissions:
                         for table_name, perms in role_spec.permissions.items():
-                            perm = Permission(
-                                role_id=role.id,
-                                table_name=table_name,
-                                can_view=perms.get("view", False),
-                                can_create=perms.get("create", False),
-                                can_edit=perms.get("edit", False),
-                                can_delete=perms.get("delete", False),
+                            # Find or create permission for this table
+                            from sqlalchemy import select as sa_select
+
+                            result = await session.execute(
+                                sa_select(Permission).filter_by(table_name=table_name)
                             )
-                            session.add(perm)
+                            existing = result.scalar_one_or_none()
+                            if existing is None:
+                                perm = Permission(
+                                    table_name=table_name,
+                                    can_view=perms.get("view", False),
+                                    can_create=perms.get("create", False),
+                                    can_edit=perms.get("edit", False),
+                                    can_delete=perms.get("delete", False),
+                                )
+                                session.add(perm)
+                                await session.flush()
+                            else:
+                                perm = existing
+                            # Link permission to role via M2M
+                            role.permissions.append(perm)
 
                 await session.commit()
         else:
@@ -183,15 +197,26 @@ class AdminDatabase:
 
                     if role_spec.permissions:
                         for table_name, perms in role_spec.permissions.items():
-                            perm = Permission(
-                                role_id=role.id,
-                                table_name=table_name,
-                                can_view=perms.get("view", False),
-                                can_create=perms.get("create", False),
-                                can_edit=perms.get("edit", False),
-                                can_delete=perms.get("delete", False),
+                            # Find or create permission for this table
+                            existing = (
+                                session.query(Permission)
+                                .filter_by(table_name=table_name)
+                                .first()
                             )
-                            session.add(perm)
+                            if existing is None:
+                                perm = Permission(
+                                    table_name=table_name,
+                                    can_view=perms.get("view", False),
+                                    can_create=perms.get("create", False),
+                                    can_edit=perms.get("edit", False),
+                                    can_delete=perms.get("delete", False),
+                                )
+                                session.add(perm)
+                                session.flush()
+                            else:
+                                perm = existing
+                            # Link permission to role via M2M
+                            role.permissions.append(perm)
 
                 session.commit()
             finally:
