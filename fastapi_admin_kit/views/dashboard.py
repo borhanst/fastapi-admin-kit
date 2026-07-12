@@ -103,6 +103,24 @@ def dashboard_view_factory(admin: Any):
         audit_query = select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(10)
         recent_audit = (await session.execute(audit_query)).scalars().all()
 
+        # Get 5 most recently active models for Quick Actions
+        recent_model_query = (
+            select(
+                AuditLog.table_name,
+                func.max(AuditLog.timestamp).label("last_activity"),
+            )
+            .group_by(AuditLog.table_name)
+            .order_by(func.max(AuditLog.timestamp).desc())
+            .limit(5)
+        )
+        recent_model_rows = (await session.execute(recent_model_query)).all()
+        model_lookup = {m.table_name: m for m in registered_models}
+        recent_activity_models = [
+            model_lookup[row.table_name]
+            for row in recent_model_rows
+            if row.table_name in model_lookup
+        ]
+
         # Check if charts are enabled
         show_charts = config.get("dashboard_charts", True)
 
@@ -142,6 +160,7 @@ def dashboard_view_factory(admin: Any):
         context: dict[str, Any] = {
             "request": request,
             "registered_models": registered_models,
+            "recent_activity_models": recent_activity_models,
             "stat_cards": stat_cards,
             "recent_audit": recent_audit,
             "show_charts": show_charts,
