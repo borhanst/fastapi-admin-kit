@@ -692,6 +692,10 @@ admin = Admin(
     show_view_on_site=True,
     environment_label="Development",
     environment_color="info",
+    # Hide internal models from admin
+    skip_models=[
+        "OrderItem",
+    ],
     # Custom CSS injection
     custom_css="",
     # Mobile

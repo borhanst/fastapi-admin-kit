@@ -206,6 +206,8 @@ class RoleAdmin(ModelAdmin):
     icon = "shield-check"
     list_display = ["id", "name", "description"]
     search_fields = ["name"]
+    skip_auto_routes = True
+    exclude = ["users"]
 
 
 class RefreshTokenAdmin(ModelAdmin):

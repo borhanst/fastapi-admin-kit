@@ -134,6 +134,7 @@ class Admin:
         uploads_url: str = "/uploads",
         # Behavior flags
         auto_discover: bool = True,
+        skip_models: list[str] | None = None,
         # Nav / sidebar
         nav_groups: list[NavGroupConfig] | None = None,
         sidebar_builder: SidebarBuilder | None = None,
@@ -184,6 +185,7 @@ class Admin:
 
         # Flags
         self.auto_discover = auto_discover
+        self.skip_models = set(skip_models) if skip_models else set()
 
         # Nav / sidebar
         self.nav_groups = nav_groups or []
@@ -256,6 +258,16 @@ class Admin:
         # 8. Auto-discover models
         if self.auto_discover:
             self.registry.auto_discover()
+
+        # 8.1 Apply skip_models — mark listed models to hide from admin
+        # Built-in internal models are always hidden from admin
+        default_skip = {"RefreshToken", "UserPermission", "UserTOTP"}
+        all_skip = default_skip | self.skip_models
+        skip_lower = {s.lower() for s in all_skip}
+        for registered in self.registry.all():
+            model_name = getattr(registered.model, "__name__", "").lower()
+            if model_name in skip_lower:
+                registered.admin.skip_auto_routes = True
 
         # 9. Validate require_tags
         if self.require_tags:
@@ -556,6 +568,8 @@ class Admin:
         from fastapi_admin_kit.views.roles import router as roles_router
 
         for registered in self.registry.all():
+            if getattr(registered.admin, "skip_auto_routes", False):
+                continue
             model_router = build_model_router(registered)
             app.include_router(model_router, prefix=self.admin_path)
 

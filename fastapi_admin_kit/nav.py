@@ -100,6 +100,8 @@ class DefaultSidebarBuilder:
     ) -> list[BuiltNavGroup]:
         buckets: dict[str, list[BuiltNavItem]] = {}
         for registered in registry:
+            if getattr(registered.admin, "skip_auto_routes", False):
+                continue
             tags = self._get_tags(registered)
             for tag in tags:
                 buckets.setdefault(tag, []).append(

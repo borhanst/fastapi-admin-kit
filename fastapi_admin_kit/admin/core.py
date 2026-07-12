@@ -150,6 +150,7 @@ class Admin:
         storage: StorageBackend | None = None,
         uploads_url: str = "/uploads",
         auto_discover: bool = True,
+        skip_models: list[str] | None = None,
         nav_groups: list[NavGroupConfig] | None = None,
         sidebar_builder: SidebarBuilder | None = None,
         require_tags: bool = False,
@@ -245,6 +246,7 @@ class Admin:
                 audit=AuditConfig(audit_retention_days=audit_retention_days),
                 behavior=BehaviorConfig(
                     auto_discover=auto_discover,
+                    skip_models=skip_models,
                     dashboard_stats=dashboard_stats or [],
                     dashboard_charts=dashboard_charts,
                 ),
@@ -526,7 +528,18 @@ class Admin:
         if self.config.behavior.auto_discover:
             self.registry.auto_discover()
 
-        # 8.2 Attach audit event listeners (after registry is populated)
+        # 8.2 Apply skip_models — mark listed models to hide from admin
+        skip_models = self.config.behavior.skip_models
+        # Built-in internal models are always hidden from admin
+        default_skip = {"RefreshToken", "UserPermission", "UserTOTP"}
+        all_skip = default_skip | skip_models
+        skip_lower = {s.lower() for s in all_skip}
+        for registered in self.registry.all():
+            model_name = getattr(registered.model, "__name__", "").lower()
+            if model_name in skip_lower:
+                registered.admin.skip_auto_routes = True
+
+        # 8.3 Attach audit event listeners (after registry is populated)
         from fastapi_admin_kit.audit.listener import attach_audit_listener
 
         engine = self.database.engine
@@ -966,8 +979,8 @@ class Admin:
             RefreshTokenAdmin,
             RoleAdmin,
             UserAdmin,
-            UserPermissionAdmin,
-            UserTOTPAdmin,
+            # UserPermissionAdmin,
+            # UserTOTPAdmin,
             AuditLogAdmin,
         )
         from fastapi_admin_kit.audit.models import AuditLog
@@ -984,10 +997,10 @@ class Admin:
         builtin_models = [
             (User, UserAdmin),
             (Role, RoleAdmin),
-            (RefreshToken, RefreshTokenAdmin),
+            # (RefreshToken, RefreshTokenAdmin),
             (Permission, PermissionAdmin),
-            (UserPermission, UserPermissionAdmin),
-            (UserTOTP, UserTOTPAdmin),
+            # (UserPermission, UserPermissionAdmin),
+            # (UserTOTP, UserTOTPAdmin),
             (LoginAttempt, LoginAttemptAdmin),
             (AuditLog, AuditLogAdmin),
         ]
