@@ -118,6 +118,15 @@ class AdminDatabase:
                         if hasattr(default_sql, "text"):
                             default_sql = default_sql.text
                         default = f" DEFAULT {default_sql}"
+                    elif not col.nullable:
+                        # SQLite requires a default for NOT NULL columns being added
+                        type_defaults = {
+                            "VARCHAR": "''", "TEXT": "''", "INTEGER": "0",
+                            "FLOAT": "0.0", "BOOLEAN": "0", "DATETIME": "''",
+                        }
+                        sql_type = col_type.upper().split("(")[0]
+                        temp_val = type_defaults.get(sql_type, "''")
+                        default = f" DEFAULT {temp_val}"
                     sql = text(
                         f"""ALTER TABLE {table_name}
                         ADD COLUMN
