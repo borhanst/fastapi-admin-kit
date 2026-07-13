@@ -272,8 +272,8 @@ class TestAdminRegistry:
         registered = reg.register(Product)
         assert registered.model is Product
         assert registered.table_name == "products"
-        assert registered.verbose_name == "Products"
-        assert registered.verbose_name_plural == "Productss"
+        assert registered.verbose_name == "Product"
+        assert registered.verbose_name_plural == "Products"
         assert len(registered.columns) == 5
         assert registered.pk_field == "id"
 
@@ -298,8 +298,8 @@ class TestAdminRegistry:
         reg = AdminRegistry()
         reg.clear()
         registered = reg.register(Category)
-        assert registered.verbose_name == "Categories"
-        assert registered.verbose_name_plural == "Categoriess"
+        assert registered.verbose_name == "Category"
+        assert registered.verbose_name_plural == "Categories"
 
     def test_register_strips_id_from_foreign_key(self):
         from fastapi_admin_kit.registry import AdminRegistry

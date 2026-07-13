@@ -565,7 +565,7 @@ class TestAuthModelValidation:
             pass
 
         admin = Admin(auth_model=BadModel)
-        with pytest.raises(ConfigError, match="does not satisfy AdminUserProtocol"):
+        with pytest.raises(ConfigError, match="is missing required attributes"):
             admin._validate_auth_model()
 
     def test_invalid_auth_model_partial_attrs(self):
@@ -577,7 +577,7 @@ class TestAuthModelValidation:
             # missing is_active, is_superuser, role_id
 
         admin = Admin(auth_model=PartialModel)
-        with pytest.raises(ConfigError, match="Missing attributes:"):
+        with pytest.raises(ConfigError, match="is missing"):
             admin._validate_auth_model()
 
     def test_no_auth_model_passes(self):

@@ -222,7 +222,7 @@ class PermissionAdmin(ModelAdmin):
     icon = "lock"
     verbose_name = "Permission"
     verbose_name_plural = "Permissions"
-    exclude = ["user"]
+    exclude = ["roles"]
     list_display = [
         "id",
         "name",
