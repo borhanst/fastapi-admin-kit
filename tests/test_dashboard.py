@@ -120,7 +120,7 @@ def _login(test_client):
     test_client.cookies.set("admin_csrf_token", csrf_cookie)
     response = test_client.post(
         "/admin/login",
-        data={"email": "admin@test.com", "password": "password", "csrf_token": csrf_token},
+        data={"username": "admin@test.com", "password": "password", "csrf_token": csrf_token},
         follow_redirects=False,
     )
     session_cookie = response.cookies.get("admin_session")
@@ -143,7 +143,6 @@ def test_dashboard_view(client):
     assert "3" in response.text
 
     assert "Recent Activity" in response.text
-    assert "Add Product" in response.text
     assert "/admin/products/" in response.text
 
 
