@@ -20,36 +20,36 @@
 
 ## Models
 
-### AdminUser
+### User
 
-::: fastapi_admin_kit.auth.models.AdminUser
+::: fastapi_admin_kit.auth.models.User
     options:
       show_source: true
       show_root_heading: true
       members_order: source
       heading_level: 3
 
-### AdminRole
+### Role
 
-::: fastapi_admin_kit.auth.models.AdminRole
+::: fastapi_admin_kit.auth.models.Role
     options:
       show_source: true
       show_root_heading: true
       members_order: source
       heading_level: 3
 
-### AdminPermission
+### Permission
 
-::: fastapi_admin_kit.auth.models.AdminPermission
+::: fastapi_admin_kit.auth.models.Permission
     options:
       show_source: true
       show_root_heading: true
       members_order: source
       heading_level: 3
 
-### AdminUserPermission
+### UserPermission
 
-::: fastapi_admin_kit.auth.models.AdminUserPermission
+::: fastapi_admin_kit.auth.models.UserPermission
     options:
       show_source: true
       show_root_heading: true
