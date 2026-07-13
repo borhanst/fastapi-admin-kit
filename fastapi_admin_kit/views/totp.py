@@ -34,9 +34,7 @@ async def totp_setup_view(
     templates = request.app.state.admin_jinja_env
     session = get_db_session(request)
 
-    result = await session.execute(
-        select(UserTOTP).where(UserTOTP.user_id == user.id)
-    )
+    result = await session.execute(select(UserTOTP).where(UserTOTP.user_id == user.id))
     totp_record = result.scalar_one_or_none()
 
     secret = None
@@ -86,9 +84,7 @@ async def totp_enable_post(
 
     code = form.get("code", "").strip()
 
-    result = await session.execute(
-        select(UserTOTP).where(UserTOTP.user_id == user.id)
-    )
+    result = await session.execute(select(UserTOTP).where(UserTOTP.user_id == user.id))
     totp_record = result.scalar_one_or_none()
 
     if totp_record is None:
@@ -141,7 +137,6 @@ async def totp_disable_post(
     _csrf: bool = Depends(require_csrf_token),
 ):
     """Disable 2FA after verifying TOTP code and password."""
-    
 
     session = get_db_session(request)
     form = await request.form()
@@ -163,9 +158,7 @@ async def totp_disable_post(
             ),
         )
 
-    result = await session.execute(
-        select(UserTOTP).where(UserTOTP.user_id == user.id)
-    )
+    result = await session.execute(select(UserTOTP).where(UserTOTP.user_id == user.id))
     totp_record = result.scalar_one_or_none()
 
     if totp_record is None or not totp_record.enabled:
@@ -204,9 +197,7 @@ async def totp_regenerate_backup_codes(
     """Generate new backup codes (invalidates old ones)."""
     session = get_db_session(request)
 
-    result = await session.execute(
-        select(UserTOTP).where(UserTOTP.user_id == user.id)
-    )
+    result = await session.execute(select(UserTOTP).where(UserTOTP.user_id == user.id))
     totp_record = result.scalar_one_or_none()
 
     if totp_record is None or not totp_record.enabled:

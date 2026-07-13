@@ -83,14 +83,10 @@ def test_admin_user_create(session):
 
 
 def test_admin_user_unique_email(session):
-    session.add(
-        User(email="dup@example.com", hashed_password="h")
-    )
+    session.add(User(email="dup@example.com", hashed_password="h"))
     session.flush()
     with pytest.raises(Exception):
-        session.add(
-            User(email="dup@example.com", hashed_password="h")
-        )
+        session.add(User(email="dup@example.com", hashed_password="h"))
         session.flush()
 
 
@@ -139,14 +135,10 @@ def test_admin_permission_create(session):
 
 
 def test_admin_permission_unique_constraint(session):
-    session.add(
-        Permission(table_name="products", can_view=True)
-    )
+    session.add(Permission(table_name="products", can_view=True))
     session.flush()
     with pytest.raises(Exception):
-        session.add(
-            Permission(table_name="products", can_view=False)
-        )
+        session.add(Permission(table_name="products", can_view=False))
         session.flush()
 
 

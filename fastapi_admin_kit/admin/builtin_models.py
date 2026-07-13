@@ -41,7 +41,7 @@ class UserAdmin(ModelAdmin):
     verbose_name_plural = "Admin Users"
     list_display = ["id", "email", "full_name", "is_superuser", "is_active"]
     search_fields = ["email", "full_name"]
-    inline_edit=True
+    inline_edit = True
     exclude = ["hashed_password", "password_changed_at"]
     extra_fields = [
         ExtraField(
@@ -135,15 +135,14 @@ class UserAdmin(ModelAdmin):
 
                 async def _load_perms():
                     result = await session.execute(
-                        select(UserPermission).where(
-                            UserPermission.user_id == obj.id
-                        )
+                        select(UserPermission).where(UserPermission.user_id == obj.id)
                     )
                     return result.scalars().all()
 
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     import concurrent.futures
+
                     with concurrent.futures.ThreadPoolExecutor() as pool:
                         perms = pool.submit(asyncio.run, _load_perms()).result()
                 else:
@@ -179,6 +178,7 @@ class UserAdmin(ModelAdmin):
 
             if loop and loop.is_running():
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     perm_data_raw = pool.submit(asyncio.run, _get_perm_data()).result()
             elif loop:

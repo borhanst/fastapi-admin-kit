@@ -19,9 +19,7 @@ from fastapi_admin_kit.widgets.inputs import FileUploadWidget, ImageUploadWidget
 _FILE_WIDGET_TYPES = (FileUploadWidget, ImageUploadWidget)
 
 
-def _apply_parsed_to_obj(
-    obj: Any, parsed: dict[str, Any], registered: RegisteredModel
-) -> None:
+def _apply_parsed_to_obj(obj: Any, parsed: dict[str, Any], registered: RegisteredModel) -> None:
     """Apply parsed data to an ORM object, mapping relationship names to FK columns."""
     from sqlalchemy import inspect as sa_inspect
 
@@ -106,6 +104,7 @@ async def _apply_m2m_from_data(
                 continue
             try:
                 from fastapi_admin_kit.inspection import cast_pk_value
+
                 loaded = await session.get(target_model, cast_pk_value(target_model, pk))
                 if loaded:
                     objs.append(loaded)
@@ -115,9 +114,7 @@ async def _apply_m2m_from_data(
         setattr(obj, rel_key, objs)
 
 
-def _resolve_rel_keys(
-    parsed: dict[str, Any], registered: RegisteredModel
-) -> dict[str, Any]:
+def _resolve_rel_keys(parsed: dict[str, Any], registered: RegisteredModel) -> dict[str, Any]:
     """Convert relationship keys in parsed data to their FK column names."""
     from sqlalchemy import inspect as sa_inspect
 
@@ -304,11 +301,7 @@ class ViewFactory:
             widget = registered.get_widget(field_meta.name)
 
             if isinstance(widget, _FILE_WIDGET_TYPES):
-                action = (
-                    form_data.get(f"_action_{field_meta.name}", "keep")
-                    if obj
-                    else None
-                )
+                action = form_data.get(f"_action_{field_meta.name}", "keep") if obj else None
                 await _handle_file_field(
                     request,
                     widget,
@@ -319,11 +312,7 @@ class ViewFactory:
                     parsed=parsed,
                     errors=errors,
                 )
-                if (
-                    obj is None
-                    and field_meta.name not in errors
-                    and field_meta.name not in parsed
-                ):
+                if obj is None and field_meta.name not in errors and field_meta.name not in parsed:
                     parsed[field_meta.name] = None
                 continue
 
@@ -332,6 +321,7 @@ class ViewFactory:
             required_on_create = (field_meta.extra or {}).get("required_on_create")
             if obj is None and required_on_create is not None:
                 from fastapi_admin_kit.types import FieldMeta
+
                 effective_field = FieldMeta(
                     name=field_meta.name,
                     label=field_meta.label,
@@ -355,9 +345,7 @@ class ViewFactory:
     def create_list_view(self, registered: RegisteredModel):
         """Create a list view handler for the given model."""
 
-        async def list_view(
-            request: Request, q: str = "", page: int = 1, _: Any = None
-        ):
+        async def list_view(request: Request, q: str = "", page: int = 1, _: Any = None):
             templates = request.app.state.admin_jinja_env
             checker = await _resolve_permission_checker(request)
             if checker:
@@ -367,9 +355,7 @@ class ViewFactory:
             )
             is_htmx = request.headers.get("HX-Request") == "true"
             if is_htmx:
-                return templates.TemplateResponse(
-                    request, "partials/list_table.html", ctx
-                )
+                return templates.TemplateResponse(request, "partials/list_table.html", ctx)
             return templates.TemplateResponse(request, "pages/list.html", ctx)
 
         list_view.__name__ = f"list_{registered.table_name}"
@@ -402,9 +388,7 @@ class ViewFactory:
             if checker:
                 await checker.load_permissions(registered.table_name)
 
-            parsed, errors = await self._parse_form_fields(
-                registered, form_data, request, obj=None
-            )
+            parsed, errors = await self._parse_form_fields(registered, form_data, request, obj=None)
 
             if errors:
                 await session.rollback()
@@ -416,9 +400,7 @@ class ViewFactory:
                     is_create=True,
                     permission_checker=checker,
                 )
-                return templates.TemplateResponse(
-                    request, "pages/form.html", ctx, status_code=422
-                )
+                return templates.TemplateResponse(request, "pages/form.html", ctx, status_code=422)
 
             try:
                 parsed = registered.admin.validate_create(parsed, request)
@@ -432,9 +414,7 @@ class ViewFactory:
                     is_create=True,
                     permission_checker=checker,
                 )
-                return templates.TemplateResponse(
-                    request, "pages/form.html", ctx, status_code=422
-                )
+                return templates.TemplateResponse(request, "pages/form.html", ctx, status_code=422)
 
             parsed = registered.admin.process_form_data(parsed, request)
 
@@ -461,6 +441,7 @@ class ViewFactory:
             templates = request.app.state.admin_jinja_env
             session = get_db_session(request)
             from fastapi_admin_kit.inspection import cast_pk_value
+
             obj = await session.get(registered.model, cast_pk_value(registered.model, id))
             if not obj:
                 raise HTTPException(status_code=404, detail="Not found")
@@ -488,6 +469,7 @@ class ViewFactory:
             templates = request.app.state.admin_jinja_env
             session = get_db_session(request)
             from fastapi_admin_kit.inspection import cast_pk_value
+
             obj = await session.get(registered.model, cast_pk_value(registered.model, id))
             if not obj:
                 raise HTTPException(status_code=404, detail="Not found")
@@ -496,9 +478,7 @@ class ViewFactory:
             if checker:
                 await checker.load_permissions(registered.table_name)
 
-            parsed, errors = await self._parse_form_fields(
-                registered, form_data, request, obj=obj
-            )
+            parsed, errors = await self._parse_form_fields(registered, form_data, request, obj=obj)
 
             if errors:
                 await session.rollback()
@@ -513,9 +493,7 @@ class ViewFactory:
                     permission_checker=checker,
                     rel_labels=rel_labels,
                 )
-                return templates.TemplateResponse(
-                    request, "pages/form.html", ctx, status_code=422
-                )
+                return templates.TemplateResponse(request, "pages/form.html", ctx, status_code=422)
 
             try:
                 parsed = registered.admin.validate_update(obj, parsed, request)
@@ -532,9 +510,7 @@ class ViewFactory:
                     permission_checker=checker,
                     rel_labels=rel_labels,
                 )
-                return templates.TemplateResponse(
-                    request, "pages/form.html", ctx, status_code=422
-                )
+                return templates.TemplateResponse(request, "pages/form.html", ctx, status_code=422)
 
             parsed = registered.admin.process_form_data(parsed, request)
 
@@ -562,6 +538,7 @@ class ViewFactory:
             except Exception:
                 pass
             from fastapi_admin_kit.inspection import cast_pk_value
+
             obj = await session.get(registered.model, cast_pk_value(registered.model, id))
             if not obj:
                 raise HTTPException(status_code=404, detail="Not found")
@@ -570,9 +547,7 @@ class ViewFactory:
                 await session.delete(obj)
                 await session.flush()
                 registered.admin.after_delete(obj, request)
-                await add_flash(
-                    request, "success", f"{registered.verbose_name} deleted."
-                )
+                await add_flash(request, "success", f"{registered.verbose_name} deleted.")
             except Exception as e:
                 await session.rollback()
                 await add_flash(request, "error", f"Cannot delete: {str(e)}")
@@ -603,9 +578,7 @@ class ViewFactory:
                     ctx = await self.context_builder.build_list_context(
                         registered, request, permission_checker=None
                     )
-                    return templates.TemplateResponse(
-                        request, "partials/list_table.html", ctx
-                    )
+                    return templates.TemplateResponse(request, "partials/list_table.html", ctx)
                 url = f"{request.app.state.admin_config['admin_path']}/{registered.table_name}/"
                 return RedirectResponse(url=url, status_code=303)
 
@@ -623,13 +596,9 @@ class ViewFactory:
                         f"{len(ids)} {registered.verbose_name}(s) deleted.",
                     )
                 else:
-                    action_fn = getattr(
-                        registered.admin, f"action_{action}", None
-                    )
+                    action_fn = getattr(registered.admin, f"action_{action}", None)
                     if not action_fn:
-                        raise HTTPException(
-                            status_code=400, detail=f"Unknown action: {action}"
-                        )
+                        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
                     for pid in ids:
                         obj = await session.get(registered.model, int(pid))
                         if obj:
@@ -648,9 +617,7 @@ class ViewFactory:
                 ctx = await self.context_builder.build_list_context(
                     registered, request, permission_checker=None
                 )
-                return templates.TemplateResponse(
-                    request, "partials/list_table.html", ctx
-                )
+                return templates.TemplateResponse(request, "partials/list_table.html", ctx)
 
             url = f"{request.app.state.admin_config['admin_path']}/{registered.table_name}/"
             return RedirectResponse(url=url, status_code=303)

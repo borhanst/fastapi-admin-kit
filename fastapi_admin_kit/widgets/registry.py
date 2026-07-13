@@ -74,9 +74,7 @@ class WidgetRegistry:
 
     def unregister_name(self, pattern: str) -> None:
         """Remove all registrations for a name pattern."""
-        self._name_patterns = [
-            (p, w) for p, w in self._name_patterns if p != pattern.lower()
-        ]
+        self._name_patterns = [(p, w) for p, w in self._name_patterns if p != pattern.lower()]
 
     def clear(self) -> None:
         """Remove all registered mappings."""

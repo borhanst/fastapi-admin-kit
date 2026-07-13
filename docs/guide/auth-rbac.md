@@ -69,7 +69,7 @@ from fastapi_admin_kit.auth.models import AdminUser as _AdminUser
 
 class AdminUser(_AdminUser):
     __tablename__ = "admin_users"  # Same table
-    
+
     department = Column(String(100))
     avatar_url = Column(String(500))
     phone = Column(String(20))
@@ -81,13 +81,13 @@ class AdminUser(_AdminUser):
 from fastapi_admin_kit.auth import AuthBackend
 
 class MyUserBackend(AuthBackend):
-    
+
     async def authenticate(self, email: str, password: str, session: Session):
         user = session.query(User).filter_by(email=email).first()
         if not user or not verify_password(password, user.hashed_password):
             return None
         return user
-    
+
     async def get_user(self, user_id: int, session: Session):
         return session.query(User).get(user_id)
 
@@ -322,7 +322,7 @@ from fastapi_admin_kit.auth import AuthBackend
 from fastapi import HTTPException
 
 class MyAuthBackend(AuthBackend):
-    
+
     async def authenticate(self, email: str, password: str, session: Session):
         """Validate credentials and return user"""
         user = session.query(User).filter_by(email=email).first()
@@ -333,11 +333,11 @@ class MyAuthBackend(AuthBackend):
         if not user.is_active:
             return None
         return user
-    
+
     async def get_user(self, user_id: int, session: Session):
         """Load user by ID from session"""
         return session.query(User).get(user_id)
-    
+
     def get_user_id(self, user):
         """Extract user ID for session"""
         return user.id

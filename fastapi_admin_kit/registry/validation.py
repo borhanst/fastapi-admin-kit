@@ -61,9 +61,7 @@ class ModelValidator:
 
             if isinstance(model, type) and issubclass(model, SQLModel):
                 # Check if it's a table model (has registry = table is created)
-                has_table = getattr(model, "table", False) or hasattr(
-                    model, "metadata"
-                )
+                has_table = getattr(model, "table", False) or hasattr(model, "metadata")
                 if not has_table:
                     raise ValueError(
                         f"{model.__name__} is a SQLModel but has no table. "
@@ -73,9 +71,7 @@ class ModelValidator:
             pass
 
         if not hasattr(model, "__tablename__"):
-            raise ValueError(
-                f"{model.__name__} is not a SQLAlchemy model (no __tablename__)"
-            )
+            raise ValueError(f"{model.__name__} is not a SQLAlchemy model (no __tablename__)")
 
     def _check_table_name_conflicts(self, model: type) -> None:
         """Check for table name conflicts with existing registrations.

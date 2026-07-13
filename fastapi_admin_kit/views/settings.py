@@ -25,6 +25,7 @@ async def theme_settings(
         "admin_config": request.app.state.admin_config,
     }
     from fastapi_admin_kit.views.sidebar import inject_sidebar_context
+
     await inject_sidebar_context(request, context)
     template = templates.get_template("pages/settings/theme.html")
     html = template.render(**context)

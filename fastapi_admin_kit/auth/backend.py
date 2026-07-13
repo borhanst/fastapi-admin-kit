@@ -37,16 +37,17 @@ class AuthBackend(ABC):
 
     @abstractmethod
     async def authenticate(
-        self, credential: str, password: str, session: Any,
+        self,
+        credential: str,
+        password: str,
+        session: Any,
         login_field: str = "email",
     ) -> AdminUserProtocol | None:
         """Verify credentials. Return user object if valid, ``None`` otherwise."""
         ...
 
     @abstractmethod
-    async def get_user(
-        self, user_id: int | str, session: Any
-    ) -> AdminUserProtocol | None:
+    async def get_user(self, user_id: int | str, session: Any) -> AdminUserProtocol | None:
         """Load user by PK. Return ``None`` if not found or inactive."""
         ...
 
@@ -63,10 +64,14 @@ class BuiltinAuthBackend(AuthBackend):
         if self._auth_model is not None:
             return self._auth_model
         from fastapi_admin_kit.auth.models import User
+
         return User
 
     async def authenticate(
-        self, credential: str, password: str, session: Any,
+        self,
+        credential: str,
+        password: str,
+        session: Any,
         login_field: str = "email",
     ) -> AdminUserProtocol | None:
         from sqlalchemy import select
@@ -89,9 +94,7 @@ class BuiltinAuthBackend(AuthBackend):
             return None
         return user
 
-    async def get_user(
-        self, user_id: int | str, session: Any
-    ) -> AdminUserProtocol | None:
+    async def get_user(self, user_id: int | str, session: Any) -> AdminUserProtocol | None:
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
 

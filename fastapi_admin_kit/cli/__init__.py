@@ -28,20 +28,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="FastAPI Admin Kit CLI — manage admin users and scaffold projects.",
     )
-    subparsers = parser.add_subparsers(
-        dest="command", help="Available commands"
-    )
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Register command groups
     register_user_commands(subparsers)
 
     # init — scaffold a new FastAPI project
-    init_parser = subparsers.add_parser(
-        "init", help="Create a new FastAPI project with uv"
-    )
-    init_parser.add_argument(
-        "name", nargs="?", default=None, help="Project name"
-    )
+    init_parser = subparsers.add_parser("init", help="Create a new FastAPI project with uv")
+    init_parser.add_argument("name", nargs="?", default=None, help="Project name")
     init_parser.add_argument(
         "-l",
         "--layout",
@@ -55,12 +49,8 @@ def main() -> None:
         default=None,
         help="Target directory (defaults to project name)",
     )
-    init_parser.add_argument(
-        "--no-venv", action="store_true", help="Skip uv venv creation"
-    )
-    init_parser.add_argument(
-        "--no-git", action="store_true", help="Skip git init"
-    )
+    init_parser.add_argument("--no-venv", action="store_true", help="Skip uv venv creation")
+    init_parser.add_argument("--no-git", action="store_true", help="Skip git init")
 
     args = parser.parse_args()
 

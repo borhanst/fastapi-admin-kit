@@ -24,6 +24,7 @@ async def add_flash(request: Request, level: str, message: str) -> None:
     data.setdefault(SESSION_KEY, []).append({"level": level, "text": message})
     if hasattr(session_backend, "save"):
         from starlette.responses import Response
+
         response = Response()
         session_backend.save(response, data)
 
@@ -40,6 +41,7 @@ async def get_flash_messages(request: Request) -> list[dict[str, str]]:
     messages = data.pop(SESSION_KEY, []) if SESSION_KEY in data else []
     if hasattr(session_backend, "save"):
         from starlette.responses import Response
+
         response = Response()
         session_backend.save(response, data)
     return messages

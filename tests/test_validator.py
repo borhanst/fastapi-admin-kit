@@ -108,9 +108,7 @@ class TestModelValidatorCheckTableNameConflicts:
         registry.clear()
         validator = ModelValidator(registry)
         registry.register(Product)
-        assert (
-            validator.check_table_name_conflicts("validator_products") is True
-        )
+        assert validator.check_table_name_conflicts("validator_products") is True
 
     def test_returns_false_for_different_table(self):
         from fastapi_admin_kit.registry import AdminRegistry
@@ -120,7 +118,4 @@ class TestModelValidatorCheckTableNameConflicts:
         registry.clear()
         validator = ModelValidator(registry)
         registry.register(Product)
-        assert (
-            validator.check_table_name_conflicts("validator_categories")
-            is False
-        )
+        assert validator.check_table_name_conflicts("validator_categories") is False

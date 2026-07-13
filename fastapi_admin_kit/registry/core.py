@@ -53,9 +53,7 @@ class RegisteredModel:
             return [f for f in self.admin.list_display if f in valid]
         return [c.name for c in self.columns if not c.primary_key]
 
-    def get_widget(
-        self, field_name: str, resolver: WidgetResolver | None = None
-    ) -> Widget:
+    def get_widget(self, field_name: str, resolver: WidgetResolver | None = None) -> Widget:
         from fastapi_admin_kit.inspection import auto_label
         from fastapi_admin_kit.widgets.registry import widget_registry
         from fastapi_admin_kit.widgets.relation import (
@@ -72,9 +70,7 @@ class RegisteredModel:
             return overrides[field_name]
 
         col = next((c for c in self.columns if c.name == field_name), None)
-        rel = next(
-            (r for r in self.relationships if r.name == field_name), None
-        )
+        rel = next((r for r in self.relationships if r.name == field_name), None)
         if col is not None:
             widget = resolver.resolve(col)
             if (
@@ -242,10 +238,7 @@ class AdminRegistry:
                     cls = mapper.class_
                     if cls not in seen:
                         seen.add(cls)
-                        if (
-                            hasattr(cls, "__tablename__")
-                            and cls.__tablename__ not in self._models
-                        ):
+                        if hasattr(cls, "__tablename__") and cls.__tablename__ not in self._models:
                             discovered.append(self.register(cls))
 
         # Discover SQLModel subclasses (if installed)

@@ -79,9 +79,7 @@ class Category(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(max_length=100, unique=True)
     description: str | None = None
-    created_at: datetime | None = Field(
-        default=None, sa_column_kwargs={"server_default": "now()"}
-    )
+    created_at: datetime | None = Field(default=None, sa_column_kwargs={"server_default": "now()"})
 
     products: list["Product"] = Relationship(back_populates="category")
 
@@ -100,12 +98,8 @@ class Product(SQLModel, table=True):
     category_id: int | None = Field(default=None, foreign_key="category.id")
     is_active: bool = Field(default=True)
     sort_order: int = Field(default=0)
-    created_at: datetime | None = Field(
-        default=None, sa_column_kwargs={"server_default": "now()"}
-    )
-    updated_at: datetime | None = Field(
-        default=None, sa_column_kwargs={"onupdate": "now()"}
-    )
+    created_at: datetime | None = Field(default=None, sa_column_kwargs={"server_default": "now()"})
+    updated_at: datetime | None = Field(default=None, sa_column_kwargs={"onupdate": "now()"})
 
     category: Category | None = Relationship(back_populates="products")
 
@@ -196,15 +190,11 @@ class ProductAdmin(ModelAdmin):
 # Database Setup
 # ============================================================================
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", "sqlite+aiosqlite:///./test_sqlmodel_debug.db"
-)
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./test_sqlmodel_debug.db")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
 
 engine = create_async_engine(DATABASE_URL, echo=False)
-async_session_maker = sessionmaker(
-    engine, class_=AsyncSession, expire_on_commit=False
-)
+async_session_maker = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
 # ============================================================================

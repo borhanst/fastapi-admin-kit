@@ -51,9 +51,7 @@ async def _resolve_permission_checker(request: Request) -> Any:
 class ListHTMLRenderer:
     """SRP: Render list view as HTML template."""
 
-    async def render(
-        self, request: Request, context: dict[str, Any]
-    ) -> Response:
+    async def render(self, request: Request, context: dict[str, Any]) -> Response:
         templates = request.app.state.admin_jinja_env
         is_htmx = request.headers.get("HX-Request") == "true"
         template = "partials/list_table.html" if is_htmx else "pages/list.html"
@@ -63,14 +61,10 @@ class ListHTMLRenderer:
 class FormHTMLRenderer:
     """SRP: Render create/edit form as HTML template."""
 
-    async def render(
-        self, request: Request, context: dict[str, Any]
-    ) -> Response:
+    async def render(self, request: Request, context: dict[str, Any]) -> Response:
         templates = request.app.state.admin_jinja_env
         status = 422 if context.get("errors") else 200
-        return templates.TemplateResponse(
-            request, "pages/form.html", context, status_code=status
-        )
+        return templates.TemplateResponse(request, "pages/form.html", context, status_code=status)
 
 
 # ---------------------------------------------------------------------------
@@ -202,11 +196,7 @@ class HTMLFormParser:
             widget = self.registered.get_widget(field_meta.name)
 
             if isinstance(widget, _FILE_WIDGET_TYPES):
-                action = (
-                    form_data.get(f"_action_{field_meta.name}", "keep")
-                    if obj
-                    else None
-                )
+                action = form_data.get(f"_action_{field_meta.name}", "keep") if obj else None
                 await _handle_file_field(
                     request,
                     widget,
@@ -217,11 +207,7 @@ class HTMLFormParser:
                     parsed=parsed,
                     errors=errors,
                 )
-                if (
-                    obj is None
-                    and field_meta.name not in errors
-                    and field_meta.name not in parsed
-                ):
+                if obj is None and field_meta.name not in errors and field_meta.name not in parsed:
                     parsed[field_meta.name] = None
                 continue
 
@@ -261,9 +247,7 @@ class JSONBodyParser:
     ) -> tuple[dict[str, Any], dict[str, list[str]]]:
         body = await request.json()
         valid_fields = {col.name for col in self.registered.columns}
-        filtered = {
-            k: v for k, v in body.items() if k in valid_fields and k != "id"
-        }
+        filtered = {k: v for k, v in body.items() if k in valid_fields and k != "id"}
         return filtered, {}
 
 
@@ -345,10 +329,7 @@ class DefaultQueryProvider:
                                 col = prop.columns[0] if prop.columns else None
                                 if col is not None:
                                     for fk in col.foreign_keys:
-                                        if (
-                                            fk.column.table
-                                            == rel.mapper.persist_selectable
-                                        ):
+                                        if fk.column.table == rel.mapper.persist_selectable:
                                             target_model = rel.mapper.class_
                                             break
                         if target_model is not None:
@@ -483,38 +464,24 @@ class DefaultQueryProvider:
 
             # Range filters
             for filter_field in registered.admin.list_filter:
-                gte_val = request.query_params.get(
-                    f"filter_{filter_field}__gte", ""
-                )
-                lte_val = request.query_params.get(
-                    f"filter_{filter_field}__lte", ""
-                )
-                from_val = request.query_params.get(
-                    f"filter_{filter_field}__from", ""
-                )
-                to_val = request.query_params.get(
-                    f"filter_{filter_field}__to", ""
-                )
+                gte_val = request.query_params.get(f"filter_{filter_field}__gte", "")
+                lte_val = request.query_params.get(f"filter_{filter_field}__lte", "")
+                from_val = request.query_params.get(f"filter_{filter_field}__from", "")
+                to_val = request.query_params.get(f"filter_{filter_field}__to", "")
 
                 if (gte_val or lte_val) and hasattr(model, filter_field):
                     col = getattr(model, filter_field)
                     if gte_val:
                         try:
                             filter_clauses.append(
-                                col
-                                >= type(col.property.columns[0].type)().coerce(
-                                    gte_val
-                                )
+                                col >= type(col.property.columns[0].type)().coerce(gte_val)
                             )
                         except Exception:
                             pass
                     if lte_val:
                         try:
                             filter_clauses.append(
-                                col
-                                <= type(col.property.columns[0].type)().coerce(
-                                    lte_val
-                                )
+                                col <= type(col.property.columns[0].type)().coerce(lte_val)
                             )
                         except Exception:
                             pass
@@ -575,15 +542,9 @@ class DefaultQueryProvider:
             order = registered.admin.ordering or []
         if order:
             col_name = order[0].lstrip("-")
-            col = (
-                getattr(model, col_name, None)
-                if hasattr(model, col_name)
-                else None
-            )
+            col = getattr(model, col_name, None) if hasattr(model, col_name) else None
             if col is not None:
-                base = base.order_by(
-                    desc(col) if order[0].startswith("-") else asc(col)
-                )
+                base = base.order_by(desc(col) if order[0].startswith("-") else asc(col))
 
         per_page = registered.admin.per_page
 
@@ -624,11 +585,15 @@ class DefaultQueryProvider:
             if rel.direction.name == "MANYTOMANY":
                 options.append(selectinload(getattr(self.registered.model, rel.key)))
         from fastapi_admin_kit.inspection import cast_pk_value
+
         int_id = cast_pk_value(self.registered.model, id)
         if options:
             from sqlalchemy import select
-            stmt = select(self.registered.model).options(*options).where(
-                getattr(self.registered.model, self.registered.pk_field) == int_id
+
+            stmt = (
+                select(self.registered.model)
+                .options(*options)
+                .where(getattr(self.registered.model, self.registered.pk_field) == int_id)
             )
             result = await session.execute(stmt)
             return result.scalar_one_or_none()

@@ -46,9 +46,7 @@ class SignedCookieSessionBackend(SessionBackend):
         secure: bool = False,
     ) -> None:
         self._secret_key = secret_key
-        self._serializer = URLSafeTimedSerializer(
-            secret_key, salt="admin-session"
-        )
+        self._serializer = URLSafeTimedSerializer(secret_key, salt="admin-session")
         self._session_ttl = session_ttl
         self.cookie_name = cookie_name
         self.secure = secure

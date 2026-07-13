@@ -25,15 +25,11 @@ class FormValidator:
                 errors[field_meta.name] = widget_errors
                 continue
 
-            validator_fn = getattr(
-                registered.admin, f"validate_{field_meta.name}", None
-            )
+            validator_fn = getattr(registered.admin, f"validate_{field_meta.name}", None)
             if validator_fn:
                 result = validator_fn(value, obj=obj)
                 if result:
-                    errors[field_meta.name] = (
-                        [result] if isinstance(result, str) else list(result)
-                    )
+                    errors[field_meta.name] = [result] if isinstance(result, str) else list(result)
 
         if not errors and hasattr(registered.admin, "validate"):
             obj_errors = registered.admin.validate(parsed, obj=obj)

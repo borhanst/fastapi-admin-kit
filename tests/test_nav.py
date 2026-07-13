@@ -4,20 +4,16 @@ from __future__ import annotations
 
 import pytest
 
+from fastapi_admin_kit.exceptions import ConfigError
 from fastapi_admin_kit.nav import (
-    BuiltNavGroup,
-    BuiltNavItem,
     DefaultSidebarBuilder,
     NavGroupConfig,
-    NavItemConfig,
-    SidebarBuilder,
 )
-from fastapi_admin_kit.registry import AdminRegistry, RegisteredModel, RegisteredModel
+from fastapi_admin_kit.registry import RegisteredModel
 from fastapi_admin_kit.views import ModelAdmin
-from fastapi_admin_kit.exceptions import ConfigError
-
 
 # ── helpers ──────────────────────────────────────────────────────────────────
+
 
 def _make_registered(name, tag, *, nav_order=999, tags=None, icon=None, nav_children=None):
     class M:
@@ -50,8 +46,8 @@ def _make_registered(name, tag, *, nav_order=999, tags=None, icon=None, nav_chil
 
 # ── tag extraction ────────────────────────────────────────────────────────────
 
-class TestGetTags:
 
+class TestGetTags:
     def test_single_tag(self):
         r = _make_registered("Product", "Catalogue")
         assert DefaultSidebarBuilder()._get_tags(r) == ["Catalogue"]
@@ -71,8 +67,8 @@ class TestGetTags:
 
 # ── ordering ──────────────────────────────────────────────────────────────────
 
-class TestOrdering:
 
+class TestOrdering:
     def test_groups_sorted_by_order(self):
         configs = [
             NavGroupConfig(tag="Catalogue", order=2),
@@ -107,11 +103,14 @@ class TestOrdering:
             RegisteredModel(m_a, OrderA(), "a", "A", "As", [], []),
             RegisteredModel(m_b, OrderB(), "b", "B", "Bs", [], []),
         ]
-        groups = DefaultSidebarBuilder().build(registry, [NavGroupConfig(tag="Orders", order=1)], admin_path="/admin")
+        groups = DefaultSidebarBuilder().build(
+            registry, [NavGroupConfig(tag="Orders", order=1)], admin_path="/admin"
+        )
         assert [i.label for i in groups[0].items] == ["As", "Bs", "Cs"]
 
 
 # ── require_tags flag ─────────────────────────────────────────────────────────
+
 
 class TestRequireTags:
     def test_untagged_raises(self):

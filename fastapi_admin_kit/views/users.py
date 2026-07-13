@@ -18,9 +18,7 @@ async def _require_superuser(
     user: AdminUserProtocol = Depends(get_current_admin_user),
 ) -> AdminUserProtocol:
     if not getattr(user, "is_superuser", False):
-        raise HTTPException(
-            status_code=403, detail="Superuser access required."
-        )
+        raise HTTPException(status_code=403, detail="Superuser access required.")
     return user
 
 
@@ -35,12 +33,8 @@ async def roles_search(
     session = get_db_session(request)
 
     if ids:
-        id_list = [
-            int(i.strip()) for i in ids.split(",") if i.strip().isdigit()
-        ]
-        result = await session.execute(
-            select(Role).where(Role.id.in_(id_list))
-        )
+        id_list = [int(i.strip()) for i in ids.split(",") if i.strip().isdigit()]
+        result = await session.execute(select(Role).where(Role.id.in_(id_list)))
     elif q:
         result = await session.execute(
             select(Role)
@@ -53,9 +47,7 @@ async def roles_search(
             .limit(20)
         )
     else:
-        result = await session.execute(
-            select(Role).order_by(Role.name).limit(20)
-        )
+        result = await session.execute(select(Role).order_by(Role.name).limit(20))
 
     roles = result.scalars().all()
     return JSONResponse(content=[{"id": r.id, "label": r.name} for r in roles])

@@ -134,9 +134,7 @@ class TestAuditEventBus:
         received = []
         bus.subscribe("CREATE", lambda e: received.append(e))
 
-        event = AuditEvent(
-            event_type="CREATE", model_name="M", table_name="t", object_id="1"
-        )
+        event = AuditEvent(event_type="CREATE", model_name="M", table_name="t", object_id="1")
         bus.publish(event)
         assert len(received) == 1
         assert received[0] is event
@@ -148,9 +146,7 @@ class TestAuditEventBus:
         bus.subscribe("DELETE", lambda e: results_a.append("a"))
         bus.subscribe("DELETE", lambda e: results_b.append("b"))
 
-        event = AuditEvent(
-            event_type="DELETE", model_name="M", table_name="t", object_id="1"
-        )
+        event = AuditEvent(event_type="DELETE", model_name="M", table_name="t", object_id="1")
         bus.publish(event)
         assert results_a == ["a"]
         assert results_b == ["b"]
@@ -162,18 +158,14 @@ class TestAuditEventBus:
         bus.subscribe("CREATE", lambda e: create_received.append(e))
         bus.subscribe("UPDATE", lambda e: update_received.append(e))
 
-        event = AuditEvent(
-            event_type="CREATE", model_name="M", table_name="t", object_id="1"
-        )
+        event = AuditEvent(event_type="CREATE", model_name="M", table_name="t", object_id="1")
         bus.publish(event)
         assert len(create_received) == 1
         assert len(update_received) == 0
 
     def test_unknown_event_type_does_not_raise(self):
         bus = AuditEventBus()
-        event = AuditEvent(
-            event_type="UNKNOWN", model_name="M", table_name="t", object_id="1"
-        )
+        event = AuditEvent(event_type="UNKNOWN", model_name="M", table_name="t", object_id="1")
         bus.publish(event)  # should not raise
 
     def test_emit_for_object_publishes_event(self):
@@ -285,9 +277,7 @@ class TestAuditLoggerInterface:
                 self.events.append(("DELETE", event))
 
         logger = MemLogger()
-        ev = AuditEvent(
-            event_type="CREATE", model_name="M", table_name="t", object_id="1"
-        )
+        ev = AuditEvent(event_type="CREATE", model_name="M", table_name="t", object_id="1")
         logger.log_create(ev)
         assert len(logger.events) == 1
         assert logger.events[0][0] == "CREATE"
@@ -488,9 +478,7 @@ class TestAuditListenerIntegration:
 
         # Fake registry that recognizes fake_products
         registry = MagicMock()
-        registry.get.side_effect = lambda tn: (
-            MagicMock() if tn == "fake_products" else None
-        )
+        registry.get.side_effect = lambda tn: MagicMock() if tn == "fake_products" else None
 
         bus = AuditEventBus()
         # Wire up a logger that writes to a session
@@ -508,9 +496,7 @@ class TestAuditListenerIntegration:
         bus.subscribe("CREATE", lambda e: received.append(e))
 
         obj = FakeProduct(id=1, name="Widget", price=999)
-        bus.emit_for_object(
-            obj, "CREATE", {"user_id": 1, "user_email": "a@b.com"}
-        )
+        bus.emit_for_object(obj, "CREATE", {"user_id": 1, "user_email": "a@b.com"})
         session.flush()
 
         assert len(received) == 1

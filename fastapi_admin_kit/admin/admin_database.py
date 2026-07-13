@@ -21,17 +21,20 @@ class AdminDatabase:
         self.database_config = database_config
 
     def _ensure_engine(self) -> Any:
-        """Create the async engine from ``database_config`` if no engine is set."""
+        """
+        Create the async engine from ``database_config`` if no engine is set.
+        """
         if self.engine is None and self.database_config is not None:
             self.engine = self.database_config.create_engine()
         return self.engine
 
     async def _create_tables(self) -> None:
         """Create all admin database tables (async-safe)."""
-        from sqlalchemy import inspect as sa_inspect, text
         from sqlalchemy.ext.asyncio import AsyncEngine
 
-        from fastapi_admin_kit.audit import models as _audit_models  # noqa: F401
+        from fastapi_admin_kit.audit import (
+            models as _audit_models,  # noqa: F401
+        )
 
         # Import models to register them with metadata
         from fastapi_admin_kit.auth import models as _auth_models  # noqa: F401
@@ -61,7 +64,8 @@ class AdminDatabase:
 
     def _auto_migrate_sync(self, metadata: Any) -> None:
         """Sync version of auto-migrate."""
-        from sqlalchemy import text, inspect as sa_inspect
+        from sqlalchemy import inspect as sa_inspect
+        from sqlalchemy import text
 
         inspector = sa_inspect(self.engine)
         for table_name, table in metadata.tables.items():
@@ -81,14 +85,19 @@ class AdminDatabase:
                     elif col.default is not None and col.default.is_seq:
                         pass
                     sql = text(
-                        f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type} {nullable}{default}"
+                        f"""ALTER TABLE {table_name}
+                        ADD COLUMN {col.name} {col_type}
+                        {nullable}{default}"""
                     )
                     with self.engine.begin() as conn:
                         conn.execute(sql)
 
     def _auto_migrate(self, sync_conn: Any, metadata: Any) -> None:
-        """Add missing columns to existing tables (sync, called via run_sync)."""
-        from sqlalchemy import inspect as sa_inspect, text
+        """
+        Add missing columns to existing tables (sync, called via run_sync).
+        """
+        from sqlalchemy import inspect as sa_inspect
+        from sqlalchemy import text
 
         dialect = sync_conn.dialect if hasattr(sync_conn, "dialect") else None
         if dialect is None:
@@ -110,13 +119,14 @@ class AdminDatabase:
                             default_sql = default_sql.text
                         default = f" DEFAULT {default_sql}"
                     sql = text(
-                        f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type} {nullable}{default}"
+                        f"""ALTER TABLE {table_name}
+                        ADD COLUMN
+                        {col.name} {col_type} {nullable}{default}
+                        """
                     )
                     sync_conn.execute(sql)
 
-    async def _seed_roles(
-        self, seed_roles: list, seed_roles_overwrite: bool = False
-    ) -> None:
+    async def _seed_roles(self, seed_roles: list, seed_roles_overwrite: bool = False) -> None:
         """Seed default roles if none exist (or if overwrite is enabled)."""
         from sqlalchemy import select
         from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
@@ -128,9 +138,7 @@ class AdminDatabase:
 
         if is_async:
             # Use AsyncSession for async engine
-            session_local = sessionmaker(
-                self.engine, class_=AsyncSession, expire_on_commit=False
-            )
+            session_local = sessionmaker(self.engine, class_=AsyncSession, expire_on_commit=False)
             async with session_local() as session:
                 # Check existing count
                 result = await session.execute(select(Role))
@@ -143,9 +151,7 @@ class AdminDatabase:
                     await session.execute(select(Role).delete())
 
                 for role_spec in seed_roles:
-                    role = Role(
-                        name=role_spec.name, description=role_spec.description
-                    )
+                    role = Role(name=role_spec.name, description=role_spec.description)
                     session.add(role)
                     await session.flush()  # get role.id
                     # Eagerly load M2M relationship for async session
@@ -189,9 +195,7 @@ class AdminDatabase:
                     session.query(Role).delete()
 
                 for role_spec in seed_roles:
-                    role = Role(
-                        name=role_spec.name, description=role_spec.description
-                    )
+                    role = Role(name=role_spec.name, description=role_spec.description)
                     session.add(role)
                     session.flush()  # get role.id
 
@@ -199,9 +203,7 @@ class AdminDatabase:
                         for table_name, perms in role_spec.permissions.items():
                             # Find or create permission for this table
                             existing = (
-                                session.query(Permission)
-                                .filter_by(table_name=table_name)
-                                .first()
+                                session.query(Permission).filter_by(table_name=table_name).first()
                             )
                             if existing is None:
                                 perm = Permission(

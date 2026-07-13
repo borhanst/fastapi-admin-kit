@@ -54,14 +54,8 @@ class BaseView:
         # Instantiate dependencies — DIP: inject via class attributes
         self.query_provider = self.query_provider_class(registered)
         self.form_parser = self.form_parser_class(registered)
-        self.html_renderer = (
-            self.html_renderer_class() if self.html_renderer_class else None
-        )
-        self.api_renderer = (
-            self.api_renderer_class(registered)
-            if self.api_renderer_class
-            else None
-        )
+        self.html_renderer = self.html_renderer_class() if self.html_renderer_class else None
+        self.api_renderer = self.api_renderer_class(registered) if self.api_renderer_class else None
 
     def _get_extra_context(self, request: Request) -> dict[str, Any]:
         """Inject AdminExtra CSS/JS into template context.
@@ -134,9 +128,7 @@ class BaseView:
                 m2m_data[rel_key] = parsed.pop(rel_key)
         return m2m_data
 
-    async def _apply_m2m_from_data(
-        self, obj: Any, m2m_data: dict[str, Any], session: Any
-    ) -> None:
+    async def _apply_m2m_from_data(self, obj: Any, m2m_data: dict[str, Any], session: Any) -> None:
         """Apply MANYTOMANY data extracted by _pop_manytomany_keys."""
         import json as _json
 
@@ -173,6 +165,7 @@ class BaseView:
                     continue
                 try:
                     from fastapi_admin_kit.inspection import cast_pk_value
+
                     loaded = await session.get(target_model, cast_pk_value(target_model, pk))
                     if loaded:
                         objs.append(loaded)
@@ -227,9 +220,7 @@ class ListView(BaseView):
             )
         return display_columns
 
-    async def _build_filter_fields(
-        self, request: Request
-    ) -> dict[str, dict[str, Any]]:
+    async def _build_filter_fields(self, request: Request) -> dict[str, dict[str, Any]]:
         """Build filter field metadata."""
         if not self.admin.list_filter:
             return {}
@@ -237,9 +228,7 @@ class ListView(BaseView):
         model = self.registered.model
         filter_fields: dict[str, dict[str, Any]] = {}
         for filter_field in self.admin.list_filter:
-            filter_fields[
-                filter_field
-            ] = await self.query_provider._get_filter_choices(
+            filter_fields[filter_field] = await self.query_provider._get_filter_choices(
                 model, filter_field, session
             )
         return filter_fields
@@ -268,9 +257,7 @@ class ListView(BaseView):
                 if val:
                     active_filters[filter_field] = val
                 for suffix in ("__gte", "__lte", "__from", "__to"):
-                    val = request.query_params.get(
-                        f"filter_{filter_field}{suffix}", ""
-                    )
+                    val = request.query_params.get(f"filter_{filter_field}{suffix}", "")
                     if val:
                         active_filters[f"{filter_field}{suffix}"] = val
 
@@ -298,31 +285,21 @@ class ListView(BaseView):
             "ordering": ordering,
             "permissions": checker.permission_set(self.registered.table_name)
             if checker
-            else PermissionSet(
-                can_view=True, can_create=True, can_edit=True, can_delete=True
-            ),
+            else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),
             "list_actions": self.admin.get_list_actions(),
             "row_actions": self.admin.get_row_actions(),
             "list_tabs": getattr(self.admin, "list_tabs", []),
             "list_sections": getattr(self.admin, "list_sections", []),
             "ordering_field": getattr(self.admin, "ordering_field", None),
-            "hide_ordering_field": getattr(
-                self.admin, "hide_ordering_field", False
-            ),
-            "list_filter_options": getattr(
-                self.admin, "list_filter_options", {}
-            ),
-            "list_filter_horizontal": getattr(
-                self.admin, "list_filter_horizontal", False
-            ),
+            "hide_ordering_field": getattr(self.admin, "hide_ordering_field", False),
+            "list_filter_options": getattr(self.admin, "list_filter_options", {}),
+            "list_filter_horizontal": getattr(self.admin, "list_filter_horizontal", False),
         }
         template_context.update(self._get_extra_context(request))
         await inject_sidebar_context(request, template_context)
         return template_context
 
-    async def html_response(
-        self, request: Request, q: str = "", page: int = 1
-    ) -> Response:
+    async def html_response(self, request: Request, q: str = "", page: int = 1) -> Response:
         checker = await _resolve_permission_checker(request)
         if checker:
             await checker.load_permissions(self.registered.table_name)
@@ -404,9 +381,7 @@ class CreateView(BaseView):
             "is_create": is_create,
             "permissions": checker.permission_set(self.registered.table_name)
             if checker
-            else PermissionSet(
-                can_view=True, can_create=True, can_edit=True, can_delete=True
-            ),
+            else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),
             "detail_actions": self.admin.get_detail_actions(),
             "submit_line_actions": self.admin.get_submit_line_actions(),
             "conditional_fields": getattr(self.admin, "conditional_fields", {}),
@@ -423,9 +398,7 @@ class CreateView(BaseView):
 
         return template_context
 
-    async def _create_object(
-        self, request: Request, parsed: dict[str, Any]
-    ) -> RedirectResponse:
+    async def _create_object(self, request: Request, parsed: dict[str, Any]) -> RedirectResponse:
         """Create object in database."""
         try:
             session = get_db_session(request)
@@ -439,17 +412,12 @@ class CreateView(BaseView):
             await session.flush()
             self.admin.after_create(obj, request)
             await flush_pending_perm_ops(request)
-            await add_flash(
-                request, "success", f"{self.registered.verbose_name} created."
-            )
+            await add_flash(request, "success", f"{self.registered.verbose_name} created.")
         except Exception:
             session = get_db_session(request)
             await session.rollback()
             raise
-        url = (
-            f"{request.app.state.admin_config['admin_path']}"
-            f"/{self.registered.table_name}/"
-        )
+        url = f"{request.app.state.admin_config['admin_path']}/{self.registered.table_name}/"
         return RedirectResponse(url=url, status_code=303)
 
     async def html_response(self, request: Request) -> Response:
@@ -458,9 +426,7 @@ class CreateView(BaseView):
             await checker.load_permissions(self.registered.table_name)
 
         if request.method == "GET":
-            ctx = await self._build_form_context(
-                request, is_create=True, checker=checker
-            )
+            ctx = await self._build_form_context(request, is_create=True, checker=checker)
             return await self.html_renderer.render(request, ctx)
 
         # POST
@@ -520,9 +486,7 @@ class EditView(BaseView):
     form_parser_class = HTMLFormParser
     api_renderer_class = ItemAPIRenderer
 
-    async def _resolve_rel_labels(
-        self, obj: Any, request: Request
-    ) -> dict[str, str]:
+    async def _resolve_rel_labels(self, obj: Any, request: Request) -> dict[str, str]:
         """Resolve display labels for relationship fields from FK values."""
         from sqlalchemy import inspect as sa_inspect
 
@@ -588,9 +552,7 @@ class EditView(BaseView):
             "is_create": is_create,
             "permissions": checker.permission_set(self.registered.table_name)
             if checker
-            else PermissionSet(
-                can_view=True, can_create=True, can_edit=True, can_delete=True
-            ),
+            else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),
             "detail_actions": self.admin.get_detail_actions(),
             "submit_line_actions": self.admin.get_submit_line_actions(),
             "conditional_fields": getattr(self.admin, "conditional_fields", {}),
@@ -652,17 +614,12 @@ class EditView(BaseView):
             await session.flush()
             self.admin.after_update(obj, request)
             await flush_pending_perm_ops(request)
-            await add_flash(
-                request, "success", f"{self.registered.verbose_name} updated."
-            )
+            await add_flash(request, "success", f"{self.registered.verbose_name} updated.")
         except Exception:
             session = get_db_session(request)
             await session.rollback()
             raise
-        url = (
-            f"{request.app.state.admin_config['admin_path']}"
-            f"/{self.registered.table_name}/"
-        )
+        url = f"{request.app.state.admin_config['admin_path']}/{self.registered.table_name}/"
         return RedirectResponse(url=url, status_code=303)
 
     async def _build_detail_context(
@@ -695,9 +652,7 @@ class EditView(BaseView):
             "is_create": False,
             "permissions": checker.permission_set(self.registered.table_name)
             if checker
-            else PermissionSet(
-                can_view=True, can_create=True, can_edit=True, can_delete=True
-            ),
+            else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),
         }
         template_context.update(self._get_extra_context(request))
         await inject_sidebar_context(request, template_context)
@@ -712,11 +667,7 @@ class EditView(BaseView):
         if checker:
             await checker.load_permissions(self.registered.table_name)
 
-        perms = (
-            checker.permission_set(self.registered.table_name)
-            if checker
-            else None
-        )
+        perms = checker.permission_set(self.registered.table_name) if checker else None
 
         if request.method == "GET":
             if perms and not perms.can_edit and perms.can_view:
@@ -821,17 +772,12 @@ class DeleteView(BaseView):
             await session.delete(obj)
             await session.flush()
             self.admin.after_delete(obj, request)
-            await add_flash(
-                request, "success", f"{self.registered.verbose_name} deleted."
-            )
+            await add_flash(request, "success", f"{self.registered.verbose_name} deleted.")
         except Exception:
             session = get_db_session(request)
             await session.rollback()
             raise
-        url = (
-            f"{request.app.state.admin_config['admin_path']}"
-            f"/{self.registered.table_name}/"
-        )
+        url = f"{request.app.state.admin_config['admin_path']}/{self.registered.table_name}/"
         return RedirectResponse(url=url, status_code=303)
 
     async def api_response(
@@ -871,10 +817,7 @@ class BulkView(BaseView):
                 checker = await _resolve_permission_checker(request)
                 ctx = await list_view.get_context(request, "", 1, checker)
                 return await self.html_renderer.render(request, ctx)
-            url = (
-                f"{request.app.state.admin_config['admin_path']}"
-                f"/{self.registered.table_name}/"
-            )
+            url = f"{request.app.state.admin_config['admin_path']}/{self.registered.table_name}/"
             return RedirectResponse(url=url, status_code=303)
 
         if action == "delete_selected":
@@ -903,9 +846,7 @@ class BulkView(BaseView):
             else:
                 action_fn = getattr(self.admin, f"action_{action}", None)
                 if not action_fn:
-                    raise HTTPException(
-                        status_code=400, detail=f"Unknown action: {action}"
-                    )
+                    raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
                 for pid in ids:
                     obj = await session.get(self.registered.model, pid)
                     if obj:
@@ -918,10 +859,7 @@ class BulkView(BaseView):
             ctx = await list_view.get_context(request, "", 1, checker)
             return await self.html_renderer.render(request, ctx)
 
-        url = (
-            f"{request.app.state.admin_config['admin_path']}"
-            f"/{self.registered.table_name}/"
-        )
+        url = f"{request.app.state.admin_config['admin_path']}/{self.registered.table_name}/"
         return RedirectResponse(url=url, status_code=303)
 
     async def api_response(self, request: Request) -> Any:
@@ -964,9 +902,7 @@ class BulkView(BaseView):
 
         action_fn = getattr(self.admin, f"action_{action}", None)
         if not action_fn:
-            raise HTTPException(
-                status_code=400, detail=f"Unknown action: {action}"
-            )
+            raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
 
         executed = 0
         for pid in ids:
@@ -999,9 +935,7 @@ class SearchView(BaseView):
     ) -> Any:
         return await self._search(request, q, limit, exclude_id)
 
-    async def _search(
-        self, request: Request, q: str, limit: int = 20, exclude_id: str = ""
-    ) -> Any:
+    async def _search(self, request: Request, q: str, limit: int = 20, exclude_id: str = "") -> Any:
         from fastapi.responses import JSONResponse
         from sqlalchemy import or_, select
 
@@ -1028,6 +962,7 @@ class SearchView(BaseView):
             pk_col = getattr(model, self.registered.pk_field, None)
             if pk_col is not None:
                 from fastapi_admin_kit.inspection import cast_pk_value
+
                 base = base.where(pk_col != cast_pk_value(model, exclude_id))
 
         base = base.limit(limit)

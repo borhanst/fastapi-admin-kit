@@ -3,27 +3,28 @@
 import asyncio
 import os
 import tempfile
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from fastapi_admin_kit import Admin
+from fastapi_admin_kit.audit.models import AuditLog  # noqa: F401 - ensure table is registered
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
 from fastapi_admin_kit.auth.csrf import generate_csrf_token
 from fastapi_admin_kit.auth.models import Role, User
-from fastapi_admin_kit.audit.models import AuditLog  # noqa: F401 - ensure table is registered
 from fastapi_admin_kit.models.base import Base as AdminBase
-from tests.conftest import SECRET_KEY, create_session_cookie, run_async
-from tests.test_registry import Product, Category
+from tests.conftest import SECRET_KEY, run_async
+from tests.test_registry import Category, Product
 
 
 @pytest.fixture(autouse=True)
 def _clear_registry():
     from fastapi_admin_kit.registry import AdminRegistry
+
     AdminRegistry().clear()
     yield
     AdminRegistry().clear()
@@ -66,6 +67,7 @@ def admin_user(engine):
             await session.commit()
             await session.refresh(user)
             return user
+
     return run_async(_create())
 
 
@@ -97,6 +99,7 @@ def client(engine, admin_user):
                 )
                 db.add(product)
             await db.commit()
+
     run_async(_seed())
 
     return TestClient(app), admin, engine

@@ -22,9 +22,7 @@ async def _require_superuser(
     user: AdminUserProtocol = Depends(get_current_admin_user),
 ) -> AdminUserProtocol:
     if not getattr(user, "is_superuser", False):
-        raise HTTPException(
-            status_code=403, detail="Superuser access required."
-        )
+        raise HTTPException(status_code=403, detail="Superuser access required.")
     return user
 
 
@@ -43,9 +41,7 @@ async def tables_search(
     if q:
         q_lower = q.lower()
         results = [
-            r
-            for r in results
-            if q_lower in r["label"].lower() or q_lower in r["id"].lower()
+            r for r in results if q_lower in r["label"].lower() or q_lower in r["id"].lower()
         ]
 
     return JSONResponse(content=results)
@@ -189,11 +185,8 @@ async def role_save_view(
             continue
 
         # Find or create a Permission for this table (shared across roles)
-        from fastapi_admin_kit.auth.models import Permission
 
-        result = await session.execute(
-            select(Permission).where(Permission.table_name == table)
-        )
+        result = await session.execute(select(Permission).where(Permission.table_name == table))
         perm = result.scalar_one_or_none()
 
         if perm is None:

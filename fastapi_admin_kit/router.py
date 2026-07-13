@@ -79,9 +79,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         field_name = form.get("field_name")
         raw_value = form.get(field_name)
 
-        field_meta = next(
-            (f for f in registered.form_fields if f.name == field_name), None
-        )
+        field_meta = next((f for f in registered.form_fields if f.name == field_name), None)
         if field_meta is None:
             raise HTTPException(status_code=422, detail="Field not found")
 
@@ -103,10 +101,14 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             widget_context=widget.render_context(field_meta, raw_value),
             errors=errors,
         )
-        return templates.TemplateResponse(request, "partials/field_wrapper.html", {
-            "field_ctx": field_ctx,
-            "model_name": registered.table_name,
-        })
+        return templates.TemplateResponse(
+            request,
+            "partials/field_wrapper.html",
+            {
+                "field_ctx": field_ctx,
+                "model_name": registered.table_name,
+            },
+        )
 
     router.add_api_route(
         "/{id}",
@@ -151,13 +153,16 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         from sqlalchemy.orm import selectinload
 
         from fastapi_admin_kit.inspection import cast_pk_value
+
         mapper = sa_inspect(registered.model)
-        options = [
-            selectinload(getattr(registered.model, r.key))
-            for r in mapper.relationships
-        ]
-        stmt = select(registered.model).options(*options).where(
-            getattr(registered.model, registered.pk_field) == cast_pk_value(registered.model, id)
+        options = [selectinload(getattr(registered.model, r.key)) for r in mapper.relationships]
+        stmt = (
+            select(registered.model)
+            .options(*options)
+            .where(
+                getattr(registered.model, registered.pk_field)
+                == cast_pk_value(registered.model, id)
+            )
         )
         result = await session.execute(stmt)
         obj = result.scalar_one_or_none()
@@ -173,11 +178,10 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             relationships=registered.relationships,
         )
 
-        form_ctx = build_form_context(
-            registered, obj=obj, request=request, is_create=False
-        )
+        form_ctx = build_form_context(registered, obj=obj, request=request, is_create=False)
         form_ctx.fieldsets[0].fields = [
-            fc for fc in form_ctx.fieldsets[0].fields
+            fc
+            for fc in form_ctx.fieldsets[0].fields
             if fc.meta.name in {f.name for f in inline_fields}
         ]
 
@@ -211,13 +215,16 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         from sqlalchemy.orm import selectinload
 
         from fastapi_admin_kit.inspection import cast_pk_value
+
         mapper = sa_inspect(registered.model)
-        options = [
-            selectinload(getattr(registered.model, r.key))
-            for r in mapper.relationships
-        ]
-        stmt = select(registered.model).options(*options).where(
-            getattr(registered.model, registered.pk_field) == cast_pk_value(registered.model, id)
+        options = [selectinload(getattr(registered.model, r.key)) for r in mapper.relationships]
+        stmt = (
+            select(registered.model)
+            .options(*options)
+            .where(
+                getattr(registered.model, registered.pk_field)
+                == cast_pk_value(registered.model, id)
+            )
         )
         result = await session.execute(stmt)
         obj = result.scalar_one_or_none()
@@ -248,11 +255,16 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
 
         if errors:
             form_ctx = build_form_context(
-                registered, obj=obj, values=parsed, errors=errors,
-                request=request, is_create=False,
+                registered,
+                obj=obj,
+                values=parsed,
+                errors=errors,
+                request=request,
+                is_create=False,
             )
             form_ctx.fieldsets[0].fields = [
-                fc for fc in form_ctx.fieldsets[0].fields
+                fc
+                for fc in form_ctx.fieldsets[0].fields
                 if fc.meta.name in {f.name for f in inline_fields}
             ]
             templates = request.app.state.admin_jinja_env
@@ -274,6 +286,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             data = registered.admin.validate_update(obj, parsed, request)
         except ValueError as e:
             from fastapi.responses import HTMLResponse
+
             msg = f"<div class='inline-edit-error'>{e}</div>"
             return HTMLResponse(content=msg, status_code=422)
 
@@ -320,9 +333,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         ctx["admin_path"] = admin_path
         ctx["registered"] = registered
         templates = request.app.state.admin_jinja_env
-        html = templates.TemplateResponse(
-            request, "partials/list_table.html", ctx
-        )
+        html = templates.TemplateResponse(request, "partials/list_table.html", ctx)
         return html
 
     # ── Custom Actions ─────────────────────────────────────────────
@@ -358,6 +369,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             await session.flush()
 
         from fastapi.responses import HTMLResponse
+
         return HTMLResponse(content="OK")
 
     @router.post("/action/{action_name}/{id}")
@@ -380,6 +392,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             raise HTTPException(status_code=404, detail=f"Unknown action: {action_name}")
 
         from fastapi_admin_kit.inspection import cast_pk_value
+
         obj = await session.get(registered.model, cast_pk_value(registered.model, id))
         if not obj:
             raise HTTPException(status_code=404, detail="Not found")
@@ -388,6 +401,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         await session.flush()
 
         from fastapi.responses import HTMLResponse
+
         return HTMLResponse(content="OK")
 
     # ── Sortable Endpoint ──────────────────────────────────────────
@@ -412,6 +426,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         await session.flush()
 
         from fastapi.responses import HTMLResponse
+
         return HTMLResponse(content="OK")
 
     # ── Autocomplete Endpoint ──────────────────────────────────────
@@ -439,6 +454,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
 
         if clauses:
             from sqlalchemy import or_, select
+
             query = select(model).where(or_(*clauses)).limit(20)
             result = await session.execute(query)
             for obj in result.scalars():
@@ -488,6 +504,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         session = get_db_session(request)
         try:
             from fastapi_admin_kit.inspection import cast_pk_value
+
             obj = await session.get(registered.model, cast_pk_value(registered.model, id))
             if obj is None:
                 raise HTTPException(status_code=404, detail="Object not found")
@@ -524,6 +541,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
                 f'<span class="toggle-switch__thumb"></span></button>'
             )
         from fastapi.responses import HTMLResponse
+
         return HTMLResponse(content=toggle_html)
 
     return router

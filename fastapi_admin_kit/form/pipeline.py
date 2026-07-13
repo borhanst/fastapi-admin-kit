@@ -27,9 +27,7 @@ def build_form_context(
     fieldsets: list[FieldsetContext] = [FieldsetContext(fields=[])]
 
     for field_meta in registered.form_fields:
-        col = next(
-            (c for c in registered.columns if c.name == field_meta.name), None
-        )
+        col = next((c for c in registered.columns if c.name == field_meta.name), None)
         rel = next(
             (r for r in registered.relationships if r.name == field_meta.name),
             None,
@@ -71,10 +69,7 @@ def build_form_context(
 
                     mapper = sa_inspect(type(obj))
                     rel_prop = mapper.relationships.get(rel.name)
-                    if (
-                        rel_prop is not None
-                        and rel_prop.direction.name == "MANYTOMANY"
-                    ):
+                    if rel_prop is not None and rel_prop.direction.name == "MANYTOMANY":
                         value = [str(item.id) for item in value]
                 except Exception:
                     pass

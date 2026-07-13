@@ -58,6 +58,7 @@ dev = [
     "httpx>=0.27.0",
     "ruff>=0.5.0",
     "hatch>=1.13.0",
+    "pre-commit>=3.5.0",
 ]
 sqlmodel = ["sqlmodel>=0.0.39"]
 postgres = ["asyncpg>=0.29.0"]
@@ -104,6 +105,7 @@ exclude = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+exclude = ["example*.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP"]

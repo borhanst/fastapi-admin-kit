@@ -111,9 +111,7 @@ class TestCSRFProtection:
         old_time = str(int(time.time()) - CSRF_TOKEN_MAX_AGE - 100)
         random_bytes = os.urandom(16)
         payload = f"{old_time}.{random_bytes.hex()}"
-        signature = hmac.new(
-            secret.encode(), payload.encode(), hashlib.sha256
-        ).hexdigest()[:32]
+        signature = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
         expired_token = f"{payload}.{signature}"
 
         from fastapi_admin_kit.auth.csrf import _verify_csrf_token
@@ -132,11 +130,10 @@ class TestJWTSecretValidation:
 
         engine = create_engine("sqlite:///:memory:")
         app = FastAPI()
-        admin = Admin(
-            app=app, engine=engine, secret_key="", auto_discover=False
-        )
+        admin = Admin(app=app, engine=engine, secret_key="", auto_discover=False)
         with pytest.raises(ConfigError, match="secret_key is required"):
             import asyncio
+
             asyncio.run(admin.setup(app))
 
     def test_rejects_short_secret(self):
@@ -147,11 +144,10 @@ class TestJWTSecretValidation:
 
         engine = create_engine("sqlite:///:memory:")
         app = FastAPI()
-        admin = Admin(
-            app=app, engine=engine, secret_key="short", auto_discover=False
-        )
+        admin = Admin(app=app, engine=engine, secret_key="short", auto_discover=False)
         with pytest.raises(ConfigError, match="too short"):
             import asyncio
+
             asyncio.run(admin.setup(app))
 
     def test_accepts_valid_secret(self):

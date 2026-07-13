@@ -30,6 +30,7 @@ def _get_csrf(test_client):
 @pytest.fixture(autouse=True)
 def _clear_registry():
     from fastapi_admin_kit.registry import AdminRegistry
+
     AdminRegistry().clear()
     yield
     AdminRegistry().clear()
@@ -72,6 +73,7 @@ def admin_user(engine):
             await session.commit()
             await session.refresh(user)
             return user
+
     return run_async(_create())
 
 
@@ -99,6 +101,7 @@ def product(engine, admin_user):
             await db.commit()
             await db.refresh(p)
             return p
+
     return run_async(_create())
 
 

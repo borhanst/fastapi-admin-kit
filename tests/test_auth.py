@@ -35,9 +35,7 @@ def session(engine):
 
 @pytest.fixture
 def session_backend():
-    return SignedCookieSessionBackend(
-        secret_key="test-secret-key", session_ttl=3600
-    )
+    return SignedCookieSessionBackend(secret_key="test-secret-key", session_ttl=3600)
 
 
 @pytest.fixture
@@ -212,17 +210,13 @@ class TestBuiltinAuthBackend:
             session.add(user)
             await session.commit()
 
-            result = await backend.authenticate(
-                "admin@example.com", "secret123", session
-            )
+            result = await backend.authenticate("admin@example.com", "secret123", session)
             assert result is not None
             assert result.email == "admin@example.com"
             break
 
     @pytest.mark.asyncio
-    async def test_authenticate_wrong_password(
-        self, backend, async_session_factory
-    ):
+    async def test_authenticate_wrong_password(self, backend, async_session_factory):
         async for session in async_session_factory():
             role = Role(name="Editor")
             session.add(role)
@@ -238,16 +232,12 @@ class TestBuiltinAuthBackend:
             session.add(user)
             await session.commit()
 
-            result = await backend.authenticate(
-                "admin@example.com", "wrong", session
-            )
+            result = await backend.authenticate("admin@example.com", "wrong", session)
             assert result is None
             break
 
     @pytest.mark.asyncio
-    async def test_authenticate_unknown_email(
-        self, backend, async_session_factory
-    ):
+    async def test_authenticate_unknown_email(self, backend, async_session_factory):
         async for session in async_session_factory():
             role = Role(name="Editor")
             session.add(role)
@@ -263,16 +253,12 @@ class TestBuiltinAuthBackend:
             session.add(user)
             await session.commit()
 
-            result = await backend.authenticate(
-                "nobody@example.com", "secret123", session
-            )
+            result = await backend.authenticate("nobody@example.com", "secret123", session)
             assert result is None
             break
 
     @pytest.mark.asyncio
-    async def test_authenticate_inactive_user(
-        self, backend, async_session_factory
-    ):
+    async def test_authenticate_inactive_user(self, backend, async_session_factory):
         async for session in async_session_factory():
             role = Role(name="Editor")
             session.add(role)
@@ -288,9 +274,7 @@ class TestBuiltinAuthBackend:
             session.add(user)
             await session.commit()
 
-            result = await backend.authenticate(
-                "admin@example.com", "secret123", session
-            )
+            result = await backend.authenticate("admin@example.com", "secret123", session)
             assert result is None
             break
 

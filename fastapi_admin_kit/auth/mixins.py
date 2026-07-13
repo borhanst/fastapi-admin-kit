@@ -85,4 +85,3 @@ class AuthModelMixin:
 
 
 # Backward-compatible alias
-

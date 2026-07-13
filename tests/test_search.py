@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import Column, ForeignKey, Integer, String, create_engine
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Session, relationship
 
 from fastapi_admin_kit.admin import Admin
 from fastapi_admin_kit.models.base import Base as AdminBase
 from fastapi_admin_kit.registry import AdminRegistry
-from sqlalchemy.pool import StaticPool
-from tests.conftest import create_session_cookie, run_async
-
+from tests.conftest import create_session_cookie
 
 # ---------------------------------------------------------------------------
 # Test models
@@ -47,6 +45,7 @@ class _Product(_Base):
 
 class _SelfRef(_Base):
     """Self-referential FK model for testing exclude_id."""
+
     __tablename__ = "search_selfref"
 
     id = Column(Integer, primary_key=True)
@@ -71,6 +70,7 @@ def _clear_registry():
 @pytest.fixture()
 def engine():
     import tempfile
+
     os.environ["SKIP_CREATE_TABLES"] = "false"
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
@@ -96,16 +96,25 @@ def app():
 async def admin_app(app, engine):
     from fastapi_admin_kit.admin import Admin
 
-    admin = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
+    admin = Admin(
+        app=app,
+        engine=engine,
+        secret_key="test-secret-key-long-enough-for-security!",
+        auto_discover=False,
+    )
     admin.register(_Category)
     admin.register(_Product)
     admin.register(_SelfRef)
     await admin.setup()
 
-    sync_eng = create_engine(f"sqlite:///{engine.url.database}", connect_args={"check_same_thread": False})
+    sync_eng = create_engine(
+        f"sqlite:///{engine.url.database}", connect_args={"check_same_thread": False}
+    )
     with Session(sync_eng) as session:
-        from fastapi_admin_kit.auth.models import Role, User
         from sqlalchemy import select as sa_select
+
+        from fastapi_admin_kit.auth.models import Role, User
+
         result = session.execute(sa_select(Role).limit(1))
         role = result.scalar_one_or_none()
         if role is None:
@@ -264,7 +273,12 @@ class TestSearchFallback:
         AdminRegistry().clear()
         admin_app_fresh = FastAPI()
 
-        admin = Admin(app=admin_app_fresh, engine=None, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
+        admin = Admin(
+            app=admin_app_fresh,
+            engine=None,
+            secret_key="test-secret-key-long-enough-for-security!",
+            auto_discover=False,
+        )
         admin.register(_Product)
 
         client = TestClient(admin_app)

@@ -16,9 +16,7 @@ async def get_api_current_user(request: Request) -> dict[str, Any]:
     """
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401, detail="Missing or invalid Authorization header."
-        )
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header.")
 
     token = auth_header[7:]
     secret_key = _get_secret_key(request)
@@ -71,9 +69,7 @@ def require_api_superuser():
             user = await get_api_current_user(request)
 
         if not user.get("is_superuser"):
-            raise HTTPException(
-                status_code=403, detail="Superuser access required."
-            )
+            raise HTTPException(status_code=403, detail="Superuser access required.")
         return user
 
     return _check

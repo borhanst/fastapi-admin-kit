@@ -84,9 +84,7 @@ class AdminTemplate:
 
             if user and not is_superuser:
                 role_ids = (
-                    snapshot.get("role_ids", [])
-                    if snapshot
-                    else getattr(user, "role_ids", [])
+                    snapshot.get("role_ids", []) if snapshot else getattr(user, "role_ids", [])
                 )
                 if role_ids:
                     try:
@@ -103,34 +101,24 @@ class AdminTemplate:
                                     admin_role_permissions,
                                     Permission.id == admin_role_permissions.c.permission_id,
                                 )
-                                .filter(
-                                    admin_role_permissions.c.role_id.in_(role_ids)
-                                )
+                                .filter(admin_role_permissions.c.role_id.in_(role_ids))
                             )
                             rows = result.scalars().all()
                             for perm in rows:
                                 if perm.table_name in permissions_map:
                                     existing = permissions_map[perm.table_name]
-                                    permissions_map[perm.table_name] = (
-                                        PermissionSet(
-                                            can_view=existing.can_view
-                                            or perm.can_view,
-                                            can_create=existing.can_create
-                                            or perm.can_create,
-                                            can_edit=existing.can_edit
-                                            or perm.can_edit,
-                                            can_delete=existing.can_delete
-                                            or perm.can_delete,
-                                        )
+                                    permissions_map[perm.table_name] = PermissionSet(
+                                        can_view=existing.can_view or perm.can_view,
+                                        can_create=existing.can_create or perm.can_create,
+                                        can_edit=existing.can_edit or perm.can_edit,
+                                        can_delete=existing.can_delete or perm.can_delete,
                                     )
                                 else:
-                                    permissions_map[perm.table_name] = (
-                                        PermissionSet(
-                                            can_view=perm.can_view,
-                                            can_create=perm.can_create,
-                                            can_edit=perm.can_edit,
-                                            can_delete=perm.can_delete,
-                                        )
+                                    permissions_map[perm.table_name] = PermissionSet(
+                                        can_view=perm.can_view,
+                                        can_create=perm.can_create,
+                                        can_edit=perm.can_edit,
+                                        can_delete=perm.can_delete,
                                     )
                     except Exception:
                         pass
@@ -152,9 +140,7 @@ class AdminTemplate:
             for item in items:
                 if not _item_visible(item):
                     continue
-                filtered_children = (
-                    _filter_items(item.children) if item.children else []
-                )
+                filtered_children = _filter_items(item.children) if item.children else []
                 result.append(replace(item, children=filtered_children))
             return result
 
@@ -200,9 +186,7 @@ class AdminTemplate:
             "settings_visible": settings_visible,
         }
 
-    def apply_sidebar_context(
-        self, request: Any, user: Any, context: dict
-    ) -> dict:
+    def apply_sidebar_context(self, request: Any, user: Any, context: dict) -> dict:
         """Inject nav_groups + permissions_map into a template context dict."""
         context.update(self.build_sidebar_context(request, user=user))
         return context

@@ -13,7 +13,7 @@ from sqlalchemy.inspection import inspect as sqlalchemy_inspect
 
 def serialize_value(val: Any) -> Any:
     """Convert a value to a JSON-serializable form.
-    
+
     Handles:
         - datetime.datetime -> ISO string
         - datetime.date -> ISO string
@@ -26,7 +26,7 @@ def serialize_value(val: Any) -> Any:
     """
     if val is None:
         return None
-    if isinstance(val, (datetime.datetime, datetime.date, datetime.time)):
+    if isinstance(val, datetime.datetime | datetime.date | datetime.time):
         return val.isoformat()
     if isinstance(val, decimal.Decimal):
         return str(val)
@@ -44,12 +44,12 @@ def serialize_value(val: Any) -> Any:
 
 def snapshot(obj: Any) -> dict[str, Any]:
     """Snapshot all mapped columns of a SQLAlchemy model instance.
-    
+
     Returns a dict mapping column name to serialized value.
     """
     if not hasattr(obj, "__table__"):
         raise ValueError("Object is not a SQLAlchemy model instance")
-    
+
     mapper = sqlalchemy_inspect(obj.__class__)
     data = {}
     for column in mapper.columns:
@@ -62,7 +62,7 @@ def snapshot(obj: Any) -> dict[str, Any]:
 
 def compute_diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
     """Compute the difference between two snapshots.
-    
+
     Returns a dict of changed fields, each containing:
         {"old": <value>, "new": <value>}
     Only fields that have changed are included.

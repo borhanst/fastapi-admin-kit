@@ -60,12 +60,8 @@ async def login_get(
         if session_backend is not None:
             from fastapi_admin_kit.auth.csrf import CSRF_COOKIE_NAME
 
-            samesite = getattr(
-                request.app.state.admin_state, "session_samesite", "strict"
-            )
-            response = RedirectResponse(
-                url=str(request.url), status_code=status.HTTP_302_FOUND
-            )
+            samesite = getattr(request.app.state.admin_state, "session_samesite", "strict")
+            response = RedirectResponse(url=str(request.url), status_code=status.HTTP_302_FOUND)
             response.delete_cookie(
                 key=session_backend.cookie_name,
                 path="/",
@@ -133,12 +129,8 @@ async def login_post(
             admin_path = request.app.state.admin_config["admin_path"]
             redirect_url = f"{admin_path}/"
 
-        samesite = getattr(
-            request.app.state.admin_state, "session_samesite", "strict"
-        )
-        response = RedirectResponse(
-            url=redirect_url, status_code=status.HTTP_302_FOUND
-        )
+        samesite = getattr(request.app.state.admin_state, "session_samesite", "strict")
+        response = RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
         response.set_cookie(
             key=session_backend.cookie_name,
             value=token,
@@ -175,9 +167,7 @@ async def login_post(
     remaining = _login_rate_limiter.remaining_seconds(client_ip)
     error_msg = "Invalid credentials. Please try again."
     if _login_rate_limiter.is_rate_limited(client_ip):
-        error_msg = (
-            f"Too many failed attempts. Try again in {remaining} seconds."
-        )
+        error_msg = f"Too many failed attempts. Try again in {remaining} seconds."
     return HTMLResponse(
         template.render(
             {
@@ -204,12 +194,10 @@ async def logout_post(
             await auth_backend.on_logout(session_payload.get("user_id"))
 
     session_backend = request.app.state.admin_session_backend
-    samesite = getattr(
-        request.app.state.admin_state, "session_samesite", "strict"
-    )
+    samesite = getattr(request.app.state.admin_state, "session_samesite", "strict")
     response = RedirectResponse(
         url=f"{request.app.state.admin_config['admin_path']}/login",
-        status_code=status.HTTP_302_FOUND
+        status_code=status.HTTP_302_FOUND,
     )
     response.delete_cookie(
         key=session_backend.cookie_name,

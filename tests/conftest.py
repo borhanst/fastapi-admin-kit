@@ -1,5 +1,5 @@
-
 import asyncio
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -14,6 +14,7 @@ SECRET_KEY = "test-secret-key-long-enough-for-security!"
 @pytest.fixture(autouse=True)
 def _clear_registry():
     from fastapi_admin_kit.registry import AdminRegistry
+
     AdminRegistry().clear()
     yield
     AdminRegistry().clear()
@@ -40,16 +41,18 @@ def session(engine):
 @pytest.fixture
 def app():
     from fastapi import FastAPI
+
     return FastAPI()
 
 
 @pytest.fixture
 def admin_user(engine):
     from sqlalchemy.orm import sessionmaker
+
     from fastapi_admin_kit.auth.models import Role, User
 
-    SessionLocal = sessionmaker(engine)
-    session = SessionLocal()
+    session_local = sessionmaker(engine)
+    session = session_local()
     try:
         role = Role(name="SuperAdmin")
         session.add(role)
@@ -72,6 +75,7 @@ def admin_user(engine):
 
 def create_session_cookie(user_id, secret_key=SECRET_KEY):
     from fastapi_admin_kit.auth.session import SignedCookieSessionBackend
+
     backend = SignedCookieSessionBackend(secret_key=secret_key)
     return backend.encode({"user_id": user_id})
 
@@ -86,8 +90,10 @@ def run_async(coro):
 
 @pytest.fixture
 def admin_app(app, engine, admin_user):
-    from fastapi_admin_kit import Admin
     import asyncio
+
+    from fastapi_admin_kit import Admin
+
     admin = Admin(app=app, engine=engine, secret_key=SECRET_KEY, auto_discover=False)
     asyncio.run(admin.setup(app))
     return app

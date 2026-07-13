@@ -4,12 +4,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from fastapi_admin_kit.admin import Admin
-from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
-from fastapi_admin_kit.auth.models import Role, User
+from fastapi_admin_kit.auth.models import Role
 from fastapi_admin_kit.auth.session import SignedCookieSessionBackend
 from fastapi_admin_kit.models.base import Base as AdminBase
 from fastapi_admin_kit.views.roles import router as roles_router
@@ -18,9 +16,13 @@ from fastapi_admin_kit.views.roles import router as roles_router
 @pytest.fixture(name="app")
 def app_fixture() -> FastAPI:
     app = FastAPI()
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
     AdminBase.metadata.create_all(bind=engine)
-    db_session = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)()
+    db_session = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )()
     app.state.admin_db_session = db_session
     app.state.admin_jinja_env = None
     app.state.admin_registry = None
@@ -40,9 +42,13 @@ def client_fixture(app: FastAPI) -> TestClient:
 
 @pytest.fixture(name="db")
 def db_fixture() -> Session:
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
     AdminBase.metadata.create_all(bind=engine)
-    db_session = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)()
+    db_session = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )()
     yield db_session
     db_session.close()
 

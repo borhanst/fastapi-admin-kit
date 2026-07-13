@@ -1,28 +1,28 @@
 """Tests for the shell layout (Phase 21)."""
 
 import asyncio
-import tempfile
 import os
+import tempfile
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from fastapi_admin_kit import Admin
+from fastapi_admin_kit.audit.models import AuditLog  # noqa: F401
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
 from fastapi_admin_kit.auth.models import Role, User
 from fastapi_admin_kit.models.base import Base as AdminBase
-from fastapi_admin_kit.audit.models import AuditLog  # noqa: F401
 from tests.conftest import SECRET_KEY, create_session_cookie, run_async
-from tests.test_registry import Product, Category
+from tests.test_registry import Category, Product
 
 
 @pytest.fixture
 def engine():
-    import tempfile
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     sync_engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False})
@@ -110,12 +110,12 @@ def test_shell_layout_structure(client):
     assert response.status_code == 200
 
     # Check shell layout structure
-    assert 'admin-shell' in response.text
-    assert 'admin-topbar' in response.text
-    assert 'admin-body' in response.text
-    assert 'admin-sidebar' in response.text
-    assert 'admin-content' in response.text
-    assert 'admin-content__inner' in response.text
+    assert "admin-shell" in response.text
+    assert "admin-topbar" in response.text
+    assert "admin-body" in response.text
+    assert "admin-sidebar" in response.text
+    assert "admin-content" in response.text
+    assert "admin-content__inner" in response.text
 
 
 def test_topbar_zones(client):

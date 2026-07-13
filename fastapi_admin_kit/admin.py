@@ -173,9 +173,7 @@ class Admin:
         self.session_secure = session_secure
 
         # RBAC
-        self.seed_roles = (
-            seed_roles if seed_roles is not None else DEFAULT_SEED_ROLES
-        )
+        self.seed_roles = seed_roles if seed_roles is not None else DEFAULT_SEED_ROLES
         self.seed_roles_overwrite = seed_roles_overwrite
         self.superuser_emails = superuser_emails or []
 
@@ -223,9 +221,7 @@ class Admin:
             )
 
         if self.engine is None:
-            raise ConfigError(
-                "Admin requires a SQLAlchemy engine. Pass engine= to Admin()."
-            )
+            raise ConfigError("Admin requires a SQLAlchemy engine. Pass engine= to Admin().")
 
         app = self._app
 
@@ -234,9 +230,7 @@ class Admin:
 
         # 2. Database tables should be created via Alembic migrations
         # (Skip _create_tables if using migrations)
-        skip_create_tables = (
-            os.environ.get("SKIP_CREATE_TABLES", "true").lower() == "true"
-        )
+        skip_create_tables = os.environ.get("SKIP_CREATE_TABLES", "true").lower() == "true"
         if not skip_create_tables:
             await self._create_tables()
 
@@ -305,14 +299,10 @@ class Admin:
         else:
             registered = self.registry.register(model)
         if self._jinja_env:
-            self._jinja_env.env.globals["registered_models"] = (
-                self.registry.all()
-            )
+            self._jinja_env.env.globals["registered_models"] = self.registry.all()
             if self._nav_groups_built:
                 self._nav_groups_built = self._build_sidebar()
-                self._jinja_env.env.globals["nav_groups"] = (
-                    self._nav_groups_built
-                )
+                self._jinja_env.env.globals["nav_groups"] = self._nav_groups_built
         if admin_class is not None:
             return registered
         return _RegistrationProxy(self, registered)
@@ -401,9 +391,7 @@ class Admin:
 
         if is_async:
             # Use AsyncSession for async engine
-            session_local = sessionmaker(
-                self.engine, class_=AsyncSession, expire_on_commit=False
-            )
+            session_local = sessionmaker(self.engine, class_=AsyncSession, expire_on_commit=False)
             async with session_local() as session:
                 # Check existing count
                 result = await session.execute(select(Role))
@@ -416,9 +404,7 @@ class Admin:
                     await session.execute(select(Role).delete())
 
                 for role_spec in self.seed_roles:
-                    role = Role(
-                        name=role_spec.name, description=role_spec.description
-                    )
+                    role = Role(name=role_spec.name, description=role_spec.description)
                     session.add(role)
                     await session.flush()  # get role.id
 
@@ -448,9 +434,7 @@ class Admin:
                     session.query(Role).delete()
 
                 for role_spec in self.seed_roles:
-                    role = Role(
-                        name=role_spec.name, description=role_spec.description
-                    )
+                    role = Role(name=role_spec.name, description=role_spec.description)
                     session.add(role)
                     session.flush()  # get role.id
 
@@ -492,9 +476,7 @@ class Admin:
         app.state.admin_registry = self.registry
 
         # Async session for views (reused per-request via dependency)
-        app.state.admin_db_session = AsyncSession(
-            self.engine, expire_on_commit=False
-        )
+        app.state.admin_db_session = AsyncSession(self.engine, expire_on_commit=False)
 
         app.state.admin_config = {
             "title": self.title,
@@ -626,9 +608,7 @@ class Admin:
         from fastapi_admin_kit.nav import DefaultSidebarBuilder
 
         builder = self.sidebar_builder or DefaultSidebarBuilder()
-        return builder.build(
-            self.registry.all(), self.nav_groups, admin_path=self.admin_path
-        )
+        return builder.build(self.registry.all(), self.nav_groups, admin_path=self.admin_path)
 
     def build_sidebar_context(
         self,
@@ -660,9 +640,7 @@ class Admin:
 
             if user and not is_superuser:
                 role_ids = (
-                    snapshot.get("role_ids", [])
-                    if snapshot
-                    else getattr(user, "role_ids", [])
+                    snapshot.get("role_ids", []) if snapshot else getattr(user, "role_ids", [])
                 )
                 if role_ids:
                     try:
@@ -682,34 +660,24 @@ class Admin:
                                     admin_role_permissions,
                                     Permission.id == admin_role_permissions.c.permission_id,
                                 )
-                                .filter(
-                                    admin_role_permissions.c.role_id.in_(role_ids)
-                                )
+                                .filter(admin_role_permissions.c.role_id.in_(role_ids))
                             )
                             rows = result.scalars().all()
                             for perm in rows:
                                 if perm.table_name in permissions_map:
                                     existing = permissions_map[perm.table_name]
-                                    permissions_map[perm.table_name] = (
-                                        PermissionSet(
-                                            can_view=existing.can_view
-                                            or perm.can_view,
-                                            can_create=existing.can_create
-                                            or perm.can_create,
-                                            can_edit=existing.can_edit
-                                            or perm.can_edit,
-                                            can_delete=existing.can_delete
-                                            or perm.can_delete,
-                                        )
+                                    permissions_map[perm.table_name] = PermissionSet(
+                                        can_view=existing.can_view or perm.can_view,
+                                        can_create=existing.can_create or perm.can_create,
+                                        can_edit=existing.can_edit or perm.can_edit,
+                                        can_delete=existing.can_delete or perm.can_delete,
                                     )
                                 else:
-                                    permissions_map[perm.table_name] = (
-                                        PermissionSet(
-                                            can_view=perm.can_view,
-                                            can_create=perm.can_create,
-                                            can_edit=perm.can_edit,
-                                            can_delete=perm.can_delete,
-                                        )
+                                    permissions_map[perm.table_name] = PermissionSet(
+                                        can_view=perm.can_view,
+                                        can_create=perm.can_create,
+                                        can_edit=perm.can_edit,
+                                        can_delete=perm.can_delete,
                                     )
                     except Exception:
                         pass
@@ -741,9 +709,7 @@ class Admin:
         """Thin wrapper — returns sidebar kwargs for TemplateResponse contexts."""
         return self.build_sidebar_context(request)
 
-    def apply_sidebar_context(
-        self, request: Any, user: Any, context: dict
-    ) -> dict:
+    def apply_sidebar_context(self, request: Any, user: Any, context: dict) -> dict:
         """Inject nav_groups + permissions_map into a template context dict."""
         context.update(self.build_sidebar_context(request, user=user))
         return context

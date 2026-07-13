@@ -61,13 +61,9 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
     # DIP: resolve view classes from ModelAdmin config
     admin = registered.admin
     list_v = _resolve_view_class(admin, "list_view_class", ListView)(registered)
-    create_v = _resolve_view_class(admin, "create_view_class", CreateView)(
-        registered
-    )
+    create_v = _resolve_view_class(admin, "create_view_class", CreateView)(registered)
     edit_v = _resolve_view_class(admin, "edit_view_class", EditView)(registered)
-    delete_v = _resolve_view_class(admin, "delete_view_class", DeleteView)(
-        registered
-    )
+    delete_v = _resolve_view_class(admin, "delete_view_class", DeleteView)(registered)
 
     # Generate dynamic schemas for OpenAPI docs
     schemas = get_or_build_schemas(registered)
@@ -87,8 +83,13 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         user = await _get_current_user(request)
         await _check_permission(request, user, table_name, "view")
         result = await list_v.api_response(
-            request, page=page, per_page=per_page, q=q, order=order,
-            after=after, before=before,
+            request,
+            page=page,
+            per_page=per_page,
+            q=q,
+            order=order,
+            after=after,
+            before=before,
         )
         if isinstance(result, JSONResponse):
             return result

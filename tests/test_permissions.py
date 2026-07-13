@@ -12,7 +12,6 @@ from fastapi_admin_kit.auth.models import (
 from fastapi_admin_kit.auth.permissions import PermissionChecker
 from fastapi_admin_kit.models import Base
 
-
 # ---------------------------------------------------------------------------
 # Async fixtures
 # ---------------------------------------------------------------------------

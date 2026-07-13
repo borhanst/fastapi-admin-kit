@@ -61,9 +61,7 @@ async def create_role(
     """POST /api/roles/ — create a role (superuser only)."""
     db_session = get_db_session(request)
 
-    existing = await db_session.execute(
-        select(Role).where(Role.name == body.name)
-    )
+    existing = await db_session.execute(select(Role).where(Role.name == body.name))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Role name already exists.")
 
@@ -72,9 +70,7 @@ async def create_role(
     await db_session.flush()
     await db_session.refresh(role)
 
-    return RoleResponse(
-        id=role.id, name=role.name, description=role.description
-    )
+    return RoleResponse(id=role.id, name=role.name, description=role.description)
 
 
 @router.put("/{role_id}", response_model=RoleResponse)

@@ -217,35 +217,35 @@ Customize behavior at specific lifecycle points:
 ```python
 @admin.register(Product)
 class ProductAdmin(ModelAdmin):
-    
+
     def get_queryset(self, session, request):
         """Filter records globally"""
         return session.query(self.model).filter_by(is_deleted=False)
-    
+
     def get_object(self, session, id):
         """Custom PK lookup"""
         return session.get(self.model, id)
-    
+
     def on_create(self, obj, request):
         """Called before INSERT"""
         obj.created_by = request.state.admin_user.id
-    
+
     def after_create(self, obj, request):
         """Called after INSERT commit"""
         send_notification(f"New product: {obj.name}")
-    
+
     def on_update(self, obj, data, request):
         """Called before UPDATE"""
         pass
-    
+
     def after_update(self, obj, request):
         """Called after UPDATE commit"""
         pass
-    
+
     def on_delete(self, obj, request):
         """Called before DELETE"""
         pass
-    
+
     def after_delete(self, obj, request):
         """Called after DELETE commit"""
         pass
@@ -313,11 +313,11 @@ from fastapi_admin_kit import column
 @admin.register(Product)
 class ProductAdmin(ModelAdmin):
     list_display = ["name", "price_display", "stock_status"]
-    
+
     @column(header="Price", format="${:,.2f}", icon="attach_money")
     def price_display(self, obj):
         return obj.price
-    
+
     @column(header="Stock", boolean=True, css_class="text-center")
     def stock_status(self, obj):
         return obj.stock > 0

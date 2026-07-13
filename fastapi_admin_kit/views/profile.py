@@ -43,7 +43,6 @@ async def profile_update(
     _csrf: bool = Depends(require_csrf_token),
 ):
     """Update profile (full_name, email)."""
-    from fastapi_admin_kit.auth.models import User
 
     session = get_db_session(request)
     form = await request.form()
@@ -82,9 +81,7 @@ async def profile_update(
 
     if email:
         existing = await session.execute(
-            select(type(user)).where(
-                type(user).email == email, type(user).id != user.id
-            )
+            select(type(user)).where(type(user).email == email, type(user).id != user.id)
         )
         if existing.scalar_one_or_none():
             templates = request.app.state.admin_jinja_env
@@ -208,9 +205,7 @@ async def password_change_post(
         status_code=302,
     )
     session_backend = request.app.state.admin_session_backend
-    samesite = getattr(
-        request.app.state.admin_state, "session_samesite", "strict"
-    )
+    samesite = getattr(request.app.state.admin_state, "session_samesite", "strict")
     response.delete_cookie(
         key=session_backend.cookie_name,
         path="/",

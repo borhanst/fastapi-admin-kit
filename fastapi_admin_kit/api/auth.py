@@ -56,9 +56,7 @@ def _get_refresh_ttl() -> int:
     return 7 * 24 * 3600
 
 
-async def _build_user_permissions(
-    user: Any, db_session: Any
-) -> dict[str, list[str]]:
+async def _build_user_permissions(user: Any, db_session: Any) -> dict[str, list[str]]:
     """Build permissions dict from user's roles and direct overrides."""
     permissions: dict[str, list[str]] = {}
     if getattr(user, "is_superuser", False):
@@ -96,9 +94,7 @@ async def _build_user_permissions(
     user_id = getattr(user, "id", None)
     if user_id is not None:
         result = await db_session.execute(
-            select(UserPermission).where(
-                UserPermission.user_id == user_id
-            )
+            select(UserPermission).where(UserPermission.user_id == user_id)
         )
         for perm in result.scalars():
             actions = []
@@ -112,9 +108,7 @@ async def _build_user_permissions(
                 actions.append("delete")
             if actions:
                 existing = permissions.get(perm.table_name, [])
-                permissions[perm.table_name] = list(
-                    set(existing) | set(actions)
-                )
+                permissions[perm.table_name] = list(set(existing) | set(actions))
 
     return permissions
 
@@ -174,19 +168,13 @@ async def obtain_token(
 
     auth_backend = getattr(request.app.state, "admin_auth_backend", None)
     if auth_backend is None:
-        raise HTTPException(
-            status_code=500, detail="Auth backend not configured."
-        )
+        raise HTTPException(status_code=500, detail="Auth backend not configured.")
 
     db_session = get_db_session(request)
     if db_session is None:
-        raise HTTPException(
-            status_code=500, detail="Database session not available."
-        )
+        raise HTTPException(status_code=500, detail="Database session not available.")
 
-    user = await auth_backend.authenticate(
-        body.email, body.password, db_session
-    )
+    user = await auth_backend.authenticate(body.email, body.password, db_session)
     if user is None:
         _api_rate_limiter.record_attempt(body.email)
         raise HTTPException(status_code=401, detail="Invalid credentials.")
@@ -230,9 +218,7 @@ async def refresh_token(
     """POST /api/auth/refresh — exchange refresh token for new access token."""
     db_session = get_db_session(request)
     if db_session is None:
-        raise HTTPException(
-            status_code=500, detail="Database session not available."
-        )
+        raise HTTPException(status_code=500, detail="Database session not available.")
 
     from sqlalchemy import select
 
@@ -262,9 +248,7 @@ async def refresh_token(
     )
     user = user_result.scalar_one_or_none()
     if user is None:
-        raise HTTPException(
-            status_code=401, detail="User not found or inactive."
-        )
+        raise HTTPException(status_code=401, detail="User not found or inactive.")
 
     # Rotate refresh token
     refresh_record.revoked_at = datetime.now(UTC)
@@ -328,9 +312,7 @@ async def get_current_user_info(
     """GET /api/auth/me — return current user info from JWT (no DB hit)."""
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401, detail="Missing or invalid Authorization header."
-        )
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header.")
 
     token = auth_header[7:]
     secret_key = _get_secret_key(request)

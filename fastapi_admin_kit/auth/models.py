@@ -63,9 +63,7 @@ class Role(Base):
     description = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    users = relationship(
-        "User", secondary=admin_user_roles, back_populates="roles"
-    )
+    users = relationship("User", secondary=admin_user_roles, back_populates="roles")
     permissions = relationship(
         "Permission", secondary=admin_role_permissions, back_populates="roles"
     )
@@ -94,9 +92,7 @@ class User(AuthModelMixin, Base):
     password_changed_at = Column(DateTime(timezone=True), nullable=True)
 
     # Many-to-many roles
-    roles = relationship(
-        "Role", secondary=admin_user_roles, back_populates="users"
-    )
+    roles = relationship("Role", secondary=admin_user_roles, back_populates="users")
     # Direct permission overrides
     direct_permissions = relationship(
         "UserPermission",
@@ -124,11 +120,7 @@ class Permission(Base):
     """Permission matrix per model — shared across roles via M2M."""
 
     __tablename__ = "admin_permissions"
-    __table_args__ = (
-        UniqueConstraint(
-            "table_name", name="uq_admin_perm_table"
-        ),
-    )
+    __table_args__ = (UniqueConstraint("table_name", name="uq_admin_perm_table"),)
 
     id = Column(Integer, primary_key=True)
     table_name = Column(String(255), nullable=False)
@@ -137,9 +129,7 @@ class Permission(Base):
     can_edit = Column(Boolean, default=False)
     can_delete = Column(Boolean, default=False)
 
-    roles = relationship(
-        "Role", secondary=admin_role_permissions, back_populates="permissions"
-    )
+    roles = relationship("Role", secondary=admin_role_permissions, back_populates="permissions")
 
     def __str__(self) -> str:
         return str(self.table_name)
@@ -153,9 +143,7 @@ class UserPermission(Base):
 
     __tablename__ = "admin_user_permissions"
     __table_args__ = (
-        UniqueConstraint(
-            "user_id", "table_name", name="uq_admin_user_perm_user_table"
-        ),
+        UniqueConstraint("user_id", "table_name", name="uq_admin_user_perm_user_table"),
     )
 
     id = Column(Integer, primary_key=True)
@@ -195,11 +183,7 @@ class RefreshToken(Base):
 
     user = relationship("User", back_populates="refresh_tokens")
 
-    __table_args__ = (
-        UniqueConstraint(
-            "user_id", "token_hash", name="uq_admin_refresh_token"
-        ),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "token_hash", name="uq_admin_refresh_token"),)
 
     def __str__(self) -> str:
         return f"Token {self.token_hash[:8]}..."
@@ -249,6 +233,4 @@ class LoginAttempt(Base):
         return f"{self.email} - {'success' if self.success else 'failed'}"
 
     def __repr__(self) -> str:
-        return (
-            f"<LoginAttempt email={self.email!r} success={self.success}>"
-        )
+        return f"<LoginAttempt email={self.email!r} success={self.success}>"

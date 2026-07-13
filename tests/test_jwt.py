@@ -61,9 +61,7 @@ class TestJWTPayload:
         user = self._make_user()
         secret = "test-secret-key-long-enough-for-security!"
 
-        token = create_access_token(
-            user, secret, expires_delta=timedelta(seconds=1)
-        )
+        token = create_access_token(user, secret, expires_delta=timedelta(seconds=1))
         payload = pyjwt.decode(token, secret, algorithms=["HS256"])
 
         assert payload["exp"] - payload["iat"] <= 2

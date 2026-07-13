@@ -27,6 +27,4 @@ class NavConfig:
     def validate_nav_config(self) -> None:
         """Validate navigation configuration."""
         if self.require_tags and not self.nav_groups:
-            raise ConfigError(
-                "require_tags=True requires nav_groups to be configured"
-            )
+            raise ConfigError("require_tags=True requires nav_groups to be configured")

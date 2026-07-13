@@ -28,6 +28,7 @@ def _resolve_callback(dotted_path: str) -> Any | None:
 
 def dashboard_view_factory(admin: Any):
     """Return a dashboard view function bound to the given admin instance."""
+
     async def dashboard_view(
         request: Request,
         current_user: Any = Depends(get_current_admin_user),
@@ -43,9 +44,7 @@ def dashboard_view_factory(admin: Any):
         # Determine which models to show stats for
         dashboard_stats = config.get("dashboard_stats", [])
         if dashboard_stats:
-            models_for_stats = [
-                m for m in registered_models if m.table_name in dashboard_stats
-            ]
+            models_for_stats = [m for m in registered_models if m.table_name in dashboard_stats]
         else:
             models_for_stats = registered_models
 
@@ -68,12 +67,12 @@ def dashboard_view_factory(admin: Any):
                 if hasattr(model_cls, col_name):
                     has_timestamp = True
                     col = getattr(model_cls, col_name)
-                    recent_q = select(func.count()).select_from(model_cls).where(
-                        col >= thirty_days_ago
+                    recent_q = (
+                        select(func.count()).select_from(model_cls).where(col >= thirty_days_ago)
                     )
                     trend_current = (await session.execute(recent_q)).scalar() or 0
-                    older_q = select(func.count()).select_from(model_cls).where(
-                        col < thirty_days_ago
+                    older_q = (
+                        select(func.count()).select_from(model_cls).where(col < thirty_days_ago)
                     )
                     trend_previous = (await session.execute(older_q)).scalar() or 0
                     break
@@ -88,18 +87,21 @@ def dashboard_view_factory(admin: Any):
                 trend_pct = 100
                 trend_direction = "up"
 
-            stat_cards.append({
-                "title": model.verbose_name_plural,
-                "icon": getattr(model.admin, "icon", None) or "cube",
-                "count": count,
-                "url": f"{admin_instance.admin_path}/{model.table_name}/",
-                "trend_pct": trend_pct,
-                "trend_direction": trend_direction,
-                "has_trend": has_timestamp,
-            })
+            stat_cards.append(
+                {
+                    "title": model.verbose_name_plural,
+                    "icon": getattr(model.admin, "icon", None) or "cube",
+                    "count": count,
+                    "url": f"{admin_instance.admin_path}/{model.table_name}/",
+                    "trend_pct": trend_pct,
+                    "trend_direction": trend_direction,
+                    "has_trend": has_timestamp,
+                }
+            )
 
         # Fetch last 10 audit entries
         from fastapi_admin_kit.audit.models import AuditLog
+
         audit_query = select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(10)
         recent_audit = (await session.execute(audit_query)).scalars().all()
 
@@ -131,6 +133,7 @@ def dashboard_view_factory(admin: Any):
             cb_fn = _resolve_callback(dashboard_callback)
             if cb_fn and callable(cb_fn):
                 import asyncio
+
                 if asyncio.iscoroutinefunction(cb_fn):
                     callback_data = await cb_fn(request, session) or {}
                 else:
@@ -142,19 +145,27 @@ def dashboard_view_factory(admin: Any):
         # System overview data for donut chart
         overview_data = []
         overview_colors = [
-            "#14b8a6", "#8b5cf6", "#3b82f6", "#f97316",
-            "#22c55e", "#eab308", "#ec4899", "#ef4444",
+            "#14b8a6",
+            "#8b5cf6",
+            "#3b82f6",
+            "#f97316",
+            "#22c55e",
+            "#eab308",
+            "#ec4899",
+            "#ef4444",
         ]
         total_count = 0
         for i, model in enumerate(registered_models):
             count_query = select(func.count()).select_from(model.model)
             count = (await session.execute(count_query)).scalar() or 0
             total_count += count
-            overview_data.append({
-                "label": model.verbose_name_plural,
-                "value": count,
-                "color": overview_colors[i % len(overview_colors)],
-            })
+            overview_data.append(
+                {
+                    "label": model.verbose_name_plural,
+                    "value": count,
+                    "color": overview_colors[i % len(overview_colors)],
+                }
+            )
 
         template = templates.get_template("pages/dashboard.html")
         context: dict[str, Any] = {
@@ -173,6 +184,7 @@ def dashboard_view_factory(admin: Any):
         }
         if hasattr(admin_instance, "build_sidebar_context") and current_user is not None:
             from fastapi_admin_kit.views.sidebar import inject_sidebar_context
+
             context = await inject_sidebar_context(request, context)
         html = template.render(**context)
         return HTMLResponse(content=html)
