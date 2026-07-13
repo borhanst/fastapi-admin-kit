@@ -47,6 +47,38 @@ async def tables_search(
     return JSONResponse(content=results)
 
 
+@router.get("/permissions/search")
+async def permissions_search(
+    request: Request,
+    q: str = Query("", description="Search query"),
+    ids: str = Query("", description="Comma-separated permission IDs to load"),
+    _: AdminUserProtocol = Depends(_require_superuser),
+):
+    """Search existing permissions for the multi-select picker."""
+    session = get_db_session(request)
+
+    if ids:
+        id_list = [int(i.strip()) for i in ids.split(",") if i.strip().isdigit()]
+        if id_list:
+            result = await session.execute(select(Permission).where(Permission.id.in_(id_list)))
+            perms = result.scalars().all()
+            return JSONResponse(
+                content=[{"id": p.id, "label": p.name, "table_name": p.table_name} for p in perms]
+            )
+
+    query = select(Permission)
+    if q:
+        query = query.where(Permission.name.ilike(f"%{q}%"))
+    query = query.order_by(Permission.name).limit(50)
+
+    result = await session.execute(query)
+    perms = result.scalars().all()
+
+    return JSONResponse(
+        content=[{"id": p.id, "label": p.name, "table_name": p.table_name} for p in perms]
+    )
+
+
 @router.get("/roles", response_class=HTMLResponse)
 async def role_list_view(
     request: Request,
@@ -96,10 +128,56 @@ async def role_create_view(
             request,
             {
                 "role": None,
-                "perm_data": {},
-                "search_url": f"{request.app.state.admin_config['admin_path']}/tables/search",
+                "perm_ids": [],
+                "perm_search_url": (
+                    f"{request.app.state.admin_config['admin_path']}" "/permissions/search"
+                ),
             },
         ),
+    )
+
+
+@router.post("/roles", response_class=RedirectResponse)
+async def role_create_save_view(
+    request: Request,
+    _: AdminUserProtocol = Depends(_require_superuser),
+    _csrf: bool = Depends(require_csrf_token),
+):
+    """Create a new role with permissions from form submission."""
+    session = get_db_session(request)
+
+    form = await request.form()
+    name = form.get("name", "").strip()
+    description = form.get("description", "").strip()
+    perm_ids_raw = form.get("perm_ids", "[]")
+
+    if not name:
+        raise HTTPException(status_code=400, detail="Role name is required.")
+
+    existing = await session.execute(select(Role).where(Role.name == name))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Role name already exists.")
+
+    role = Role(name=name, description=description)
+    session.add(role)
+    await session.flush()
+
+    try:
+        perm_ids = json.loads(perm_ids_raw)
+    except (json.JSONDecodeError, TypeError):
+        perm_ids = []
+
+    if perm_ids:
+        result = await session.execute(select(Permission).where(Permission.id.in_(perm_ids)))
+        perms = result.scalars().all()
+        for perm in perms:
+            role.permissions.append(perm)
+
+    await session.flush()
+
+    return RedirectResponse(
+        url=f"{request.app.state.admin_config['admin_path']}/roles",
+        status_code=302,
     )
 
 
@@ -112,25 +190,12 @@ async def role_edit_view(
     """Show edit form with permission matrix."""
     templates = request.app.state.admin_jinja_env
     session = get_db_session(request)
-    registry = request.app.state.admin_registry
 
     role = await session.get(Role, role_id)
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
 
-    models = registry.all()
-    model_map = {m.table_name: m.verbose_name for m in models}
-
-    # Get permissions via M2M relationship
-    perm_data = {}
-    for p in role.permissions:
-        perm_data[p.table_name] = {
-            "_label": model_map.get(p.table_name, p.table_name),
-            "view": p.can_view,
-            "create": p.can_create,
-            "edit": p.can_edit,
-            "delete": p.can_delete,
-        }
+    perm_ids = [p.id for p in role.permissions]
 
     return templates.TemplateResponse(
         request,
@@ -139,14 +204,16 @@ async def role_edit_view(
             request,
             {
                 "role": role,
-                "perm_data": perm_data,
-                "search_url": f"{request.app.state.admin_config['admin_path']}/tables/search",
+                "perm_ids": perm_ids,
+                "perm_search_url": (
+                    f"{request.app.state.admin_config['admin_path']}" "/permissions/search"
+                ),
             },
         ),
     )
 
 
-@router.post("/roles/{role_id}", response_class=HTMLResponse)
+@router.post("/roles/{role_id}", response_class=RedirectResponse)
 async def role_save_view(
     request: Request,
     role_id: int,
@@ -161,64 +228,20 @@ async def role_save_view(
         raise HTTPException(status_code=404, detail="Role not found")
 
     form = await request.form()
-    perm_data_raw = form.get("perm_data", "{}")
+    perm_ids_raw = form.get("perm_ids", "[]")
 
     try:
-        perm_data = json.loads(perm_data_raw)
+        perm_ids = json.loads(perm_ids_raw)
     except (json.JSONDecodeError, TypeError):
-        perm_data = {}
+        perm_ids = []
 
-    # Build set of table_names from form data
-    tables_in_form = set(perm_data.keys())
+    role.permissions.clear()
 
-    # Get existing permissions for this role via M2M
-    existing_perms = {p.table_name: p for p in role.permissions}
-
-    # Process each table in form data
-    for table, data in perm_data.items():
-        has_any_perm = any(data.get(a) for a in ["view", "create", "edit", "delete"])
-
-        if not has_any_perm:
-            # Remove permission from this role if it exists
-            if table in existing_perms:
-                role.permissions.remove(existing_perms[table])
-            continue
-
-        # Find or create a Permission for this table (shared across roles)
-
-        result = await session.execute(select(Permission).where(Permission.table_name == table))
-        perm = result.scalar_one_or_none()
-
-        if perm is None:
-            # Create new permission
-            perm = Permission(
-                table_name=table,
-                can_view=data.get("view", False),
-                can_create=data.get("create", False),
-                can_edit=data.get("edit", False),
-                can_delete=data.get("delete", False),
-            )
-            session.add(perm)
-            await session.flush()
-        else:
-            # Update existing permission flags (OR with current values)
-            if data.get("view"):
-                perm.can_view = True
-            if data.get("create"):
-                perm.can_create = True
-            if data.get("edit"):
-                perm.can_edit = True
-            if data.get("delete"):
-                perm.can_delete = True
-
-        # Link permission to role if not already linked
-        if table not in existing_perms:
+    if perm_ids:
+        result = await session.execute(select(Permission).where(Permission.id.in_(perm_ids)))
+        perms = result.scalars().all()
+        for perm in perms:
             role.permissions.append(perm)
-
-    # Remove permissions not in form data
-    for table, perm in existing_perms.items():
-        if table not in tables_in_form:
-            role.permissions.remove(perm)
 
     await session.flush()
 
@@ -248,6 +271,8 @@ async def role_delete_view(
             status_code=400,
             detail=f"Cannot delete role. {user_count} user(s) are still assigned.",
         )
+
+    role.permissions.clear()
 
     await session.delete(role)
     await session.flush()

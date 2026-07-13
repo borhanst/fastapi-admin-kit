@@ -151,6 +151,7 @@ class TestHasPermissionNormalUser:
     @pytest.mark.asyncio
     async def test_with_permission_granted(self, session, editor_role, normal_user):
         perm = Permission(
+            name="products_view",
             table_name="products",
             can_view=True,
             can_create=True,
@@ -179,6 +180,7 @@ class TestHasPermissionNormalUser:
     @pytest.mark.asyncio
     async def test_wrong_table_denied(self, session, editor_role, normal_user):
         perm = Permission(
+            name="products_view",
             table_name="products",
             can_view=True,
         )
@@ -206,6 +208,7 @@ class TestHasPermissionMultiRole:
     ):
         # Create permissions for different tables (M2M means one permission per table)
         editor_perm = Permission(
+            name="products_view",
             table_name="products",
             can_view=True,
             can_create=True,
@@ -213,6 +216,7 @@ class TestHasPermissionMultiRole:
             can_delete=False,
         )
         viewer_perm = Permission(
+            name="orders_view",
             table_name="orders",
             can_view=True,
             can_create=False,
@@ -241,10 +245,12 @@ class TestHasPermissionMultiRole:
         self, session, editor_role, viewer_role, multi_role_user
     ):
         editor_perm = Permission(
+            name="products_view",
             table_name="products",
             can_view=True,
         )
         viewer_perm = Permission(
+            name="orders_view",
             table_name="orders",
             can_view=True,
         )
@@ -273,6 +279,7 @@ class TestHasPermissionCaching:
     @pytest.mark.asyncio
     async def test_result_is_cached(self, session, editor_role, normal_user):
         perm = Permission(
+            name="products_view",
             table_name="products",
             can_view=True,
         )
@@ -294,6 +301,7 @@ class TestHasPermissionCaching:
     @pytest.mark.asyncio
     async def test_different_actions_not_shared(self, session, editor_role, normal_user):
         perm = Permission(
+            name="products_view",
             table_name="products",
             can_view=True,
             can_delete=False,

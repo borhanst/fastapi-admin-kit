@@ -284,6 +284,68 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  /* ── Permission Select Widget (multi-select existing perms) ─────── */
+
+  Alpine.data('permSelectWidget', (searchUrl, initialIds) => ({
+    selectedIds: [],
+    selectedItems: [],
+    searchQuery: '',
+    results: [],
+    open: false,
+    _debounce: null,
+
+    init() {
+      this.selectedIds = Array.isArray(initialIds) ? initialIds : [];
+      if (this.selectedIds.length > 0) {
+        this._loadSelected();
+      }
+    },
+
+    async _loadSelected() {
+      try {
+        const ids = this.selectedIds.join(',');
+        const resp = await fetch(`${searchUrl}?ids=${ids}`);
+        if (resp.ok) {
+          this.selectedItems = await resp.json();
+        }
+      } catch (e) {
+        console.error('Permission load error:', e);
+      }
+    },
+
+    async search() {
+      clearTimeout(this._debounce);
+      this._debounce = setTimeout(async () => {
+        try {
+          const q = this.searchQuery.trim();
+          const url = q ? `${searchUrl}?q=${encodeURIComponent(q)}` : searchUrl;
+          const resp = await fetch(url);
+          if (resp.ok) {
+            const all = await resp.json();
+            const idSet = new Set(this.selectedIds.map(String));
+            this.results = all.filter(r => !idSet.has(String(r.id)));
+          }
+        } catch (e) {
+          console.error('Permission search error:', e);
+        }
+      }, 250);
+    },
+
+    add(result) {
+      if (!this.selectedIds.includes(result.id)) {
+        this.selectedIds.push(result.id);
+        this.selectedItems.push(result);
+      }
+      this.searchQuery = '';
+      this.results = [];
+    },
+
+    remove(index) {
+      this.selectedIds.splice(index, 1);
+      this.selectedItems.splice(index, 1);
+    },
+  }));
+
   /* ── Slug Widget ─────────────────────────────────────────────────── */
 
   Alpine.data('slugWidget', (sourceField, name) => ({

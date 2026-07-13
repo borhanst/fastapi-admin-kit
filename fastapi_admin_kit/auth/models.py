@@ -120,9 +120,10 @@ class Permission(Base):
     """Permission matrix per model — shared across roles via M2M."""
 
     __tablename__ = "admin_permissions"
-    __table_args__ = (UniqueConstraint("table_name", name="uq_admin_perm_table"),)
+    __table_args__ = (UniqueConstraint("name", name="uq_admin_perm_name"),)
 
     id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
     table_name = Column(String(255), nullable=False)
     can_view = Column(Boolean, default=False)
     can_create = Column(Boolean, default=False)
@@ -132,10 +133,10 @@ class Permission(Base):
     roles = relationship("Role", secondary=admin_role_permissions, back_populates="permissions")
 
     def __str__(self) -> str:
-        return str(self.table_name)
+        return str(self.name)
 
     def __repr__(self) -> str:
-        return f"<Permission table={self.table_name!r}>"
+        return f"<Permission name={self.name!r} table={self.table_name!r}>"
 
 
 class UserPermission(Base):

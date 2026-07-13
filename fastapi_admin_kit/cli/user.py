@@ -11,24 +11,32 @@ import sys
 def _resolve_database_url(url: str | None = None) -> str:
     """Resolve database URL from argument, env var, or default."""
     if url:
-        return url
+        return _ensure_async_url(url)
     env_url = os.getenv("DATABASE_URL")
     if env_url:
-        return env_url
+        return _ensure_async_url(env_url)
     print("Error: --database-url not specified and DATABASE_URL env var not set.")
     sys.exit(1)
+
+
+def _ensure_async_url(url: str) -> str:
+    """Ensure SQLite URLs use the async driver."""
+    if url.startswith("sqlite:///") and not url.startswith("sqlite+aiosqlite"):
+        return url.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
+    return url
 
 
 async def _create_superuser(args: argparse.Namespace) -> None:
     """Create a superuser."""
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import NullPool
 
     from fastapi_admin_kit.auth.models import User
     from fastapi_admin_kit.models.base import Base
 
     database_url = _resolve_database_url(args.database_url)
-    engine = create_async_engine(database_url)
+    engine = create_async_engine(database_url, poolclass=NullPool)
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -69,12 +77,13 @@ async def _list_users(args: argparse.Namespace) -> None:
     """List all admin users."""
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import NullPool
 
     from fastapi_admin_kit.auth.models import User
     from fastapi_admin_kit.models.base import Base
 
     database_url = _resolve_database_url(args.database_url)
-    engine = create_async_engine(database_url)
+    engine = create_async_engine(database_url, poolclass=NullPool)
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -108,12 +117,13 @@ async def _change_password(args: argparse.Namespace) -> None:
     """Change password for an existing user."""
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import NullPool
 
     from fastapi_admin_kit.auth.models import User
     from fastapi_admin_kit.models.base import Base
 
     database_url = _resolve_database_url(args.database_url)
-    engine = create_async_engine(database_url)
+    engine = create_async_engine(database_url, poolclass=NullPool)
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

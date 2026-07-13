@@ -168,6 +168,7 @@ class AdminDatabase:
                             existing = result.scalar_one_or_none()
                             if existing is None:
                                 perm = Permission(
+                                    name=table_name,
                                     table_name=table_name,
                                     can_view=perms.get("view", False),
                                     can_create=perms.get("create", False),
@@ -207,6 +208,7 @@ class AdminDatabase:
                             )
                             if existing is None:
                                 perm = Permission(
+                                    name=table_name,
                                     table_name=table_name,
                                     can_view=perms.get("view", False),
                                     can_create=perms.get("create", False),

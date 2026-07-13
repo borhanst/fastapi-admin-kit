@@ -123,6 +123,7 @@ def test_admin_user_defaults(session):
 
 def test_admin_permission_create(session):
     perm = Permission(
+        name="products_view",
         table_name="products",
         can_view=True,
         can_create=True,
@@ -135,10 +136,10 @@ def test_admin_permission_create(session):
 
 
 def test_admin_permission_unique_constraint(session):
-    session.add(Permission(table_name="products", can_view=True))
+    session.add(Permission(name="products_view", table_name="products", can_view=True))
     session.flush()
     with pytest.raises(Exception):
-        session.add(Permission(table_name="products", can_view=False))
+        session.add(Permission(name="products_view", table_name="products", can_view=False))
         session.flush()
 
 
@@ -146,7 +147,7 @@ def test_admin_permission_cascade_delete(session):
     role = Role(name="Temp")
     session.add(role)
     session.flush()
-    perm = Permission(table_name="t", can_view=True)
+    perm = Permission(name="t_view", table_name="t", can_view=True)
     session.add(perm)
     role.permissions.append(perm)
     session.flush()

@@ -412,6 +412,7 @@ class Admin:
                         for table_name, perms in role_spec.permissions.items():
                             perm = Permission(
                                 role_id=role.id,
+                                name=table_name,
                                 table_name=table_name,
                                 can_view=perms.get("view", False),
                                 can_create=perms.get("create", False),
@@ -441,7 +442,7 @@ class Admin:
                     if role_spec.permissions:
                         for table_name, perms in role_spec.permissions.items():
                             perm = Permission(
-                                role_id=role.id,
+                                name=table_name,
                                 table_name=table_name,
                                 can_view=perms.get("view", False),
                                 can_create=perms.get("create", False),
