@@ -192,9 +192,7 @@ class TestCursorPagination:
     async def test_custom_cursor_column(self, populated_session):
         stmt = select(Item).order_by(Item.value)
         pagination = CursorPagination(cursor_column="value")
-        result = await pagination.paginate(
-            stmt, populated_session, per_page=10, model=Item
-        )
+        result = await pagination.paginate(stmt, populated_session, per_page=10, model=Item)
 
         assert len(result.items) == 10
         assert result.has_next is True
@@ -210,8 +208,12 @@ class TestDynamicPagination:
         stmt = select(Item).order_by(Item.id)
         pagination = DynamicPagination(threshold=100)
         result = await pagination.paginate(
-            stmt, populated_session, per_page=10, page=1,
-            pk_col=Item.id, model=Item,
+            stmt,
+            populated_session,
+            per_page=10,
+            page=1,
+            pk_col=Item.id,
+            model=Item,
         )
 
         # 50 items < 100 threshold, should use offset
@@ -230,8 +232,12 @@ class TestDynamicPagination:
             stmt = select(Item).order_by(Item.id)
             pagination = DynamicPagination(threshold=100)
             result = await pagination.paginate(
-                stmt, sess, per_page=10, page=1,
-                pk_col=Item.id, model=Item,
+                stmt,
+                sess,
+                per_page=10,
+                page=1,
+                pk_col=Item.id,
+                model=Item,
             )
 
             # 150 items > 100 threshold, should use cursor
@@ -250,8 +256,12 @@ class TestDynamicPagination:
             # threshold=20, 25 items > 20, should use cursor
             pagination = DynamicPagination(threshold=20)
             result = await pagination.paginate(
-                stmt, sess, per_page=10, page=1,
-                pk_col=Item.id, model=Item,
+                stmt,
+                sess,
+                per_page=10,
+                page=1,
+                pk_col=Item.id,
+                model=Item,
             )
 
             assert result.mode == "dynamic_cursor"
@@ -266,7 +276,10 @@ class TestDynamicPagination:
             stmt = select(Item).order_by(Item.value)
             pagination = DynamicPagination(cursor_column="value", threshold=100)
             result = await pagination.paginate(
-                stmt, sess, per_page=10, page=1,
+                stmt,
+                sess,
+                per_page=10,
+                page=1,
                 model=Item,
             )
 

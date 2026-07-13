@@ -19,9 +19,7 @@ def search_factory(registered: RegisteredModel):
         _resolve_view_class,
     )
 
-    view_class = _resolve_view_class(
-        registered.admin, "search_view_class", SearchView
-    )
+    view_class = _resolve_view_class(registered.admin, "search_view_class", SearchView)
     view_instance = view_class(registered)
 
     async def _handler(request: Request, **kwargs: Any):

@@ -34,9 +34,7 @@ class Post(Base):
     id = Column(Integer, primary_key=True)
     title = Column(String(200), nullable=False)
     content = Column(Text)
-    author_id = Column(
-        Integer, ForeignKey("inspector_users.id"), nullable=False
-    )
+    author_id = Column(Integer, ForeignKey("inspector_users.id"), nullable=False)
 
     author = relationship("User", back_populates="posts")
 

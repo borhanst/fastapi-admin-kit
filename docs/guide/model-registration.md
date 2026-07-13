@@ -34,6 +34,37 @@ class ProductAdmin(ModelAdmin):
     list_filter = ["category", "is_active"]
 ```
 
+### Searching across relations
+
+`search_fields` also accepts Django-style `relation__field` lookups, so you can
+search by an attribute of a related model — both foreign keys (many-to-one) and
+many-to-many relationships:
+
+```python
+@admin.register(Order)
+class OrderAdmin(ModelAdmin):
+    # "user" is a FK → searches User.email
+    search_fields = ["id", "user__email"]
+
+@admin.register(Article)
+class ArticleAdmin(ModelAdmin):
+    # "tags" is a many-to-many → searches Tag.name
+    search_fields = ["title", "tags__name"]
+```
+
+How it works:
+
+- A field containing `__` (e.g. `tags__name`) is split into a relationship name
+  (`tags`) and a target attribute (`name`).
+- The query joins the related model and applies a case-insensitive `ilike`
+  (`%term%`) on the target column.
+- Because a many-to-many join can produce duplicate parent rows, `.distinct()`
+  is automatically applied, so each matching record is returned exactly once.
+- An unknown `relation__field` entry is silently ignored (no error).
+
+This works for both the list-view search box and the relation-picker
+autocomplete.
+
 ### Pattern C — Full Override
 
 Control every aspect of the admin view:
@@ -217,35 +248,35 @@ Customize behavior at specific lifecycle points:
 ```python
 @admin.register(Product)
 class ProductAdmin(ModelAdmin):
-    
+
     def get_queryset(self, session, request):
         """Filter records globally"""
         return session.query(self.model).filter_by(is_deleted=False)
-    
+
     def get_object(self, session, id):
         """Custom PK lookup"""
         return session.get(self.model, id)
-    
+
     def on_create(self, obj, request):
         """Called before INSERT"""
         obj.created_by = request.state.admin_user.id
-    
+
     def after_create(self, obj, request):
         """Called after INSERT commit"""
         send_notification(f"New product: {obj.name}")
-    
+
     def on_update(self, obj, data, request):
         """Called before UPDATE"""
         pass
-    
+
     def after_update(self, obj, request):
         """Called after UPDATE commit"""
         pass
-    
+
     def on_delete(self, obj, request):
         """Called before DELETE"""
         pass
-    
+
     def after_delete(self, obj, request):
         """Called after DELETE commit"""
         pass
@@ -313,11 +344,11 @@ from fastapi_admin_kit import column
 @admin.register(Product)
 class ProductAdmin(ModelAdmin):
     list_display = ["name", "price_display", "stock_status"]
-    
+
     @column(header="Price", format="${:,.2f}", icon="attach_money")
     def price_display(self, obj):
         return obj.price
-    
+
     @column(header="Stock", boolean=True, css_class="text-center")
     def stock_status(self, obj):
         return obj.stock > 0

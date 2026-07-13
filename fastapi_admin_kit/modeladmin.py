@@ -48,9 +48,7 @@ class ModelAdmin:
     readonly_fields: list[str] | None = None
     formfield_overrides: dict[str, Any] = {}
     extra_fields: list[ExtraField] = []
-    fieldsets: list[
-        Any
-    ] = []  # FieldsetSpec accepted but not strictly enforced here
+    fieldsets: list[Any] = []  # FieldsetSpec accepted but not strictly enforced here
     field_placeholders: dict[str, str] = {}  # {field_name: placeholder_text}
 
     # Conditional fields
@@ -123,9 +121,7 @@ class ModelAdmin:
     def after_create(self, obj: Any, request: Any = None) -> None:
         """Called after INSERT commit."""
 
-    def on_update(
-        self, obj: Any, data: dict[str, Any], request: Any = None
-    ) -> None:
+    def on_update(self, obj: Any, data: dict[str, Any], request: Any = None) -> None:
         """Called before UPDATE. *data* contains the incoming form values."""
 
     def after_update(self, obj: Any, request: Any = None) -> None:
@@ -139,9 +135,7 @@ class ModelAdmin:
 
     # ── Validation hooks (stubs) ────────────────────────────────────
 
-    def validate_create(
-        self, data: dict[str, Any], request: Any = None
-    ) -> dict[str, Any]:
+    def validate_create(self, data: dict[str, Any], request: Any = None) -> dict[str, Any]:
         """Validate and/or transform form data before create.
 
         Return the (possibly modified) data dict.  Raise ``ValueError``
@@ -229,19 +223,14 @@ class ModelAdmin:
         raw = []
         if self.fields is not None:
             names = set(self.fields)
-            raw = [
-                c for c in columns if c.name in names and not c.primary_key
-            ] + [
+            raw = [c for c in columns if c.name in names and not c.primary_key] + [
                 r
                 for r in relationships
-                if r.name in names
-                and r.direction in ("MANYTOONE", "MANYTOMANY")
+                if r.name in names and r.direction in ("MANYTOONE", "MANYTOMANY")
             ]
         else:
             raw = [c for c in columns if not c.primary_key] + [
-                r
-                for r in relationships
-                if r.direction in ("MANYTOONE", "MANYTOMANY")
+                r for r in relationships if r.direction in ("MANYTOONE", "MANYTOMANY")
             ]
             if self.exclude:
                 raw = [x for x in raw if x.name not in self.exclude]
@@ -273,9 +262,7 @@ class ModelAdmin:
             readonly = name in (self.readonly_fields or []) or name in dynamic_readonly
             required = is_required(item) if hasattr(item, "nullable") else False
             label = auto_label(name)
-            placeholder = self.field_placeholders.get(
-                name, f"Enter {label.lower()}..."
-            )
+            placeholder = self.field_placeholders.get(name, f"Enter {label.lower()}...")
             form_fields.append(
                 FieldMeta(
                     name=name,

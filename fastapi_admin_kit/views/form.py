@@ -103,16 +103,18 @@ def create_form_factory(registered: RegisteredModel):
     async def create_form(request: Request, _: Any = None):
         templates = request.app.state.admin_jinja_env
         ctx = build_form_context(registered, is_create=True)
-        context = await inject_sidebar_context(request, {
-            "form_context": ctx,
-            "is_create": True,
-            "permissions": PermissionSet(
-                can_view=True, can_create=True, can_edit=True, can_delete=True
-            ),
-        })
-        return templates.TemplateResponse(
-            request, "pages/form.html", context
+        context = await inject_sidebar_context(
+            request,
+            {
+                "form_context": ctx,
+                "is_create": True,
+                "permissions": PermissionSet(
+                    can_view=True, can_create=True, can_edit=True, can_delete=True
+                ),
+            },
         )
+        return templates.TemplateResponse(request, "pages/form.html", context)
+
     create_form.__name__ = f"create_form_{registered.table_name}"
     return create_form
 

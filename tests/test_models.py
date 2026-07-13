@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 
 from fastapi_admin_kit.audit.models import AuditLog
 from fastapi_admin_kit.auth.models import (
-    AdminPermission,
-    AdminRole,
-    AdminUser,
+    Permission,
+    Role,
+    User,
 )
 from fastapi_admin_kit.auth.protocol import AdminUserProtocol
 from fastapi_admin_kit.models import Base
@@ -40,11 +40,11 @@ def test_all_tables_created(engine):
     assert "admin_audit_log" in tables
 
 
-# ── AdminRole ────────────────────────────────────────────────────────────
+# ── Role ────────────────────────────────────────────────────────────
 
 
 def test_admin_role_create(session):
-    role = AdminRole(name="Admin", description="Full access")
+    role = Role(name="Admin", description="Full access")
     session.add(role)
     session.flush()
     assert role.id is not None
@@ -52,22 +52,22 @@ def test_admin_role_create(session):
 
 
 def test_admin_role_unique_name(session):
-    session.add(AdminRole(name="Admin"))
+    session.add(Role(name="Admin"))
     session.flush()
     with pytest.raises(Exception):
-        session.add(AdminRole(name="Admin"))
+        session.add(Role(name="Admin"))
         session.flush()
 
 
-# ── AdminUser ────────────────────────────────────────────────────────────
+# ── User ────────────────────────────────────────────────────────────
 
 
 def test_admin_user_create(session):
-    role = AdminRole(name="Editor")
+    role = Role(name="Editor")
     session.add(role)
     session.flush()
 
-    user = AdminUser(
+    user = User(
         email="admin@example.com",
         hashed_password="hashed_secret",
         full_name="Test Admin",
@@ -83,23 +83,19 @@ def test_admin_user_create(session):
 
 
 def test_admin_user_unique_email(session):
-    session.add(
-        AdminUser(email="dup@example.com", hashed_password="h")
-    )
+    session.add(User(email="dup@example.com", hashed_password="h"))
     session.flush()
     with pytest.raises(Exception):
-        session.add(
-            AdminUser(email="dup@example.com", hashed_password="h")
-        )
+        session.add(User(email="dup@example.com", hashed_password="h"))
         session.flush()
 
 
 def test_admin_user_role_relationship(session):
-    role = AdminRole(name="Viewer")
+    role = Role(name="Viewer")
     session.add(role)
     session.flush()
 
-    user = AdminUser(
+    user = User(
         email="viewer@example.com",
         hashed_password="h",
     )
@@ -113,7 +109,7 @@ def test_admin_user_role_relationship(session):
 
 
 def test_admin_user_defaults(session):
-    user = AdminUser(email="def@example.com", hashed_password="h")
+    user = User(email="def@example.com", hashed_password="h")
     session.add(user)
     session.flush()
     assert user.is_superuser is False
@@ -122,16 +118,12 @@ def test_admin_user_defaults(session):
     assert user.last_login is None
 
 
-# ── AdminPermission ──────────────────────────────────────────────────────
+# ── Permission ──────────────────────────────────────────────────────
 
 
 def test_admin_permission_create(session):
-    role = AdminRole(name="Editor")
-    session.add(role)
-    session.flush()
-
-    perm = AdminPermission(
-        role_id=role.id,
+    perm = Permission(
+        name="products_view",
         table_name="products",
         can_view=True,
         can_create=True,
@@ -144,36 +136,26 @@ def test_admin_permission_create(session):
 
 
 def test_admin_permission_unique_constraint(session):
-    role = AdminRole(name="Editor")
-    session.add(role)
-    session.flush()
-
-    session.add(
-        AdminPermission(role_id=role.id, table_name="products", can_view=True)
-    )
+    session.add(Permission(name="products_view", table_name="products", can_view=True))
     session.flush()
     with pytest.raises(Exception):
-        session.add(
-            AdminPermission(role_id=role.id, table_name="products", can_view=False)
-        )
+        session.add(Permission(name="products_view", table_name="products", can_view=False))
         session.flush()
 
 
 def test_admin_permission_cascade_delete(session):
-    role = AdminRole(name="Temp")
+    role = Role(name="Temp")
     session.add(role)
     session.flush()
-    perm_id = (
-        session.add(
-            AdminPermission(role_id=role.id, table_name="t", can_view=True)
-        )
-        or None
-    )
+    perm = Permission(name="t_view", table_name="t", can_view=True)
+    session.add(perm)
+    role.permissions.append(perm)
     session.flush()
 
     session.delete(role)
     session.flush()
-    assert session.query(AdminPermission).count() == 0
+    # Permission still exists (not cascade deleted from M2M)
+    assert session.query(Permission).count() == 1
 
 
 # ── AuditLog ─────────────────────────────────────────────────────────────
@@ -216,8 +198,8 @@ def test_audit_log_nullable_fields(session):
 
 
 def test_admin_user_satisfies_protocol():
-    """AdminUser instances must satisfy AdminUserProtocol at runtime."""
-    user = AdminUser(
+    """User instances must satisfy AdminUserProtocol at runtime."""
+    user = User(
         email="test@example.com",
         hashed_password="h",
         is_active=True,
@@ -227,7 +209,7 @@ def test_admin_user_satisfies_protocol():
 
 
 def test_admin_role_does_not_satisfy_protocol():
-    role = AdminRole(name="Admin")
+    role = Role(name="Admin")
     assert not isinstance(role, AdminUserProtocol)
 
 
@@ -240,14 +222,14 @@ def test_models_package_exports():
     assert Base is not None
 
     from fastapi_admin_kit.auth.models import (
-        AdminPermission,
-        AdminRole,
-        AdminUser,
+        Permission,
+        Role,
+        User,
     )
 
-    assert AdminRole is not None
-    assert AdminUser is not None
-    assert AdminPermission is not None
+    assert Role is not None
+    assert User is not None
+    assert Permission is not None
 
 
 def test_audit_log_exportable():

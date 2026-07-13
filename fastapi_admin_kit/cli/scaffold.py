@@ -11,7 +11,7 @@ LAYOUTS = {
         "name": "Flat (main.py in root)",
         "description": "Simple layout — main.py at project root",
         "files": {
-            "main.py": '''\
+            "main.py": """\
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -35,7 +35,7 @@ async def root():
 @app.get("/health")
 async def health():
     return {{"status": "ok"}}
-''',
+""",
         },
     },
     "app": {
@@ -43,7 +43,7 @@ async def health():
         "description": "Recommended — app/ package with __init__.py",
         "files": {
             "app/__init__.py": "",
-            "app/main.py": '''\
+            "app/main.py": """\
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -67,7 +67,7 @@ async def root():
 @app.get("/health")
 async def health():
     return {{"status": "ok"}}
-''',
+""",
         },
     },
     "src": {
@@ -76,7 +76,7 @@ async def health():
         "files": {
             "src/__init__.py": "",
             "src/app/__init__.py": "",
-            "src/app/main.py": '''\
+            "src/app/main.py": """\
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -100,7 +100,7 @@ async def root():
 @app.get("/health")
 async def health():
     return {{"status": "ok"}}
-''',
+""",
         },
     },
 }
@@ -119,7 +119,7 @@ def _pyproject_content(project_name: str, layout: str, description: str = "") ->
         "src": "src/app",
     }
 
-    return f'''\
+    return f"""\
 [project]
 name = "{project_name}"
 version = "0.1.0"
@@ -144,11 +144,11 @@ build-backend = "hatchling.build"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-'''
+"""
 
 
 def _gitignore_content() -> str:
-    return '''\
+    return """\
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -158,7 +158,7 @@ build/
 .env
 *.db
 *.sqlite3
-'''
+"""
 
 
 def _python_version_content() -> str:

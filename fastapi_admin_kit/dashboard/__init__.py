@@ -9,6 +9,7 @@ from typing import Any
 @dataclass
 class CardComponent:
     """Stat card component."""
+
     type: str = "card"
     title: str = ""
     value: Any = ""
@@ -19,6 +20,7 @@ class CardComponent:
 @dataclass
 class ChartComponent:
     """Chart component (placeholder for JS chart library integration)."""
+
     type: str = "chart"
     title: str = ""
     chart_type: str = "line"  # line, bar, pie, doughnut
@@ -29,6 +31,7 @@ class ChartComponent:
 @dataclass
 class TableComponent:
     """Table component for dashboard."""
+
     type: str = "table"
     title: str = ""
     headers: list[str] = field(default_factory=list)
@@ -38,6 +41,7 @@ class TableComponent:
 @dataclass
 class ProgressComponent:
     """Progress bar component."""
+
     type: str = "progress"
     title: str = ""
     value: int = 0  # 0-100
@@ -47,6 +51,7 @@ class ProgressComponent:
 @dataclass
 class LinkComponent:
     """Link/button component."""
+
     type: str = "button"
     title: str = ""
     description: str = ""
@@ -57,6 +62,7 @@ class LinkComponent:
 @dataclass
 class ButtonComponent:
     """Alias for LinkComponent."""
+
     type: str = "button"
     title: str = ""
     description: str = ""

@@ -5,6 +5,14 @@ from __future__ import annotations
 import argparse
 import sys
 
+from fastapi_admin_kit.cli.migrate import (
+    handle_migrate_command,
+    register_migrate_commands,
+)
+from fastapi_admin_kit.cli.permissions import (
+    handle_permission_command,
+    register_permission_commands,
+)
 from fastapi_admin_kit.cli.scaffold import scaffold_project
 from fastapi_admin_kit.cli.user import (
     handle_user_command,
@@ -28,20 +36,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="FastAPI Admin Kit CLI — manage admin users and scaffold projects.",
     )
-    subparsers = parser.add_subparsers(
-        dest="command", help="Available commands"
-    )
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Register command groups
     register_user_commands(subparsers)
+    register_permission_commands(subparsers)
+    register_migrate_commands(subparsers)
 
     # init — scaffold a new FastAPI project
-    init_parser = subparsers.add_parser(
-        "init", help="Create a new FastAPI project with uv"
-    )
-    init_parser.add_argument(
-        "name", nargs="?", default=None, help="Project name"
-    )
+    init_parser = subparsers.add_parser("init", help="Create a new FastAPI project with uv")
+    init_parser.add_argument("name", nargs="?", default=None, help="Project name")
     init_parser.add_argument(
         "-l",
         "--layout",
@@ -55,12 +59,8 @@ def main() -> None:
         default=None,
         help="Target directory (defaults to project name)",
     )
-    init_parser.add_argument(
-        "--no-venv", action="store_true", help="Skip uv venv creation"
-    )
-    init_parser.add_argument(
-        "--no-git", action="store_true", help="Skip git init"
-    )
+    init_parser.add_argument("--no-venv", action="store_true", help="Skip uv venv creation")
+    init_parser.add_argument("--no-git", action="store_true", help="Skip git init")
 
     args = parser.parse_args()
 
@@ -71,6 +71,10 @@ def main() -> None:
     # Dispatch
     if args.command in ("createsuperuser", "users", "changepassword"):
         handle_user_command(args)
+    elif args.command in ("createpermissions", "deletepermissions"):
+        handle_permission_command(args)
+    elif args.command in ("migrate", "migrate-permissions"):
+        handle_migrate_command(args)
     elif args.command == "init":
         _init_project(args)
 

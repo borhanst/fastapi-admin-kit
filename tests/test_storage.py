@@ -3,22 +3,19 @@
 from __future__ import annotations
 
 import io
-import os
-import tempfile
-from pathlib import Path
 
 import pytest
 from starlette.datastructures import UploadFile
 
 from fastapi_admin_kit.storage.base import StorageBackend
 from fastapi_admin_kit.storage.local import LocalStorageBackend
-from fastapi_admin_kit.widgets.inputs import FileUploadWidget, ImageUploadWidget
 from fastapi_admin_kit.types import FieldMeta
-
+from fastapi_admin_kit.widgets.inputs import FileUploadWidget, ImageUploadWidget
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _field(name: str = "document", **overrides) -> FieldMeta:
     defaults = dict(name=name, label=name.replace("_", " ").title(), required=False)
@@ -243,10 +240,11 @@ class TestImageUploadWidget:
 
 class TestRegistryMapping:
     def test_large_binary_maps_to_file_upload(self):
+        from sqlalchemy import LargeBinary
+
+        from fastapi_admin_kit.types import ColumnMeta
         from fastapi_admin_kit.widgets.registry import widget_registry
         from fastapi_admin_kit.widgets.resolver import WidgetResolver
-        from fastapi_admin_kit.types import ColumnMeta
-        from sqlalchemy import LargeBinary
 
         col = ColumnMeta(name="avatar", type=LargeBinary())
         resolver = WidgetResolver(widget_registry)

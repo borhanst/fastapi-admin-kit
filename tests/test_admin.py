@@ -2,12 +2,11 @@
 
 import pytest
 from fastapi import FastAPI
-from fastapi.routing import APIRoute
 from sqlalchemy import Boolean, Column, Integer, String
 from sqlalchemy.orm import DeclarativeBase
 
 from fastapi_admin_kit.admin import Admin
-from fastapi_admin_kit.auth import models as _auth_models  # noqa: F401 — register AdminRole etc.
+from fastapi_admin_kit.auth import models as _auth_models  # noqa: F401 — register Role etc.
 from fastapi_admin_kit.exceptions import ConfigError
 
 
@@ -25,6 +24,7 @@ def _collect_route_paths(app: FastAPI) -> list[str]:
                 if hasattr(sub, "path"):
                     paths.append(prefix + sub.path)
     return paths
+
 
 # ---------------------------------------------------------------------------
 # Test models
@@ -182,7 +182,12 @@ class TestAdminSetup:
         assert app.state.admin_config["title"] == "FastAPI Admin Kit"
 
     async def test_setup_stores_session_backend(self, engine, app):
-        admin = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            auto_discover=False,
+        )
         await admin.setup()
 
         from fastapi_admin_kit.auth.session import SignedCookieSessionBackend
@@ -194,27 +199,46 @@ class TestAdminSetup:
 
         backend = BuiltinAuthBackend()
         admin = Admin(
-            app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auth_backend=backend, auto_discover=False
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            auth_backend=backend,
+            auto_discover=False,
         )
         await admin.setup()
 
         assert app.state.admin_auth_backend is backend
 
     async def test_setup_init_jinja(self, engine, app):
-        admin = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            auto_discover=False,
+        )
         await admin.setup()
 
         assert app.state.admin_jinja_env is not None
 
     async def test_setup_mounts_static(self, engine, app):
-        admin = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            auto_discover=False,
+        )
         await admin.setup()
 
         paths = _collect_route_paths(app)
         assert any("static" in p for p in paths)
 
     async def test_setup_builds_router(self, engine, app):
-        admin = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            auto_discover=False,
+        )
         admin.register(_Product)
         await admin.setup()
 
@@ -247,14 +271,19 @@ class TestSeedRoles:
     async def test_default_roles_seeded(self, engine, app):
         from sqlalchemy.orm import Session
 
-        from fastapi_admin_kit.auth.models import AdminRole
+        from fastapi_admin_kit.auth.models import Role
 
-        admin = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            auto_discover=False,
+        )
         await admin.setup()
 
         session = Session(bind=engine)
         try:
-            roles = session.query(AdminRole).all()
+            roles = session.query(Role).all()
             role_names = {r.name for r in roles}
             assert "SuperAdmin" in role_names
             assert "Admin" in role_names
@@ -266,26 +295,36 @@ class TestSeedRoles:
     async def test_roles_not_reseeded_by_default(self, engine, app):
         from sqlalchemy.orm import Session
 
-        from fastapi_admin_kit.auth.models import AdminRole
+        from fastapi_admin_kit.auth.models import Role
 
         # First setup — seeds roles
-        admin1 = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
+        admin1 = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            auto_discover=False,
+        )
         await admin1.setup()
 
         session = Session(bind=engine)
         try:
-            count1 = session.query(AdminRole).count()
+            count1 = session.query(Role).count()
         finally:
             session.close()
 
         # Second setup — should NOT add more roles
         app2 = FastAPI()
-        admin2 = Admin(app=app2, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
+        admin2 = Admin(
+            app=app2,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            auto_discover=False,
+        )
         await admin2.setup()
 
         session = Session(bind=engine)
         try:
-            count2 = session.query(AdminRole).count()
+            count2 = session.query(Role).count()
             assert count2 == count1
         finally:
             session.close()
@@ -293,15 +332,20 @@ class TestSeedRoles:
     async def test_roles_overwrite(self, engine, app):
         from sqlalchemy.orm import Session
 
-        from fastapi_admin_kit.auth.models import AdminRole
+        from fastapi_admin_kit.auth.models import Role
 
         # First setup
-        admin1 = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
+        admin1 = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            auto_discover=False,
+        )
         await admin1.setup()
 
         session = Session(bind=engine)
         try:
-            count1 = session.query(AdminRole).count()
+            count1 = session.query(Role).count()
             assert count1 == 4
         finally:
             session.close()
@@ -322,7 +366,7 @@ class TestSeedRoles:
 
         session = Session(bind=engine)
         try:
-            roles = session.query(AdminRole).all()
+            roles = session.query(Role).all()
             assert len(roles) == 1
             assert roles[0].name == "OnlyThis"
         finally:
@@ -331,7 +375,7 @@ class TestSeedRoles:
     async def test_custom_seed_roles_with_permissions(self, engine, app):
         from sqlalchemy.orm import Session
 
-        from fastapi_admin_kit.auth.models import AdminPermission, AdminRole
+        from fastapi_admin_kit.auth.models import Role
         from fastapi_admin_kit.types import SeedRole
 
         admin = Admin(
@@ -353,11 +397,12 @@ class TestSeedRoles:
 
         session = Session(bind=engine)
         try:
-            role = session.query(AdminRole).filter_by(name="Finance").first()
+            role = session.query(Role).filter_by(name="Finance").first()
             assert role is not None
             assert role.description == "Finance team"
 
-            perms = session.query(AdminPermission).filter_by(role_id=role.id).all()
+            # Get permissions via M2M relationship
+            perms = role.permissions
             assert len(perms) == 1
             assert perms[0].table_name == "invoices"
             assert perms[0].can_view is True
@@ -391,7 +436,12 @@ class TestAutoDiscover:
         return FastAPI()
 
     async def test_auto_discover_true(self, engine, app):
-        admin = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=True)
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            auto_discover=True,
+        )
         await admin.setup()
 
         # Should have discovered test models
@@ -400,7 +450,12 @@ class TestAutoDiscover:
         assert "test_products" in table_names or "test_categories" in table_names
 
     async def test_auto_discover_false(self, engine, app):
-        admin = Admin(app=app, engine=engine, secret_key="test-secret-key-long-enough-for-security!", auto_discover=False)
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            auto_discover=False,
+        )
         await admin.setup()
 
         registered = admin.all_registered()
@@ -496,10 +551,10 @@ class TestLifespan:
 class TestAuthModelValidation:
     def test_valid_auth_model(self):
         """A model with the right attrs should not raise."""
-        from fastapi_admin_kit.auth.models import AdminUser
+        from fastapi_admin_kit.auth.models import User
 
-        # AdminUser has id, email, is_active, is_superuser, role_id
-        admin = Admin(auth_model=AdminUser)
+        # User has id, email, is_active, is_superuser, role_id
+        admin = Admin(auth_model=User)
         # _validate_auth_model should not raise
         admin._validate_auth_model()
 
@@ -510,7 +565,7 @@ class TestAuthModelValidation:
             pass
 
         admin = Admin(auth_model=BadModel)
-        with pytest.raises(ConfigError, match="does not satisfy AdminUserProtocol"):
+        with pytest.raises(ConfigError, match="is missing required attributes"):
             admin._validate_auth_model()
 
     def test_invalid_auth_model_partial_attrs(self):
@@ -522,7 +577,7 @@ class TestAuthModelValidation:
             # missing is_active, is_superuser, role_id
 
         admin = Admin(auth_model=PartialModel)
-        with pytest.raises(ConfigError, match="Missing attributes:"):
+        with pytest.raises(ConfigError, match="is missing"):
             admin._validate_auth_model()
 
     def test_no_auth_model_passes(self):

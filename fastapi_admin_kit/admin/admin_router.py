@@ -29,6 +29,8 @@ class AdminRouter:
         registry = AdminRegistry()
 
         for registered in registry.all():
+            if getattr(registered.admin, "skip_auto_routes", False):
+                continue
             model_router = build_model_router(registered)
             app.include_router(model_router, prefix=self.admin_path)
 

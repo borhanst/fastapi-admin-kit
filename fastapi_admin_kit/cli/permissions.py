@@ -1,0 +1,184 @@
+"""Permission management CLI commands."""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+
+ACTIONS = ["view", "create", "edit", "delete"]
+
+
+async def _create_permissions(args: argparse.Namespace) -> None:
+    """Create 4 CRUD permissions for specified tables or all registered tables."""
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import NullPool
+
+    from fastapi_admin_kit.auth.models import Permission
+    from fastapi_admin_kit.models.base import Base
+
+    from .helpers import resolve_table_names
+    from .user import _resolve_database_url
+
+    database_url = _resolve_database_url(args.database_url)
+    engine = create_async_engine(database_url, poolclass=NullPool)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    names = args.tables
+
+    # If no tables specified, discover all from registry
+    if not names:
+        from fastapi_admin_kit.audit.models import AuditLog
+        from fastapi_admin_kit.auth.models import (
+            LoginAttempt,
+            Permission,
+            RefreshToken,
+            Role,
+            User,
+            UserPermission,
+            UserTOTP,
+        )
+
+        all_models = [
+            User,
+            Role,
+            Permission,
+            UserPermission,
+            RefreshToken,
+            UserTOTP,
+            LoginAttempt,
+            AuditLog,
+        ]
+        names = [cls.__name__ for cls in all_models]
+
+    if not names:
+        print("No tables found to create permissions for.")
+        await engine.dispose()
+        return
+
+    resolved = resolve_table_names(names, app_module=args.app)
+
+    created = 0
+    skipped = 0
+
+    async with async_session() as session:
+        for input_name, table_name in resolved.items():
+            print(f"  Resolving '{input_name}' -> table_name='{table_name}'")
+            for action in ACTIONS:
+                perm_name = f"{table_name}_{action}"
+
+                result = await session.execute(
+                    select(Permission).where(Permission.name == perm_name)
+                )
+                existing = result.scalar_one_or_none()
+
+                if existing:
+                    skipped += 1
+                    continue
+
+                perm = Permission(
+                    name=perm_name,
+                    table_name=table_name,
+                    can_view=(action == "view"),
+                    can_create=(action == "create"),
+                    can_edit=(action == "edit"),
+                    can_delete=(action == "delete"),
+                )
+                session.add(perm)
+                created += 1
+
+        await session.commit()
+
+    await engine.dispose()
+
+    print(f"\nPermissions created: {created}, skipped (already exist): {skipped}")
+
+
+async def _delete_permissions(args: argparse.Namespace) -> None:
+    """Delete all permissions and clear role-permission associations."""
+    from sqlalchemy import delete
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import NullPool
+
+    from fastapi_admin_kit.auth.models import Permission, admin_role_permissions
+    from fastapi_admin_kit.models.base import Base
+
+    from .user import _resolve_database_url
+
+    database_url = _resolve_database_url(args.database_url)
+    engine = create_async_engine(database_url, poolclass=NullPool)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with async_session() as session:
+        # First clear role-permission associations
+        await session.execute(delete(admin_role_permissions))
+        # Then delete all permissions
+        await session.execute(delete(Permission))
+        await session.commit()
+
+    await engine.dispose()
+
+    print("Deleted all permissions (and role-permission associations).")
+
+
+def register_permission_commands(subparsers) -> None:
+    """Register permission management subcommands."""
+    perm_parser = subparsers.add_parser(
+        "createpermissions",
+        help="Create 4 CRUD permissions for tables",
+    )
+    perm_parser.add_argument(
+        "tables",
+        nargs="*",
+        help=(
+            "Class or table names (e.g., Product User). "
+            "If empty, creates for all registered tables."
+        ),
+    )
+    perm_parser.add_argument(
+        "-a",
+        "--app",
+        default=None,
+        help="App module to import for model discovery (e.g., example:app)",
+    )
+    perm_parser.add_argument(
+        "-d",
+        "--database-url",
+        default=None,
+        help="Database URL (or set DATABASE_URL env var)",
+    )
+
+    del_parser = subparsers.add_parser(
+        "deletepermissions",
+        help="Delete all permissions and role-permission associations",
+    )
+    del_parser.add_argument(
+        "-a",
+        "--app",
+        default=None,
+        help="App module to import for model discovery (e.g., example:app)",
+    )
+    del_parser.add_argument(
+        "-d",
+        "--database-url",
+        default=None,
+        help="Database URL (or set DATABASE_URL env var)",
+    )
+
+
+def handle_permission_command(args: argparse.Namespace) -> None:
+    """Dispatch permission management commands."""
+    if args.command == "createpermissions":
+        asyncio.run(_create_permissions(args))
+    elif args.command == "deletepermissions":
+        asyncio.run(_delete_permissions(args))

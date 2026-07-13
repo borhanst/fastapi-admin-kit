@@ -218,34 +218,34 @@ admin = Admin(
     app=app,
     engine=engine,
     secret_key=os.environ["SECRET_KEY"],
-    
+
     # Branding
     title="Acme Corp Admin",
     logo_url="/static/acme-logo.svg",
     primary_color="#0ea5e9",
     primary_color_dark="#0284c7",
-    
+
     # Behavior
     admin_path="/admin",
     per_page_default=25,
     session_ttl=28800,
-    
+
     # UI Layout
     sidebar_position="left",
     form_layout="two-column",
     table_row_height="normal",
-    
+
     # Environment
     environment_label="Staging",
     environment_color="warning",
-    
+
     # Audit
     audit_retention_days=365,
-    
+
     # Dashboard
     dashboard_stats=["products", "orders", "users"],
     dashboard_charts=True,
-    
+
     # Custom CSS/JS
     custom_css_url="/static/admin-overrides.css",
 )

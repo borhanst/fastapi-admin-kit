@@ -98,11 +98,8 @@
           </div>
           <p class="field-help" style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem;">Search and select roles. Permissions are merged from all selected roles.</p>
         </div>
-        <div class="field-wrapper">
+        <div class="field-wrapper field-wrapper--full">
           <label class="field-label">Direct Permissions</label>
-          <p class="field-help" style="color: var(--text-secondary); font-size: 0.75rem; margin-bottom: 0.5rem;">
-            Override role permissions for specific tables. These are merged with role permissions using OR logic.
-          </p>
           {% set user_perm_data = {} %}
           {% if user and user.direct_permissions %}
             {% for p in user.direct_permissions %}
@@ -113,81 +110,104 @@
           <div x-data="permissionWidget('{{ perm_search_url }}', {{ user_perm_data | tojson | forceescape }})">
             <input type="hidden" name="perm_data" :value="serializedPermData">
 
-            <div class="space-y-3">
-              <template x-for="(table, index) in selectedTables" :key="table.id">
-                <div class="border border-[var(--color-gray-200)] rounded-lg overflow-hidden">
-                  <div class="flex items-center justify-between px-4 py-3 bg-[var(--color-gray-50)] cursor-pointer hover:bg-[var(--color-gray-100)]"
-                       @click="toggleExpand(table.id)">
-                    <div class="flex items-center gap-3">
-                      <span class="text-sm font-medium text-[var(--color-gray-900)]" x-text="table.label"></span>
-                      <span class="text-xs text-[var(--color-gray-500)]" x-text="table.id"></span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <span class="text-xs px-2 py-0.5 rounded-full"
-                            :class="permData[table.id]?.view || permData[table.id]?.create || permData[table.id]?.edit || permData[table.id]?.delete
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-[var(--color-gray-100)] text-[var(--color-gray-500)]'"
-                            x-text="(permData[table.id]?.view ? 'V ' : '') + (permData[table.id]?.create ? 'C ' : '') + (permData[table.id]?.edit ? 'E ' : '') + (permData[table.id]?.delete ? 'D ' : '') || 'None'">
-                      </span>
-                      <button type="button" @click.stop="toggleExpand(table.id)"
-                              class="text-[var(--color-gray-400)] hover:text-[var(--color-gray-600)]">
-                        <svg class="w-4 h-4 transition-transform" :class="expandedTable === table.id ? 'rotate-180' : ''"
-                             fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                        </svg>
-                      </button>
-                      <button type="button" @click.stop="removeTable(index)"
-                              class="text-[var(--color-gray-400)] hover:text-red-500 ml-1">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
+            {# Full-width permission table with dark mode support #}
+            <div x-show="selectedTables.length > 0" style="width: 100%;">
+              <div style="border: 1px solid var(--surface-border); border-radius: var(--radius-lg); overflow: hidden;">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <thead>
+                    <tr style="background: var(--surface-inset); border-bottom: 1px solid var(--surface-border);">
+                      <th style="text-align: left; padding: 10px 16px; font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Table</th>
+                      <th style="text-align: center; padding: 10px 16px; font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; width: 80px;">View</th>
+                      <th style="text-align: center; padding: 10px 16px; font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; width: 80px;">Create</th>
+                      <th style="text-align: center; padding: 10px 16px; font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; width: 80px;">Edit</th>
+                      <th style="text-align: center; padding: 10px 16px; font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; width: 80px;">Delete</th>
+                      <th style="width: 48px;"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="(table, index) in selectedTables" :key="table.id">
+                      <tr style="border-bottom: 1px solid var(--surface-border);" onmouseover="this.style.background='var(--surface-inset)'" onmouseout="this.style.background=''">
+                        <td style="padding: 12px 16px;">
+                          <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);" x-text="table.label"></span>
+                            <span style="font-size: 0.75rem; color: var(--text-secondary);" x-text="table.id"></span>
+                          </div>
+                        </td>
+                        <td style="text-align: center; padding: 12px 16px;">
+                          <input type="checkbox" :checked="permData[table.id]?.view"
+                                 @change="permData[table.id].view = $event.target.checked"
+                                 style="width: 16px; height: 16px; accent-color: var(--primary-500);">
+                        </td>
+                        <td style="text-align: center; padding: 12px 16px;">
+                          <input type="checkbox" :checked="permData[table.id]?.create"
+                                 @change="permData[table.id].create = $event.target.checked"
+                                 style="width: 16px; height: 16px; accent-color: var(--primary-500);">
+                        </td>
+                        <td style="text-align: center; padding: 12px 16px;">
+                          <input type="checkbox" :checked="permData[table.id]?.edit"
+                                 @change="permData[table.id].edit = $event.target.checked"
+                                 style="width: 16px; height: 16px; accent-color: var(--primary-500);">
+                        </td>
+                        <td style="text-align: center; padding: 12px 16px;">
+                          <input type="checkbox" :checked="permData[table.id]?.delete"
+                                 @change="permData[table.id].delete = $event.target.checked"
+                                 style="width: 16px; height: 16px; accent-color: var(--primary-500);">
+                        </td>
+                        <td style="text-align: center; padding: 12px 16px;">
+                          <button type="button" @click="removeTable(index)"
+                                  style="color: var(--text-secondary); cursor: pointer; background: none; border: none; padding: 4px; line-height: 1;"
+                                  onmouseover="this.style.color='var(--danger-500)'" onmouseout="this.style.color='var(--text-secondary)'">
+                            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
 
-                  <div x-show="expandedTable === table.id" x-collapse class="px-4 py-4 bg-white">
-                    <div class="flex items-center justify-between mb-3">
-                      <span class="text-xs font-medium text-[var(--color-gray-500)] uppercase tracking-wide">Actions</span>
-                      <div class="flex gap-2">
-                        <button type="button" @click="toggleAllActions(table.id, true)"
-                                class="text-xs text-[var(--color-primary-600)] hover:text-[var(--color-primary-500)]">All</button>
-                        <span class="text-[var(--color-gray-300)]">|</span>
-                        <button type="button" @click="toggleAllActions(table.id, false)"
-                                class="text-xs text-[var(--color-gray-500)] hover:text-[var(--color-gray-700)]">None</button>
-                      </div>
-                    </div>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <template x-for="action in ['view', 'create', 'edit', 'delete']" :key="action">
-                        <label class="flex items-center gap-2 p-2 rounded border border-[var(--color-gray-200)] cursor-pointer hover:bg-[var(--color-gray-50)]">
-                          <input type="checkbox"
-                                 :checked="permData[table.id]?.[action]"
-                                 @change="permData[table.id][action] = $event.target.checked"
-                                 class="rounded border-[var(--color-gray-300)] text-[var(--color-primary-600)] focus:ring-[var(--color-primary-500)]">
-                          <span class="text-sm capitalize" x-text="action"></span>
-                        </label>
-                      </template>
-                    </div>
-                  </div>
-                </div>
-              </template>
-            </div>
-
-            <div class="mt-4" style="position: relative;">
-              <div class="flex items-center gap-2">
-                <div class="flex-1 relative">
-                  <input type="text" x-model="searchQuery" @input="search()" @focus="open = true" @click.outside="open = false"
-                         placeholder="Search tables to add..."
-                         class="form-input w-full">
+                {# Bulk actions #}
+                <div style="display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--surface-inset); border-top: 1px solid var(--surface-border);">
+                  <span style="font-size: 0.75rem; color: var(--text-secondary);">Bulk:</span>
+                  <button type="button" @click="toggleAllTables('view', true)"
+                          style="font-size: 0.75rem; color: var(--primary-500); cursor: pointer; background: none; border: none; padding: 0;"
+                          onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">All View</button>
+                  <button type="button" @click="toggleAllTables('create', true)"
+                          style="font-size: 0.75rem; color: var(--primary-500); cursor: pointer; background: none; border: none; padding: 0;"
+                          onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">All Create</button>
+                  <button type="button" @click="toggleAllTables('edit', true)"
+                          style="font-size: 0.75rem; color: var(--primary-500); cursor: pointer; background: none; border: none; padding: 0;"
+                          onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">All Edit</button>
+                  <button type="button" @click="toggleAllTables('delete', true)"
+                          style="font-size: 0.75rem; color: var(--primary-500); cursor: pointer; background: none; border: none; padding: 0;"
+                          onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">All Delete</button>
+                  <span style="color: var(--surface-border);">|</span>
+                  <button type="button" @click="toggleAllTables('view', false); toggleAllTables('create', false); toggleAllTables('edit', false); toggleAllTables('delete', false)"
+                          style="font-size: 0.75rem; color: var(--text-secondary); cursor: pointer; background: none; border: none; padding: 0;"
+                          onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">Clear All</button>
                 </div>
               </div>
+            </div>
+
+            {# Empty state #}
+            <div x-show="selectedTables.length === 0" style="text-align: center; padding: 32px 0; font-size: 0.875rem; color: var(--text-secondary);">
+              No permissions added yet. Search below to add tables.
+            </div>
+
+            {# Search input #}
+            <div style="margin-top: 12px; position: relative;">
+              <input type="text" x-model="searchQuery" @input="search()" @focus="open = true" @click.outside="open = false"
+                     placeholder="Search tables to add..."
+                     class="form-input" style="width: 100%;">
               <div x-show="open && results.length > 0" x-cloak
-                   style="position: absolute; z-index: 50; width: 100%; margin-top: 4px; background: var(--surface-base); border: 1px solid var(--surface-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); max-height: 200px; overflow-y: auto;">
+                   style="position: absolute; z-index: 50; width: 100%; margin-top: 4px; background: var(--surface-raised); border: 1px solid var(--surface-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); max-height: 200px; overflow-y: auto;">
                 <template x-for="result in results" :key="result.id">
                   <div @click="addTable(result)"
-                       style="padding: 8px 12px; cursor: pointer; font-size: 0.875rem;"
-                       onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''">
+                       style="padding: 8px 12px; cursor: pointer; font-size: 0.875rem; color: var(--text-primary);"
+                       onmouseover="this.style.background='var(--surface-inset)'" onmouseout="this.style.background=''">
                     <span x-text="result.label"></span>
-                    <span class="text-xs text-[var(--color-gray-400)] ml-2" x-text="result.id"></span>
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); margin-left: 8px;" x-text="result.id"></span>
                   </div>
                 </template>
               </div>

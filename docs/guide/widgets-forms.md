@@ -323,17 +323,17 @@ from typing import Any
 
 class ColorPickerWidget(Widget):
     macro_name = "color_picker"
-    
+
     def render_context(self, field: FieldMeta, value: Any) -> dict:
         ctx = super().render_context(field, value)
         ctx["presets"] = ["#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6"]
         return ctx
-    
+
     def parse(self, raw: str | None) -> str | None:
         if raw and not raw.startswith("#"):
             return f"#{raw}"
         return raw
-    
+
     def validate(self, value: Any, field: FieldMeta) -> list[str]:
         errors = super().validate(value, field)
         if value and not value.startswith("#"):
@@ -430,10 +430,10 @@ from typing import Any
 
 class PriceWidget(Widget):
     macro_name = "number_input"
-    
+
     def validate(self, value: Any, field: FieldMeta) -> list[str]:
         errors = super().validate(value, field)
-        
+
         if value is not None:
             try:
                 price = float(value)
@@ -443,7 +443,7 @@ class PriceWidget(Widget):
                     errors.append("Price is too large.")
             except ValueError:
                 errors.append("Price must be a number.")
-        
+
         return errors
 ```
 
@@ -452,17 +452,17 @@ class PriceWidget(Widget):
 ```python
 @admin.register(Product)
 class ProductAdmin(ModelAdmin):
-    
+
     def validate_object(self, obj, data, request) -> list[str]:
         """Validate the entire object after all fields are parsed"""
         errors = []
-        
+
         if data.get("sale_price") and data["sale_price"] >= data.get("price", 0):
             errors.append("Sale price must be less than regular price.")
-        
+
         if data.get("stock") == 0 and data.get("is_active"):
             errors.append("Out of stock items cannot be active.")
-        
+
         return errors
 ```
 

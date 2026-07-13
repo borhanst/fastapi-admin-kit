@@ -48,6 +48,4 @@ class AuditLog(Base):
         return f"{self.action} {self.model_name}#{self.object_id}"
 
     def __repr__(self) -> str:
-        return (
-            f"<AuditLog {self.action} {self.model_name}#{self.object_id}>"
-        )
+        return f"<AuditLog {self.action} {self.model_name}#{self.object_id}>"

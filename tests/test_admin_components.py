@@ -229,9 +229,7 @@ class TestAdminTemplate:
         mock_request = MagicMock()
         template = AdminTemplate()
 
-        with patch.object(
-            template, "build_sidebar_context", return_value={"nav_groups": []}
-        ):
+        with patch.object(template, "build_sidebar_context", return_value={"nav_groups": []}):
             result = template.sidebar_template_kwargs(mock_request)
             assert result == {"nav_groups": []}
 
@@ -258,15 +256,9 @@ class TestAdminTemplate:
 
         template = AdminTemplate()
 
-        with patch(
-            "fastapi_admin_kit.auth.permissions.PermissionChecker"
-        ) as mock_checker:
-            mock_checker.return_value.permission_set.return_value = {
-                "view": True
-            }
-            result = template.build_sidebar_context(
-                mock_request, user=mock_user
-            )
+        with patch("fastapi_admin_kit.auth.permissions.PermissionChecker") as mock_checker:
+            mock_checker.return_value.permission_set.return_value = {"view": True}
+            result = template.build_sidebar_context(mock_request, user=mock_user)
 
             assert result["current_user"] is mock_user
             assert "nav_groups" in result
@@ -279,11 +271,7 @@ class TestAdminTemplate:
 
         template = AdminTemplate()
 
-        with patch.object(
-            template, "build_sidebar_context", return_value={"nav_groups": []}
-        ):
-            result = template.apply_sidebar_context(
-                mock_request, mock_user, context
-            )
+        with patch.object(template, "build_sidebar_context", return_value={"nav_groups": []}):
+            result = template.apply_sidebar_context(mock_request, mock_user, context)
             assert result["existing_key"] == "existing_value"
             assert result["nav_groups"] == []

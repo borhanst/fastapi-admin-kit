@@ -18,12 +18,15 @@ def generate_secret() -> str:
 def get_totp_uri(secret: str, email: str, issuer: str = "FastAPI Admin Kit") -> str:
     """Generate an otpauth:// URI for QR code generation."""
     import urllib.parse
-    params = urllib.parse.urlencode({
-        "secret": secret,
-        "issuer": issuer,
-        "digits": 6,
-        "period": 30,
-    })
+
+    params = urllib.parse.urlencode(
+        {
+            "secret": secret,
+            "issuer": issuer,
+            "digits": 6,
+            "period": 30,
+        }
+    )
     return f"otpauth://totp/{urllib.parse.quote(issuer)}:{urllib.parse.quote(email)}?{params}"
 
 
@@ -33,7 +36,7 @@ def _generate_hotp(secret: str, counter: int) -> str:
     counter_bytes = struct.pack(">Q", counter)
     hmac_digest = hmac.new(key, counter_bytes, hashlib.sha1).digest()
     offset = hmac_digest[-1] & 0x0F
-    code_int = struct.unpack(">I", hmac_digest[offset:offset + 4])[0] & 0x7FFFFFFF
+    code_int = struct.unpack(">I", hmac_digest[offset : offset + 4])[0] & 0x7FFFFFFF
     return str(code_int % 1000000).zfill(6)
 
 

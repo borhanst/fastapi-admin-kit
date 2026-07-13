@@ -52,11 +52,11 @@
     <div class="bg-white rounded-xl border border-[var(--color-gray-200)]">
       <div class="px-6 py-4 border-b border-[var(--color-gray-200)]">
         <h2 class="text-lg font-semibold text-[var(--color-gray-900)]">Permissions</h2>
-        <p class="mt-1 text-sm text-[var(--color-gray-500)]">Select tables and configure actions for this role.</p>
+        <p class="mt-1 text-sm text-[var(--color-gray-500)]">Select permissions to assign to this role.</p>
       </div>
 
       <div class="p-6">
-        {% include "partials/permission_widget.html" with context %}
+        {% include "partials/perm_select_widget.html" with context %}
       </div>
     </div>
 

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import tempfile
 import os
+import tempfile
 
 import pytest
 from fastapi import FastAPI
@@ -12,19 +12,19 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import StaticPool
-from sqlalchemy.orm import Session, sessionmaker
 
 from fastapi_admin_kit import Admin
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
 from fastapi_admin_kit.auth.csrf import generate_csrf_token
-from fastapi_admin_kit.auth.models import AdminRole, AdminUser
+from fastapi_admin_kit.auth.models import Role, User
 from fastapi_admin_kit.models import Base
-from tests.conftest import SECRET_KEY, create_session_cookie, run_async
+from tests.conftest import SECRET_KEY, run_async
 
 
 @pytest.fixture(autouse=True)
 def _clear_registry():
     from fastapi_admin_kit.registry import AdminRegistry
+
     AdminRegistry().clear()
     yield
     AdminRegistry().clear()
@@ -51,11 +51,11 @@ def engine():
 def admin_user(engine):
     async def _create():
         async with AsyncSession(engine) as session:
-            role = AdminRole(name="SuperAdmin", description="Super admin")
+            role = Role(name="SuperAdmin", description="Super admin")
             session.add(role)
             await session.flush()
 
-            user = AdminUser(
+            user = User(
                 email="test@example.com",
                 hashed_password="$2b$12$DOXzSwSZYp0Y1pTzEvWjO.KOLQg3wA/Ez1RkN4RHMiLqngoLM2lMG",
                 full_name="Test User",
@@ -67,6 +67,7 @@ def admin_user(engine):
             await session.commit()
             await session.refresh(user)
             return user
+
     return run_async(_create())
 
 
@@ -74,7 +75,7 @@ def admin_user(engine):
 def client(engine, admin_user):
     admin = Admin(
         engine=engine,
-        auth_model=AdminUser,
+        auth_model=User,
         auth_backend=BuiltinAuthBackend(),
         secret_key=SECRET_KEY,
         auto_discover=False,
@@ -97,7 +98,7 @@ def _login_with_csrf(client, email="test@example.com", password="secret", **extr
         csrf_token = generate_csrf_token(SECRET_KEY)
         csrf_cookie = csrf_token
     client.cookies.set("admin_csrf_token", csrf_cookie)
-    data = {"email": email, "password": password, "csrf_token": csrf_token}
+    data = {"username": email, "password": password, "csrf_token": csrf_token}
     data.update(extra_data)
     return client.post(
         "/admin/login",
@@ -143,7 +144,7 @@ def test_login_post_failed(client):
     """POST /admin/login with invalid credentials re-renders with error."""
     response = _login_with_csrf(client, password="wrong")
     assert response.status_code == 200
-    assert "Invalid email or password" in response.text
+    assert "Invalid credentials" in response.text
 
 
 def test_login_post_next_redirect(client):

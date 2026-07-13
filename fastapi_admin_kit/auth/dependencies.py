@@ -73,9 +73,7 @@ async def get_current_admin_user(
 
     user = await resolve_user(request, user_id)
     if user is None:
-        raise HTTPException(
-            status_code=401, detail="User not found or inactive."
-        )
+        raise HTTPException(status_code=401, detail="User not found or inactive.")
 
     # Check session invalidation: reject if password changed after session iat
     password_changed_at = getattr(user, "password_changed_at", None)
@@ -86,7 +84,7 @@ async def get_current_admin_user(
         if isinstance(password_changed_at, datetime):
             if password_changed_at.tzinfo is None:
                 password_changed_at = password_changed_at.replace(tzinfo=UTC)
-            if isinstance(session_iat, (int, float)):
+            if isinstance(session_iat, int | float):
                 session_time = datetime.fromtimestamp(session_iat, tz=UTC)
                 if password_changed_at > session_time:
                     raise HTTPException(
@@ -144,7 +142,5 @@ async def require_superuser(
     and audit views (previously copy-pasted in each).
     """
     if not getattr(user, "is_superuser", False):
-        raise HTTPException(
-            status_code=403, detail="Superuser access required."
-        )
+        raise HTTPException(status_code=403, detail="Superuser access required.")
     return user

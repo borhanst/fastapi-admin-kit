@@ -60,11 +60,21 @@ class MultiRelationWidget(Widget):
         return ctx
 
     def parse(self, raw: str | list | None) -> list[str]:
+        import json as _json
+
         if raw is None:
             return []
         if isinstance(raw, list):
             return [str(v) for v in raw if v]
-        return [str(raw)]
+        s = str(raw).strip()
+        if s.startswith("["):
+            try:
+                parsed = _json.loads(s)
+                if isinstance(parsed, list):
+                    return [str(v) for v in parsed if v]
+            except (_json.JSONDecodeError, TypeError):
+                pass
+        return [str(raw)] if raw else []
 
     def validate(self, value: Any, field: FieldMeta) -> list[str]:
         return []

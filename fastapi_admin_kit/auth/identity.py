@@ -8,7 +8,7 @@ The admin framework historically had *three* parallel implementations of
    with a process-global cache on ``app.state`` that leaked identity across
    requests)
 3. :func:`fastapi_admin_kit.api.crud._get_current_user` (bearer JWT, hardcoded to
-   the built-in ``AdminUser`` model and so bypassing the ``AuthBackend`` seam)
+   the built-in ``User`` model and so bypassing the ``AuthBackend`` seam)
 
 This module is the deep seam they all delegate to. The two credential
 transports (signed cookie, bearer JWT) become thin internal adapters; the
@@ -52,9 +52,7 @@ def _get_db_session(request: Request) -> AsyncSession | None:
         return None
 
 
-async def resolve_user(
-    request: Request, user_id: int | str | None
-) -> AdminUserProtocol | None:
+async def resolve_user(request: Request, user_id: int | str | None) -> AdminUserProtocol | None:
     """Resolve *user_id* to an active user and cache it on the request.
 
     Idempotent for a given request: if ``request.state.admin_user`` is already
@@ -116,10 +114,12 @@ async def resolve_user(
     # user-agent; this merges the user fields in.
     from fastapi_admin_kit.audit.context import set_audit_context
 
-    set_audit_context({
-        "user_id": request.state.admin_user_snapshot["id"],
-        "user_email": request.state.admin_user_snapshot["email"],
-    })
+    set_audit_context(
+        {
+            "user_id": request.state.admin_user_snapshot["id"],
+            "user_email": request.state.admin_user_snapshot["email"],
+        }
+    )
 
     return user
 
@@ -129,9 +129,7 @@ def _decode_cookie_payload(request: Request) -> dict[str, Any] | None:
     backend = _get_session_backend(request)
     if backend is None:
         return None
-    token = request.cookies.get(
-        getattr(backend, "cookie_name", "admin_session")
-    )
+    token = request.cookies.get(getattr(backend, "cookie_name", "admin_session"))
     return backend.decode(token) if token else None
 
 

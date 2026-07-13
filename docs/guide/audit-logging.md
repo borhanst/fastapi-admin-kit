@@ -68,14 +68,14 @@ def after_flush(session, flush_context):
     # Record changes after flush
     for obj in session.new:
         write_audit(session, user, "CREATE", obj)
-    
+
     for obj in session.dirty:
         before = obj._audit_before
         after = snapshot(obj)
         diff = compute_diff(before, after)
         if diff:
             write_audit(session, user, "UPDATE", obj, diff)
-    
+
     for obj in session.deleted:
         write_audit(session, user, "DELETE", obj)
 ```
@@ -153,7 +153,7 @@ Override the default audit writer:
 from fastapi_admin_kit.audit import AuditWriter
 
 class MyAuditWriter(AuditWriter):
-    
+
     def write(self, session, user, action, obj, diff=None, snapshot=None):
         # Custom write logic
         # e.g., send to external service
@@ -175,13 +175,13 @@ Send audit logs to external services:
 from fastapi_admin_kit.audit import AuditSink
 
 class ElasticSearchSink(AuditSink):
-    
+
     def emit(self, entry):
         # Send to Elasticsearch
         es.index(index="audit-logs", body=entry.to_dict())
 
 class WebhookSink(AuditSink):
-    
+
     def emit(self, entry):
         # Send to webhook
         requests.post("https://your-service.com/audit", json=entry.to_dict())

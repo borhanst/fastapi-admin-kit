@@ -16,7 +16,7 @@ from sqlalchemy.pool import StaticPool
 from fastapi_admin_kit import Admin
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
 from fastapi_admin_kit.auth.csrf import generate_csrf_token
-from fastapi_admin_kit.auth.models import AdminRole, AdminUser
+from fastapi_admin_kit.auth.models import Role, User
 from fastapi_admin_kit.models.base import Base as AdminBase
 from tests.conftest import SECRET_KEY, create_session_cookie, run_async
 from tests.test_registry import Product
@@ -30,6 +30,7 @@ def _get_csrf(test_client):
 @pytest.fixture(autouse=True)
 def _clear_registry():
     from fastapi_admin_kit.registry import AdminRegistry
+
     AdminRegistry().clear()
     yield
     AdminRegistry().clear()
@@ -57,10 +58,10 @@ def engine():
 def admin_user(engine):
     async def _create():
         async with AsyncSession(engine) as session:
-            role = AdminRole(name="SuperAdmin")
+            role = Role(name="SuperAdmin")
             session.add(role)
             await session.flush()
-            user = AdminUser(
+            user = User(
                 email="admin@test.com",
                 hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
                 full_name="Admin",
@@ -72,6 +73,7 @@ def admin_user(engine):
             await session.commit()
             await session.refresh(user)
             return user
+
     return run_async(_create())
 
 
@@ -99,6 +101,7 @@ def product(engine, admin_user):
             await db.commit()
             await db.refresh(p)
             return p
+
     return run_async(_create())
 
 
@@ -165,3 +168,56 @@ def test_rbac_403_without_permission(client):
     test_client, admin, engine = client
     resp = test_client.get("/admin/products/")
     assert resp.status_code in {401, 403}
+
+
+def test_role_create_saves_junction_full_app(client, admin_user):
+    """Regression: role create must persist admin_role_permissions (end-to-end)."""
+    from sqlalchemy import select
+
+    from fastapi_admin_kit.auth.models import (
+        Permission,
+        Role,
+        admin_role_permissions,
+    )
+
+    test_client, admin, engine = client
+    cookie = create_session_cookie(admin_user.id)
+    csrf_token, csrf_cookie = _get_csrf(test_client)
+
+    async def _seed_perm():
+        async with AsyncSession(engine) as s:
+            s.add(Permission(name="t_e2e", table_name="t_e2e"))
+            await s.commit()
+
+    run_async(_seed_perm())
+
+    async def _pid():
+        async with AsyncSession(engine) as s:
+            return (
+                (await s.execute(select(Permission).where(Permission.table_name == "t_e2e")))
+                .scalar_one()
+                .id
+            )
+
+    pid = run_async(_pid())
+
+    resp = test_client.post(
+        "/admin/roles",
+        data={"name": "E2ERole", "perm_ids": f"[{pid}]", "csrf_token": csrf_token},
+        cookies={"admin_session": cookie, "admin_csrf_token": csrf_cookie},
+        follow_redirects=False,
+    )
+    assert resp.status_code in {302, 303}
+
+    async def _check():
+        async with AsyncSession(engine) as s:
+            rid = (await s.execute(select(Role).where(Role.name == "E2ERole"))).scalar_one().id
+            return (
+                await s.execute(
+                    select(admin_role_permissions).where(admin_role_permissions.c.role_id == rid)
+                )
+            ).fetchall()
+
+    rows = run_async(_check())
+    assert len(rows) == 1
+    assert rows[0].permission_id == pid

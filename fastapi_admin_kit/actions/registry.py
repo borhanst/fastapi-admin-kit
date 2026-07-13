@@ -19,9 +19,7 @@ class DeleteSelectedAction(Action):
             confirmation_message="Are you sure you want to delete the selected items?",
         )
 
-    async def execute(
-        self, objects: list[Any], request: Request | None
-    ) -> None:
+    async def execute(self, objects: list[Any], request: Request | None) -> None:
         # Actual deletion is handled by the existing bulk handler in views/factory.py
         pass
 

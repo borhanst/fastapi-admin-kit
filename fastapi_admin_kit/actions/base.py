@@ -36,9 +36,7 @@ class Action(ABC):
         self.description = description
 
     @abstractmethod
-    async def execute(
-        self, objects: list[Any], request: Request | None
-    ) -> None:
+    async def execute(self, objects: list[Any], request: Request | None) -> None:
         """Run the action against the selected objects."""
         ...
 
@@ -58,9 +56,7 @@ class Action(ABC):
 class ModelAction(Action):
     """Action that operates on a single model instance (row/detail actions)."""
 
-    async def execute_single(
-        self, obj: Any, request: Request | None
-    ) -> None:
+    async def execute_single(self, obj: Any, request: Request | None) -> None:
         """Run the action on a single object.
 
         Override this instead of execute for single-object actions.

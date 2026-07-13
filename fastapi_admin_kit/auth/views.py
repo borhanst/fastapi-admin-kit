@@ -45,9 +45,32 @@ async def login_get(
 ) -> HTMLResponse:
     """GET /admin/login — show login page, redirect if already logged in."""
     if session_payload is not None:
-        admin_path = request.app.state.admin_config["admin_path"]
-        target = next if _is_safe_url(next) else f"{admin_path}/"
-        return RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
+        # Validate the session actually resolves to a real user.
+        # If the DB was reset, the old cookie is stale — show the login
+        # page instead of looping between /admin/login ↔ /admin.
+        from fastapi_admin_kit.auth.identity import resolve_user
+
+        user = await resolve_user(request, session_payload.get("user_id"))
+        if user is not None:
+            admin_path = request.app.state.admin_config["admin_path"]
+            target = next if _is_safe_url(next) else f"{admin_path}/"
+            return RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
+        # Stale session — clear the cookie so we don't loop
+        session_backend = getattr(request.app.state, "admin_session_backend", None)
+        if session_backend is not None:
+            from fastapi_admin_kit.auth.csrf import CSRF_COOKIE_NAME
+
+            samesite = getattr(request.app.state.admin_state, "session_samesite", "strict")
+            response = RedirectResponse(url=str(request.url), status_code=status.HTTP_302_FOUND)
+            response.delete_cookie(
+                key=session_backend.cookie_name,
+                path="/",
+                secure=session_backend.secure,
+                httponly=True,
+                samesite=samesite,
+            )
+            response.delete_cookie(key=CSRF_COOKIE_NAME, path="/")
+            return response
 
     jinja_env = request.app.state.admin_jinja_env
     template = jinja_env.get_template("pages/login.html")
@@ -57,6 +80,7 @@ async def login_get(
             {
                 "request": request,
                 "csrf_token": csrf_token,
+                "admin_config": request.app.state.admin_config,
             }
         )
     )
@@ -65,7 +89,7 @@ async def login_get(
 @router.post("/login", response_model=None)
 async def login_post(
     request: Request,
-    email: str = Form(...),
+    username: str = Form(...),
     password: str = Form(...),
     next: str | None = Form(None),
     session: AsyncSession = Depends(_get_db_session),
@@ -76,12 +100,23 @@ async def login_post(
     check_rate_limit(_login_rate_limiter, client_ip)
 
     auth_backend = request.app.state.admin_auth_backend
-    user = await auth_backend.authenticate(email, password, session)
+    login_field = request.app.state.admin_config.get("login_field", "email")
+    user = await auth_backend.authenticate(username, password, session, login_field=login_field)
 
     if user is not None:
         _login_rate_limiter.reset(client_ip)
         user.last_login = datetime.now(UTC)
-        await session.merge(user)
+        await session.flush()
+
+        from fastapi_admin_kit.auth.models import LoginAttempt
+
+        attempt = LoginAttempt(
+            email=username,
+            ip_address=client_ip,
+            user_agent=request.headers.get("user-agent", ""),
+            success=True,
+        )
+        session.add(attempt)
         await session.flush()
 
         session_backend = request.app.state.admin_session_backend
@@ -94,12 +129,8 @@ async def login_post(
             admin_path = request.app.state.admin_config["admin_path"]
             redirect_url = f"{admin_path}/"
 
-        samesite = getattr(
-            request.app.state.admin_state, "session_samesite", "strict"
-        )
-        response = RedirectResponse(
-            url=redirect_url, status_code=status.HTTP_302_FOUND
-        )
+        samesite = getattr(request.app.state.admin_state, "session_samesite", "strict")
+        response = RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
         response.set_cookie(
             key=session_backend.cookie_name,
             value=token,
@@ -113,21 +144,37 @@ async def login_post(
 
     _login_rate_limiter.record_attempt(client_ip)
 
+    from fastapi_admin_kit.auth.models import LoginAttempt
+
+    note = "Invalid credentials"
+    if _login_rate_limiter.is_rate_limited(client_ip):
+        remaining = _login_rate_limiter.remaining_seconds(client_ip)
+        note = f"Too many failed attempts. Rate limited for {remaining}s"
+
+    attempt = LoginAttempt(
+        email=username,
+        ip_address=client_ip,
+        user_agent=request.headers.get("user-agent", ""),
+        success=False,
+        note=note,
+    )
+    session.add(attempt)
+    await session.flush()
+
     jinja_env = request.app.state.admin_jinja_env
     template = jinja_env.get_template("pages/login.html")
     csrf_token = getattr(request.state, "csrf_token", "")
     remaining = _login_rate_limiter.remaining_seconds(client_ip)
-    error_msg = "Invalid email or password. Please try again."
+    error_msg = "Invalid credentials. Please try again."
     if _login_rate_limiter.is_rate_limited(client_ip):
-        error_msg = (
-            f"Too many failed attempts. Try again in {remaining} seconds."
-        )
+        error_msg = f"Too many failed attempts. Try again in {remaining} seconds."
     return HTMLResponse(
         template.render(
             {
                 "request": request,
                 "error": error_msg,
                 "csrf_token": csrf_token,
+                "admin_config": request.app.state.admin_config,
             }
         ),
         status_code=status.HTTP_200_OK,
@@ -147,12 +194,10 @@ async def logout_post(
             await auth_backend.on_logout(session_payload.get("user_id"))
 
     session_backend = request.app.state.admin_session_backend
-    samesite = getattr(
-        request.app.state.admin_state, "session_samesite", "strict"
-    )
+    samesite = getattr(request.app.state.admin_state, "session_samesite", "strict")
     response = RedirectResponse(
         url=f"{request.app.state.admin_config['admin_path']}/login",
-        status_code=status.HTTP_302_FOUND
+        status_code=status.HTTP_302_FOUND,
     )
     response.delete_cookie(
         key=session_backend.cookie_name,

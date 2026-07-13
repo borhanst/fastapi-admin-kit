@@ -100,6 +100,8 @@ class DefaultSidebarBuilder:
     ) -> list[BuiltNavGroup]:
         buckets: dict[str, list[BuiltNavItem]] = {}
         for registered in registry:
+            if getattr(registered.admin, "skip_auto_routes", False):
+                continue
             tags = self._get_tags(registered)
             for tag in tags:
                 buckets.setdefault(tag, []).append(
@@ -108,9 +110,7 @@ class DefaultSidebarBuilder:
                         url=f"{admin_path}/{registered.table_name}/",
                         icon=getattr(registered.admin, "icon", None),
                         order=getattr(registered.admin, "nav_order", 999),
-                        badge_fn=getattr(
-                            registered.admin, "get_nav_badge", None
-                        ),
+                        badge_fn=getattr(registered.admin, "get_nav_badge", None),
                         permission_table=registered.table_name,
                         children=self._build_children(registered),
                     )
@@ -156,9 +156,7 @@ class DefaultSidebarBuilder:
                     label=cfg.label if cfg else tag.title(),
                     icon=cfg.icon if cfg else None,
                     order=cfg.order if cfg else 999,
-                    collapsed_by_default=cfg.collapsed_by_default
-                    if cfg
-                    else False,
+                    collapsed_by_default=cfg.collapsed_by_default if cfg else False,
                     permission_table=cfg.permission if cfg else None,
                     items=sorted(items, key=lambda i: (i.order, i.label)),
                 )
@@ -177,9 +175,7 @@ class DefaultSidebarBuilder:
             return [tag]
         return ["Other"]
 
-    def _build_children(
-        self, registered: RegisteredModel
-    ) -> list[BuiltNavItem]:
+    def _build_children(self, registered: RegisteredModel) -> list[BuiltNavItem]:
         children_configs = getattr(registered.admin, "nav_children", None) or []
         result: list[BuiltNavItem] = []
         for child_cfg in children_configs:
@@ -193,9 +189,7 @@ class DefaultSidebarBuilder:
             )
         return result
 
-    def _build_extra_items(
-        self, extras: list[NavItemConfig]
-    ) -> list[BuiltNavItem]:
+    def _build_extra_items(self, extras: list[NavItemConfig]) -> list[BuiltNavItem]:
         return [
             BuiltNavItem(
                 label=e.label,

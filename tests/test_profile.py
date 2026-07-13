@@ -12,9 +12,9 @@ class TestPasswordChangeFlow:
     def test_password_changed_at_set(self):
         """After password change, password_changed_at should be set."""
 
-        from fastapi_admin_kit.auth.models import AdminUser
+        from fastapi_admin_kit.auth.models import User
 
-        user = AdminUser(
+        user = User(
             email="test@test.com",
             hashed_password="hashed",
         )
@@ -24,11 +24,17 @@ class TestPasswordChangeFlow:
 
     def test_password_change_requires_current(self):
         """Password change requires current password verification."""
-        from fastapi_admin_kit.auth.backend import pwd_context
+        from fastapi_admin_kit.auth.models import User
 
-        hashed = pwd_context.hash("currentpassword")
-        assert pwd_context.verify("currentpassword", hashed)
-        assert not pwd_context.verify("wrongpassword", hashed)
+        hashed = User.hash_password("currentpassword")
+        user = User(
+            email="test@test.com",
+            hashed_password=hashed,
+            is_active=True,
+            is_superuser=False,
+        )
+        assert user.verify_password("currentpassword")
+        assert not user.verify_password("wrongpassword")
 
 
 class TestSessionInvalidationAfterPasswordChange:
@@ -60,9 +66,9 @@ class TestProfileUpdate:
 
     def test_full_name_update(self):
         """Full name can be updated."""
-        from fastapi_admin_kit.auth.models import AdminUser
+        from fastapi_admin_kit.auth.models import User
 
-        user = AdminUser(
+        user = User(
             email="test@test.com",
             hashed_password="hashed",
             full_name="Old Name",

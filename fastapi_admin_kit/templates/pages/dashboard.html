@@ -155,24 +155,51 @@
           'Orders': {'bg': 'rgba(249, 115, 22, 0.12)', 'fg': '#f97316'},
           'Order Items': {'bg': 'rgba(34, 197, 94, 0.12)', 'fg': '#22c55e'},
           'Admin Audit Logs': {'bg': 'rgba(6, 182, 212, 0.12)', 'fg': '#06b6d4'},
+          'Audit Logs': {'bg': 'rgba(6, 182, 212, 0.12)', 'fg': '#06b6d4'},
           'Admin Roles': {'bg': 'rgba(236, 72, 153, 0.12)', 'fg': '#ec4899'},
+          'Roles': {'bg': 'rgba(236, 72, 153, 0.12)', 'fg': '#ec4899'},
           'Admin Users': {'bg': 'rgba(99, 102, 241, 0.12)', 'fg': '#6366f1'},
           'Admin Permissions': {'bg': 'rgba(239, 68, 68, 0.12)', 'fg': '#ef4444'},
-          'Admin Field Permissions': {'bg': 'rgba(234, 179, 8, 0.12)', 'fg': '#eab308'}
+          'Permissions': {'bg': 'rgba(239, 68, 68, 0.12)', 'fg': '#ef4444'},
+          'Admin Field Permissions': {'bg': 'rgba(234, 179, 8, 0.12)', 'fg': '#eab308'},
+          'Refresh Tokens': {'bg': 'rgba(168, 85, 247, 0.12)', 'fg': '#a855f7'},
+          '2FA Tokens': {'bg': 'rgba(20, 184, 166, 0.12)', 'fg': '#14b8a6'},
+          'Login Attempts': {'bg': 'rgba(249, 115, 22, 0.12)', 'fg': '#f97316'}
         } %}
-        {% for registered in registered_models %}
+        {% if recent_activity_models %}
+        {% for registered in recent_activity_models %}
         {% set _ac = _action_colors[registered.verbose_name_plural] | default({'bg': 'var(--primary-50)', 'fg': 'var(--primary-600)'}) %}
         <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/" class="quick-action-item">
           <div class="action-icon" style="background: {{ _ac.bg }};">
             {{ icon(registered.admin.icon | default('cube'), size="18px") }}
           </div>
           <div class="action-text">
-            <div class="action-title">Add {{ registered.verbose_name }}</div>
-            <div class="action-desc">Create a new {{ registered.verbose_name | lower }}</div>
+            <div class="action-title">{{ registered.verbose_name_plural }}</div>
+            <div class="action-desc">Manage {{ registered.verbose_name | lower }}</div>
           </div>
           {{ icon('chevron-right', size="18px", class="action-chevron") }}
         </a>
         {% endfor %}
+        {% else %}
+        {# Fallback: show first 5 admin-tagged models if no activity yet #}
+        {% set ns = namespace(count=0) %}
+        {% for registered in registered_models %}
+        {% if ns.count < 5 and registered.admin.tag | default('') == 'admin' %}
+        {% set ns.count = ns.count + 1 %}
+        {% set _ac = _action_colors[registered.verbose_name_plural] | default({'bg': 'var(--primary-50)', 'fg': 'var(--primary-600)'}) %}
+        <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/" class="quick-action-item">
+          <div class="action-icon" style="background: {{ _ac.bg }};">
+            {{ icon(registered.admin.icon | default('cube'), size="18px") }}
+          </div>
+          <div class="action-text">
+            <div class="action-title">{{ registered.verbose_name_plural }}</div>
+            <div class="action-desc">Manage {{ registered.verbose_name | lower }}</div>
+          </div>
+          {{ icon('chevron-right', size="18px", class="action-chevron") }}
+        </a>
+        {% endif %}
+        {% endfor %}
+        {% endif %}
         {# Extra: System Logs link #}
         <a href="{{ admin_path | default('/admin') }}/audit-log/" class="quick-action-item">
           <div class="action-icon" style="background: rgba(6, 182, 212, 0.12);">

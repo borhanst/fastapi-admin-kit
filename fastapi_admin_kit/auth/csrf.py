@@ -38,9 +38,7 @@ def generate_csrf_token(secret_key: str) -> str:
     random_bytes = os.urandom(16)
     timestamp = str(int(time.time()))
     payload = f"{timestamp}.{random_bytes.hex()}"
-    signature = hmac.new(
-        secret_key.encode(), payload.encode(), hashlib.sha256
-    ).hexdigest()[:32]
+    signature = hmac.new(secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
     return f"{payload}.{signature}"
 
 
@@ -51,9 +49,7 @@ def _verify_csrf_token(secret_key: str, token: str) -> bool:
         return False
     timestamp_str, random_hex, provided_sig = parts
     payload = f"{timestamp_str}.{random_hex}"
-    expected_sig = hmac.new(
-        secret_key.encode(), payload.encode(), hashlib.sha256
-    ).hexdigest()[:32]
+    expected_sig = hmac.new(secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
     if not hmac.compare_digest(provided_sig, expected_sig):
         return False
     try:
@@ -80,9 +76,7 @@ def set_csrf_cookie(response: Response, secret_key: str) -> str:
     return token
 
 
-def validate_csrf_token(
-    request: Request, csrf_token: str | None = None
-) -> None:
+def validate_csrf_token(request: Request, csrf_token: str | None = None) -> None:
     """Validate CSRF token from form body or header against the cookie.
 
     Raises ``HTTPException(403)`` if the token is missing or invalid.
@@ -234,8 +228,35 @@ async def auth_redirect_handler(request: Request, exc: HTTPException) -> Respons
                     login_url += f"?next={current_path}"
             return RedirectResponse(url=login_url, status_code=302)
         from starlette.responses import JSONResponse
+
         return JSONResponse(
             status_code=401,
             content={"detail": exc.detail or "Not authenticated"},
+        )
+    raise exc
+
+
+async def forbidden_handler(request: Request, exc: HTTPException) -> Response:
+    """Exception handler for 403 Forbidden errors.
+
+    Returns HTML error page for browser requests, JSON for API clients.
+    """
+    if exc.status_code == 403:
+        accept = request.headers.get("accept", "")
+        if "text/html" in accept or "text/xhtml" in accept:
+            templates = request.app.state.admin_jinja_env
+            admin_path = request.app.state.admin_config["admin_path"]
+            detail = exc.detail or "You do not have permission to access this resource."
+            return templates.TemplateResponse(
+                request,
+                "pages/403.html",
+                {"admin_path": admin_path, "detail": detail},
+                status_code=403,
+            )
+        from starlette.responses import JSONResponse
+
+        return JSONResponse(
+            status_code=403,
+            content={"detail": exc.detail or "Forbidden"},
         )
     raise exc

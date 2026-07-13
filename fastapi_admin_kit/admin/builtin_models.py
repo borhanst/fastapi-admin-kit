@@ -6,6 +6,27 @@ from fastapi_admin_kit.widgets.inputs import AutocompleteWidget, PasswordWidget
 from fastapi_admin_kit.widgets.relation import MultiRelationWidget
 
 
+async def flush_pending_perm_ops(request):
+    """Execute any pending direct-permission writes on the request's session.
+
+    Called after ``after_create`` / ``after_update`` so the ops run on the
+    same session (and thus the same SQLite connection) as the main request.
+    """
+    from sqlalchemy import text
+
+    from fastapi_admin_kit.db import get_db_session
+
+    ops = getattr(request.state, "_admin_perm_pending_ops", None)
+    if not ops:
+        return
+    request.state._admin_perm_pending_ops = []
+    session = get_db_session(request)
+    if session is None:
+        return
+    for sql_str, params in ops:
+        await session.execute(text(sql_str), params)
+
+
 def _get_table_names() -> list[str]:
     from fastapi_admin_kit.registry.core import AdminRegistry
 
@@ -13,13 +34,14 @@ def _get_table_names() -> list[str]:
     return sorted({m.table_name for m in registry.all()})
 
 
-class AdminUserAdmin(ModelAdmin):
+class UserAdmin(ModelAdmin):
     tag = "admin"
     icon = "group"
     verbose_name = "Admin User"
     verbose_name_plural = "Admin Users"
     list_display = ["id", "email", "full_name", "is_superuser", "is_active"]
     search_fields = ["email", "full_name"]
+    inline_edit = True
     exclude = ["hashed_password", "password_changed_at"]
     extra_fields = [
         ExtraField(
@@ -38,11 +60,11 @@ class AdminUserAdmin(ModelAdmin):
     }
 
     def prepare_create_data(self, data, request=None):
-        from fastapi_admin_kit.auth.backend import pwd_context
+        from fastapi_admin_kit.auth.models import User
 
         password = data.pop("password", None)
         if password:
-            data["hashed_password"] = pwd_context.hash(password)
+            data["hashed_password"] = User.hash_password(password)
         else:
             data["hashed_password"] = ""
         return data
@@ -68,44 +90,41 @@ class AdminUserAdmin(ModelAdmin):
             self._save_direct_permissions_after_commit(obj, perm_data, request)
 
     def _save_direct_permissions_after_commit(self, obj, perm_data, request):
-        import os
-        import sqlite3
+        delete_sql = "DELETE FROM admin_user_permissions WHERE user_id = :uid"
+        insert_sql = (
+            "INSERT INTO admin_user_permissions"
+            " (user_id, table_name, can_view, can_create, can_edit, can_delete)"
+            " VALUES (:uid, :tn, :cv, :cc, :ce, :cd)"
+        )
 
-        db_url = os.getenv("DATABASE_URL", "")
-        if "sqlite" in db_url or not db_url:
-            db_path = db_url.split("///")[-1] if "///" in db_url else "test_debug.db"
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
+        ops = []
+        ops.append((delete_sql, {"uid": obj.id}))
 
-            cursor.execute(
-                "DELETE FROM admin_user_permissions WHERE user_id = ?",
-                (obj.id,),
+        for table_name, perms in perm_data.items():
+            if not any(perms.get(a) for a in ["view", "create", "edit", "delete"]):
+                continue
+            ops.append(
+                (
+                    insert_sql,
+                    {
+                        "uid": obj.id,
+                        "tn": table_name,
+                        "cv": 1 if perms.get("view") else 0,
+                        "cc": 1 if perms.get("create") else 0,
+                        "ce": 1 if perms.get("edit") else 0,
+                        "cd": 1 if perms.get("delete") else 0,
+                    },
+                )
             )
 
-            for table_name, perms in perm_data.items():
-                if not any(perms.get(a) for a in ["view", "create", "edit", "delete"]):
-                    continue
-                cursor.execute(
-                    """INSERT INTO admin_user_permissions
-                       (user_id, table_name, can_view, can_create, can_edit, can_delete)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (
-                        obj.id,
-                        table_name,
-                        1 if perms.get("view") else 0,
-                        1 if perms.get("create") else 0,
-                        1 if perms.get("edit") else 0,
-                        1 if perms.get("delete") else 0,
-                    ),
-                )
-
-            conn.commit()
-            conn.close()
+        if not hasattr(request.state, "_admin_perm_pending_ops"):
+            request.state._admin_perm_pending_ops = []
+        request.state._admin_perm_pending_ops.extend(ops)
 
     def get_form_context(self, context, obj=None, request=None):
         from sqlalchemy import select
 
-        from fastapi_admin_kit.auth.models import AdminUserPermission
+        from fastapi_admin_kit.auth.models import UserPermission
         from fastapi_admin_kit.db import get_db_session
 
         perm_data = {}
@@ -116,15 +135,14 @@ class AdminUserAdmin(ModelAdmin):
 
                 async def _load_perms():
                     result = await session.execute(
-                        select(AdminUserPermission).where(
-                            AdminUserPermission.user_id == obj.id
-                        )
+                        select(UserPermission).where(UserPermission.user_id == obj.id)
                     )
                     return result.scalars().all()
 
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     import concurrent.futures
+
                     with concurrent.futures.ThreadPoolExecutor() as pool:
                         perms = pool.submit(asyncio.run, _load_perms()).result()
                 else:
@@ -160,6 +178,7 @@ class AdminUserAdmin(ModelAdmin):
 
             if loop and loop.is_running():
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     perm_data_raw = pool.submit(asyncio.run, _get_perm_data()).result()
             elif loop:
@@ -182,16 +201,15 @@ class AdminUserAdmin(ModelAdmin):
         return data
 
 
-class AdminRoleAdmin(ModelAdmin):
+class RoleAdmin(ModelAdmin):
     tag = "admin"
     icon = "shield-check"
-    verbose_name = "Admin Role"
-    verbose_name_plural = "Admin Roles"
     list_display = ["id", "name", "description"]
     search_fields = ["name"]
+    exclude = ["users"]
 
 
-class AdminRefreshTokenAdmin(ModelAdmin):
+class RefreshTokenAdmin(ModelAdmin):
     tag = "admin"
     icon = "key"
     verbose_name = "Refresh Token"
@@ -199,14 +217,15 @@ class AdminRefreshTokenAdmin(ModelAdmin):
     exclude = ["user"]
 
 
-class AdminPermissionAdmin(ModelAdmin):
+class PermissionAdmin(ModelAdmin):
     tag = "admin"
     icon = "lock"
     verbose_name = "Permission"
     verbose_name_plural = "Permissions"
+    exclude = ["roles"]
     list_display = [
         "id",
-        "role",
+        "name",
         "table_name",
         "can_view",
         "can_create",
@@ -216,6 +235,7 @@ class AdminPermissionAdmin(ModelAdmin):
     formfield_overrides = {
         "table_name": AutocompleteWidget(suggestions_fn=_get_table_names),
     }
+    search_fields = ("name", "table_name")
 
 
 class AuditLogAdmin(ModelAdmin):
@@ -248,7 +268,7 @@ class AuditLogAdmin(ModelAdmin):
     ]
 
 
-class AdminUserTOTPAdmin(ModelAdmin):
+class UserTOTPAdmin(ModelAdmin):
     tag = "admin"
     icon = "lock"
     verbose_name = "2FA Token"
@@ -256,11 +276,11 @@ class AdminUserTOTPAdmin(ModelAdmin):
     list_display = ["id", "user_id", "enabled", "secret_key", "created_at"]
 
 
-class AdminUserPermissionAdmin(ModelAdmin):
+class UserPermissionAdmin(ModelAdmin):
     tag = "admin"
     icon = "lock"
-    verbose_name = "User Permission"
-    verbose_name_plural = "User Permissions"
+    verbose_name = "User Permission---"
+    verbose_name_plural = "User Permissions---"
     list_display = [
         "id",
         "user",
@@ -275,10 +295,10 @@ class AdminUserPermissionAdmin(ModelAdmin):
     }
 
 
-class AdminLoginAttemptAdmin(ModelAdmin):
+class LoginAttemptAdmin(ModelAdmin):
     tag = "admin"
     icon = "clock"
     verbose_name = "Login Attempt"
     verbose_name_plural = "Login Attempts"
-    list_display = ["id", "email", "ip_address", "success", "timestamp"]
+    list_display = ["id", "email", "ip_address", "success", "note", "timestamp"]
     search_fields = ["email", "ip_address"]

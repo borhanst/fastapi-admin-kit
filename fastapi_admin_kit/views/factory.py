@@ -8,6 +8,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse
 from starlette.datastructures import UploadFile
 
+from fastapi_admin_kit.admin.builtin_models import flush_pending_perm_ops
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.flash import add_flash
 from fastapi_admin_kit.registry import RegisteredModel
@@ -18,9 +19,7 @@ from fastapi_admin_kit.widgets.inputs import FileUploadWidget, ImageUploadWidget
 _FILE_WIDGET_TYPES = (FileUploadWidget, ImageUploadWidget)
 
 
-def _apply_parsed_to_obj(
-    obj: Any, parsed: dict[str, Any], registered: RegisteredModel
-) -> None:
+def _apply_parsed_to_obj(obj: Any, parsed: dict[str, Any], registered: RegisteredModel) -> None:
     """Apply parsed data to an ORM object, mapping relationship names to FK columns."""
     from sqlalchemy import inspect as sa_inspect
 
@@ -70,8 +69,6 @@ async def _apply_m2m_from_data(
     obj: Any, m2m_data: dict[str, Any], registered: RegisteredModel, session: Any
 ) -> None:
     """Apply MANYTOMANY data extracted by _pop_manytomany_keys."""
-    import json as _json
-
     from sqlalchemy import inspect as sa_inspect
 
     if not m2m_data:
@@ -86,18 +83,7 @@ async def _apply_m2m_from_data(
         if rel_key not in m2m_data:
             continue
         raw = m2m_data[rel_key]
-        pk_list = []
-        if isinstance(raw, list):
-            for item in raw:
-                if isinstance(item, str) and item.startswith("["):
-                    try:
-                        pk_list.extend(_json.loads(item))
-                    except (ValueError, TypeError):
-                        pk_list.append(item)
-                else:
-                    pk_list.append(item)
-        else:
-            pk_list = [raw]
+        pk_list = list(raw) if isinstance(raw, list) else [raw]
         target_model = rel_prop.mapper.class_
         objs = []
         for pk in pk_list:
@@ -105,18 +91,19 @@ async def _apply_m2m_from_data(
                 continue
             try:
                 from fastapi_admin_kit.inspection import cast_pk_value
+
                 loaded = await session.get(target_model, cast_pk_value(target_model, pk))
                 if loaded:
                     objs.append(loaded)
             except (ValueError, TypeError):
                 pass
+        # Pre-load the collection inside the async greenlet so the
+        # subsequent setattr does not trigger a lazy load (MissingGreenlet).
         await session.refresh(obj, [rel_key])
         setattr(obj, rel_key, objs)
 
 
-def _resolve_rel_keys(
-    parsed: dict[str, Any], registered: RegisteredModel
-) -> dict[str, Any]:
+def _resolve_rel_keys(parsed: dict[str, Any], registered: RegisteredModel) -> dict[str, Any]:
     """Convert relationship keys in parsed data to their FK column names."""
     from sqlalchemy import inspect as sa_inspect
 
@@ -303,11 +290,7 @@ class ViewFactory:
             widget = registered.get_widget(field_meta.name)
 
             if isinstance(widget, _FILE_WIDGET_TYPES):
-                action = (
-                    form_data.get(f"_action_{field_meta.name}", "keep")
-                    if obj
-                    else None
-                )
+                action = form_data.get(f"_action_{field_meta.name}", "keep") if obj else None
                 await _handle_file_field(
                     request,
                     widget,
@@ -318,11 +301,7 @@ class ViewFactory:
                     parsed=parsed,
                     errors=errors,
                 )
-                if (
-                    obj is None
-                    and field_meta.name not in errors
-                    and field_meta.name not in parsed
-                ):
+                if obj is None and field_meta.name not in errors and field_meta.name not in parsed:
                     parsed[field_meta.name] = None
                 continue
 
@@ -331,6 +310,7 @@ class ViewFactory:
             required_on_create = (field_meta.extra or {}).get("required_on_create")
             if obj is None and required_on_create is not None:
                 from fastapi_admin_kit.types import FieldMeta
+
                 effective_field = FieldMeta(
                     name=field_meta.name,
                     label=field_meta.label,
@@ -354,9 +334,7 @@ class ViewFactory:
     def create_list_view(self, registered: RegisteredModel):
         """Create a list view handler for the given model."""
 
-        async def list_view(
-            request: Request, q: str = "", page: int = 1, _: Any = None
-        ):
+        async def list_view(request: Request, q: str = "", page: int = 1, _: Any = None):
             templates = request.app.state.admin_jinja_env
             checker = await _resolve_permission_checker(request)
             if checker:
@@ -366,9 +344,7 @@ class ViewFactory:
             )
             is_htmx = request.headers.get("HX-Request") == "true"
             if is_htmx:
-                return templates.TemplateResponse(
-                    request, "partials/list_table.html", ctx
-                )
+                return templates.TemplateResponse(request, "partials/list_table.html", ctx)
             return templates.TemplateResponse(request, "pages/list.html", ctx)
 
         list_view.__name__ = f"list_{registered.table_name}"
@@ -401,9 +377,7 @@ class ViewFactory:
             if checker:
                 await checker.load_permissions(registered.table_name)
 
-            parsed, errors = await self._parse_form_fields(
-                registered, form_data, request, obj=None
-            )
+            parsed, errors = await self._parse_form_fields(registered, form_data, request, obj=None)
 
             if errors:
                 await session.rollback()
@@ -415,9 +389,7 @@ class ViewFactory:
                     is_create=True,
                     permission_checker=checker,
                 )
-                return templates.TemplateResponse(
-                    request, "pages/form.html", ctx, status_code=422
-                )
+                return templates.TemplateResponse(request, "pages/form.html", ctx, status_code=422)
 
             try:
                 parsed = registered.admin.validate_create(parsed, request)
@@ -431,9 +403,7 @@ class ViewFactory:
                     is_create=True,
                     permission_checker=checker,
                 )
-                return templates.TemplateResponse(
-                    request, "pages/form.html", ctx, status_code=422
-                )
+                return templates.TemplateResponse(request, "pages/form.html", ctx, status_code=422)
 
             parsed = registered.admin.process_form_data(parsed, request)
 
@@ -442,9 +412,10 @@ class ViewFactory:
             obj = registered.model(**parsed)
             registered.admin.on_create(obj, request)
             session.add(obj)
-            await _apply_m2m_from_data(obj, m2m_data, registered, session)
             await session.flush()
+            await _apply_m2m_from_data(obj, m2m_data, registered, session)
             registered.admin.after_create(obj, request)
+            await flush_pending_perm_ops(request)
             await add_flash(request, "success", f"{registered.verbose_name} created.")
             url = f"{request.app.state.admin_config['admin_path']}/{registered.table_name}/"
             return RedirectResponse(url=url, status_code=303)
@@ -459,6 +430,7 @@ class ViewFactory:
             templates = request.app.state.admin_jinja_env
             session = get_db_session(request)
             from fastapi_admin_kit.inspection import cast_pk_value
+
             obj = await session.get(registered.model, cast_pk_value(registered.model, id))
             if not obj:
                 raise HTTPException(status_code=404, detail="Not found")
@@ -486,6 +458,7 @@ class ViewFactory:
             templates = request.app.state.admin_jinja_env
             session = get_db_session(request)
             from fastapi_admin_kit.inspection import cast_pk_value
+
             obj = await session.get(registered.model, cast_pk_value(registered.model, id))
             if not obj:
                 raise HTTPException(status_code=404, detail="Not found")
@@ -494,9 +467,7 @@ class ViewFactory:
             if checker:
                 await checker.load_permissions(registered.table_name)
 
-            parsed, errors = await self._parse_form_fields(
-                registered, form_data, request, obj=obj
-            )
+            parsed, errors = await self._parse_form_fields(registered, form_data, request, obj=obj)
 
             if errors:
                 await session.rollback()
@@ -511,9 +482,7 @@ class ViewFactory:
                     permission_checker=checker,
                     rel_labels=rel_labels,
                 )
-                return templates.TemplateResponse(
-                    request, "pages/form.html", ctx, status_code=422
-                )
+                return templates.TemplateResponse(request, "pages/form.html", ctx, status_code=422)
 
             try:
                 parsed = registered.admin.validate_update(obj, parsed, request)
@@ -530,9 +499,7 @@ class ViewFactory:
                     permission_checker=checker,
                     rel_labels=rel_labels,
                 )
-                return templates.TemplateResponse(
-                    request, "pages/form.html", ctx, status_code=422
-                )
+                return templates.TemplateResponse(request, "pages/form.html", ctx, status_code=422)
 
             parsed = registered.admin.process_form_data(parsed, request)
 
@@ -542,6 +509,7 @@ class ViewFactory:
             await _apply_m2m_from_data(obj, m2m_data, registered, session)
             await session.flush()
             registered.admin.after_update(obj, request)
+            await flush_pending_perm_ops(request)
             await add_flash(request, "success", f"{registered.verbose_name} updated.")
             url = f"{request.app.state.admin_config['admin_path']}/{registered.table_name}/"
             return RedirectResponse(url=url, status_code=303)
@@ -559,6 +527,7 @@ class ViewFactory:
             except Exception:
                 pass
             from fastapi_admin_kit.inspection import cast_pk_value
+
             obj = await session.get(registered.model, cast_pk_value(registered.model, id))
             if not obj:
                 raise HTTPException(status_code=404, detail="Not found")
@@ -567,9 +536,7 @@ class ViewFactory:
                 await session.delete(obj)
                 await session.flush()
                 registered.admin.after_delete(obj, request)
-                await add_flash(
-                    request, "success", f"{registered.verbose_name} deleted."
-                )
+                await add_flash(request, "success", f"{registered.verbose_name} deleted.")
             except Exception as e:
                 await session.rollback()
                 await add_flash(request, "error", f"Cannot delete: {str(e)}")
@@ -600,9 +567,7 @@ class ViewFactory:
                     ctx = await self.context_builder.build_list_context(
                         registered, request, permission_checker=None
                     )
-                    return templates.TemplateResponse(
-                        request, "partials/list_table.html", ctx
-                    )
+                    return templates.TemplateResponse(request, "partials/list_table.html", ctx)
                 url = f"{request.app.state.admin_config['admin_path']}/{registered.table_name}/"
                 return RedirectResponse(url=url, status_code=303)
 
@@ -620,13 +585,9 @@ class ViewFactory:
                         f"{len(ids)} {registered.verbose_name}(s) deleted.",
                     )
                 else:
-                    action_fn = getattr(
-                        registered.admin, f"action_{action}", None
-                    )
+                    action_fn = getattr(registered.admin, f"action_{action}", None)
                     if not action_fn:
-                        raise HTTPException(
-                            status_code=400, detail=f"Unknown action: {action}"
-                        )
+                        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
                     for pid in ids:
                         obj = await session.get(registered.model, int(pid))
                         if obj:
@@ -645,9 +606,7 @@ class ViewFactory:
                 ctx = await self.context_builder.build_list_context(
                     registered, request, permission_checker=None
                 )
-                return templates.TemplateResponse(
-                    request, "partials/list_table.html", ctx
-                )
+                return templates.TemplateResponse(request, "partials/list_table.html", ctx)
 
             url = f"{request.app.state.admin_config['admin_path']}/{registered.table_name}/"
             return RedirectResponse(url=url, status_code=303)

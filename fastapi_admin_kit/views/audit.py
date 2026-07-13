@@ -29,7 +29,7 @@ async def audit_list_view(
     request: Request,
     model: str | None = Query(None, description="Filter by model name"),
     user_id: int | None = Query(None),
-    action: str | None = Query(None, regex="^(CREATE|UPDATE|DELETE)$"),
+    action: str | None = Query(None, pattern="^(CREATE|UPDATE|DELETE)$"),
     from_date: date | None = Query(None),
     to_date: date | None = Query(None),
     object_id: str | None = Query(None),
@@ -85,26 +85,29 @@ async def audit_list_view(
     return templates.TemplateResponse(
         request,
         "pages/audit_log.html",
-        await inject_sidebar_context(request, {
-            "entries": entries,
-            "page": page,
-            "per_page": per_page,
-            "total_items": total,
-            "total_pages": max(1, (total + per_page - 1) // per_page),
-            "admin_path": admin_path,
-            "search": "",
-            "action_filter": action or "",
-            "model_filter": model or "",
-            "model_names": [m.table_name for m in request.app.state.admin_registry.all()],
-            "filters": {
-                "model": model or "",
-                "user_id": user_id or "",
-                "action": action or "",
-                "from_date": from_date or "",
-                "to_date": to_date or "",
-                "object_id": object_id or "",
+        await inject_sidebar_context(
+            request,
+            {
+                "entries": entries,
+                "page": page,
+                "per_page": per_page,
+                "total_items": total,
+                "total_pages": max(1, (total + per_page - 1) // per_page),
+                "admin_path": admin_path,
+                "search": "",
+                "action_filter": action or "",
+                "model_filter": model or "",
+                "model_names": [m.table_name for m in request.app.state.admin_registry.all()],
+                "filters": {
+                    "model": model or "",
+                    "user_id": user_id or "",
+                    "action": action or "",
+                    "from_date": from_date or "",
+                    "to_date": to_date or "",
+                    "object_id": object_id or "",
+                },
             },
-        }),
+        ),
     )
 
 
@@ -127,8 +130,11 @@ async def audit_detail_view(
     return templates.TemplateResponse(
         request,
         "pages/audit_detail.html",
-        await inject_sidebar_context(request, {
-            "entry": entry,
-            "admin_path": admin_path,
-        }),
+        await inject_sidebar_context(
+            request,
+            {
+                "entry": entry,
+                "admin_path": admin_path,
+            },
+        ),
     )

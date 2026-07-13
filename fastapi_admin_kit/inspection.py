@@ -110,6 +110,4 @@ def model_display_name(obj: Any) -> str:
     if type(obj).__str__ is not object.__str__:
         return str(obj)
     pk = getattr(obj, "id", None)
-    return (
-        f"{type(obj).__name__}:{pk}" if pk is not None else type(obj).__name__
-    )
+    return f"{type(obj).__name__}:{pk}" if pk is not None else type(obj).__name__

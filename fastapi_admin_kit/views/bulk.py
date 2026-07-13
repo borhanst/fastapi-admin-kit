@@ -16,9 +16,7 @@ def bulk_factory(registered: RegisteredModel):
     """Create a bulk action handler — delegates to BulkView.html_response."""
     from fastapi_admin_kit.views.class_views import BulkView, _resolve_view_class
 
-    view_class = _resolve_view_class(
-        registered.admin, "bulk_view_class", BulkView
-    )
+    view_class = _resolve_view_class(registered.admin, "bulk_view_class", BulkView)
     view_instance = view_class(registered)
 
     async def _handler(request: Request, **kwargs: Any):

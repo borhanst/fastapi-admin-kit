@@ -2,9 +2,9 @@
 
 {% macro text_input(name, label, value='', required=false, readonly=false, placeholder='', maxlength=null, error=null, css_class='') %}
 <div class="relative">
-    <input type="text" 
-           id="{{ name }}" 
-           name="{{ name }}" 
+    <input type="text"
+           id="{{ name }}"
+           name="{{ name }}"
            value="{{ value or '' }}"
            {% if required %}required{% endif %}
            {% if readonly %}readonly{% endif %}
@@ -15,8 +15,8 @@
 {% endmacro %}
 
 {% macro textarea(name, label, value='', required=false, readonly=false, rows=5, placeholder='', error=null, css_class='') %}
-<textarea id="{{ name }}" 
-          name="{{ name }}" 
+<textarea id="{{ name }}"
+          name="{{ name }}"
           rows="{{ rows }}"
           {% if required %}required{% endif %}
           {% if readonly %}readonly{% endif %}
@@ -25,9 +25,9 @@
 {% endmacro %}
 
 {% macro number_input(name, label, value='', required=false, readonly=false, step='1', min=null, max=null, placeholder='', error=null, css_class='') %}
-<input type="number" 
-       id="{{ name }}" 
-       name="{{ name }}" 
+<input type="number"
+       id="{{ name }}"
+       name="{{ name }}"
        value="{{ value or '' }}"
        step="{{ step }}"
        {% if min is not none %}min="{{ min }}"{% endif %}
@@ -40,9 +40,9 @@
 
 {% macro toggle(name, label, checked=false, required=false, readonly=false, error=null, css_class='') %}
 <label class="relative inline-flex items-center cursor-pointer">
-    <input type="checkbox" 
-           id="{{ name }}" 
-           name="{{ name }}" 
+    <input type="checkbox"
+           id="{{ name }}"
+           name="{{ name }}"
            {% if checked %}checked{% endif %}
            {% if readonly %}disabled{% endif %}
            class="sr-only peer">
@@ -51,9 +51,9 @@
 {% endmacro %}
 
 {% macro date_picker(name, label, value='', required=false, readonly=false, error=null, css_class='') %}
-<input type="date" 
-       id="{{ name }}" 
-       name="{{ name }}" 
+<input type="date"
+       id="{{ name }}"
+       name="{{ name }}"
        value="{{ value or '' }}"
        {% if required %}required{% endif %}
        {% if readonly %}readonly{% endif %}
@@ -61,9 +61,9 @@
 {% endmacro %}
 
 {% macro datetime_picker(name, label, value='', required=false, readonly=false, error=null, css_class='') %}
-<input type="datetime-local" 
-       id="{{ name }}" 
-       name="{{ name }}" 
+<input type="datetime-local"
+       id="{{ name }}"
+       name="{{ name }}"
        value="{{ value or '' }}"
        {% if required %}required{% endif %}
        {% if readonly %}readonly{% endif %}
@@ -71,9 +71,9 @@
 {% endmacro %}
 
 {% macro time_picker(name, label, value='', required=false, readonly=false, error=null, css_class='') %}
-<input type="time" 
-       id="{{ name }}" 
-       name="{{ name }}" 
+<input type="time"
+       id="{{ name }}"
+       name="{{ name }}"
        value="{{ value or '' }}"
        {% if required %}required{% endif %}
        {% if readonly %}readonly{% endif %}
@@ -81,8 +81,8 @@
 {% endmacro %}
 
 {% macro select(name, label, value='', choices=[], required=false, readonly=false, error=null, css_class='') %}
-<select id="{{ name }}" 
-        name="{{ name }}" 
+<select id="{{ name }}"
+        name="{{ name }}"
         {% if required %}required{% endif %}
         {% if readonly %}disabled{% endif %}
         class="w-full border rounded px-3 py-2 {% if error %}border-red-500{% endif %} {{ css_class }}">
@@ -96,8 +96,8 @@
 {% endmacro %}
 
 {% macro json_editor(name, label, value='', required=false, readonly=false, error=null, css_class='') %}
-<textarea id="{{ name }}" 
-          name="{{ name }}" 
+<textarea id="{{ name }}"
+          name="{{ name }}"
           rows="10"
           {% if required %}required{% endif %}
           {% if readonly %}readonly{% endif %}
@@ -106,9 +106,9 @@
 {% endmacro %}
 
 {% macro file_upload(name, label, required=false, readonly=false, accept='*/*', error=null, css_class='') %}
-<input type="file" 
-       id="{{ name }}" 
-       name="{{ name }}" 
+<input type="file"
+       id="{{ name }}"
+       name="{{ name }}"
        accept="{{ accept }}"
        {% if required %}required{% endif %}
        {% if readonly %}disabled{% endif %}
@@ -127,8 +127,8 @@
             </span>
         </template>
     </div>
-    <input type="text" 
-           x-model="newTag" 
+    <input type="text"
+           x-model="newTag"
            @keydown.enter.prevent="if(newTag.trim()){tags.push(newTag.trim());newTag=''}"
            placeholder="Add tag..."
            class="w-full border rounded px-3 py-2">
@@ -137,8 +137,8 @@
 {% endmacro %}
 
 {% macro relation_picker(name, label, value='', required=false, readonly=false, error=null, css_class='') %}
-<select id="{{ name }}" 
-        name="{{ name }}" 
+<select id="{{ name }}"
+        name="{{ name }}"
         {% if required %}required{% endif %}
         {% if readonly %}disabled{% endif %}
         class="w-full border rounded px-3 py-2 {% if error %}border-red-500{% endif %} {{ css_class }}">
@@ -148,8 +148,8 @@
 {% endmacro %}
 
 {% macro multi_relation_picker(name, label, selected=[], required=false, readonly=false, error=null, css_class='') %}
-<select id="{{ name }}" 
-        name="{{ name }}" 
+<select id="{{ name }}"
+        name="{{ name }}"
         multiple
         {% if required %}required{% endif %}
         {% if readonly %}disabled{% endif %}

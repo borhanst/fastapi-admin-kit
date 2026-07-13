@@ -3,27 +3,28 @@
 import asyncio
 import os
 import tempfile
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from fastapi_admin_kit import Admin
+from fastapi_admin_kit.audit.models import AuditLog  # noqa: F401 - ensure table is registered
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
 from fastapi_admin_kit.auth.csrf import generate_csrf_token
-from fastapi_admin_kit.auth.models import AdminRole, AdminUser
-from fastapi_admin_kit.audit.models import AuditLog  # noqa: F401 - ensure table is registered
+from fastapi_admin_kit.auth.models import Role, User
 from fastapi_admin_kit.models.base import Base as AdminBase
-from tests.conftest import SECRET_KEY, create_session_cookie, run_async
-from tests.test_registry import Product, Category
+from tests.conftest import SECRET_KEY, run_async
+from tests.test_registry import Category, Product
 
 
 @pytest.fixture(autouse=True)
 def _clear_registry():
     from fastapi_admin_kit.registry import AdminRegistry
+
     AdminRegistry().clear()
     yield
     AdminRegistry().clear()
@@ -51,10 +52,10 @@ def engine():
 def admin_user(engine):
     async def _create():
         async with AsyncSession(engine) as session:
-            role = AdminRole(name="SuperAdmin")
+            role = Role(name="SuperAdmin")
             session.add(role)
             await session.flush()
-            user = AdminUser(
+            user = User(
                 email="admin@test.com",
                 hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
                 full_name="Admin",
@@ -66,6 +67,7 @@ def admin_user(engine):
             await session.commit()
             await session.refresh(user)
             return user
+
     return run_async(_create())
 
 
@@ -97,6 +99,7 @@ def client(engine, admin_user):
                 )
                 db.add(product)
             await db.commit()
+
     run_async(_seed())
 
     return TestClient(app), admin, engine
@@ -117,7 +120,7 @@ def _login(test_client):
     test_client.cookies.set("admin_csrf_token", csrf_cookie)
     response = test_client.post(
         "/admin/login",
-        data={"email": "admin@test.com", "password": "password", "csrf_token": csrf_token},
+        data={"username": "admin@test.com", "password": "password", "csrf_token": csrf_token},
         follow_redirects=False,
     )
     session_cookie = response.cookies.get("admin_session")
@@ -140,7 +143,6 @@ def test_dashboard_view(client):
     assert "3" in response.text
 
     assert "Recent Activity" in response.text
-    assert "Add Product" in response.text
     assert "/admin/products/" in response.text
 
 

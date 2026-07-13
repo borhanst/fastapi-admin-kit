@@ -14,7 +14,9 @@ def validate_password_strength(
     require_digit: bool = True,
     require_special: bool = True,
 ) -> list[str]:
-    """Validate password strength. Returns a list of error messages (empty = valid)."""
+    """
+    Validate password strength. Returns a list of error messages (empty = valid)
+    """
     errors: list[str] = []
 
     if len(password) < min_length:

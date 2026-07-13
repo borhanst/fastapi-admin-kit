@@ -150,6 +150,7 @@ class Admin:
         storage: StorageBackend | None = None,
         uploads_url: str = "/uploads",
         auto_discover: bool = True,
+        skip_models: list[str] | None = None,
         nav_groups: list[NavGroupConfig] | None = None,
         sidebar_builder: SidebarBuilder | None = None,
         require_tags: bool = False,
@@ -186,9 +187,11 @@ class Admin:
             from fastapi_admin_kit.auth.csrf import (
                 CSRFMiddleware,
                 auth_redirect_handler,
+                forbidden_handler,
             )
 
             app.add_exception_handler(401, auth_redirect_handler)
+            app.add_exception_handler(403, forbidden_handler)
             app.add_middleware(CSRFMiddleware)
             self._csrf_middleware_added = True
         else:
@@ -245,6 +248,7 @@ class Admin:
                 audit=AuditConfig(audit_retention_days=audit_retention_days),
                 behavior=BehaviorConfig(
                     auto_discover=auto_discover,
+                    skip_models=skip_models,
                     dashboard_stats=dashboard_stats or [],
                     dashboard_charts=dashboard_charts,
                 ),
@@ -259,9 +263,7 @@ class Admin:
             )
 
         if database is None:
-            database = AdminDatabase(
-                engine=engine, base=base, database_config=database_config
-            )
+            database = AdminDatabase(engine=engine, base=base, database_config=database_config)
 
         if router is None:
             router = AdminRouter(
@@ -287,9 +289,7 @@ class Admin:
         self.template = template
 
         # RBAC
-        self.seed_roles = (
-            seed_roles if seed_roles is not None else DEFAULT_SEED_ROLES
-        )
+        self.seed_roles = seed_roles if seed_roles is not None else DEFAULT_SEED_ROLES
         self.seed_roles_overwrite = seed_roles_overwrite
 
         # Built sidebar (populated during setup)
@@ -434,8 +434,7 @@ class Admin:
 
         if self.database.engine is None:
             raise ConfigError(
-                "Admin requires a SQLAlchemy engine. "
-                "Pass engine= or database_config= to Admin()."
+                "Admin requires a SQLAlchemy engine. Pass engine= or database_config= to Admin()."
             )
 
         app = self._app
@@ -445,10 +444,12 @@ class Admin:
             from fastapi_admin_kit.auth.csrf import (
                 CSRFMiddleware,
                 auth_redirect_handler,
+                forbidden_handler,
             )
 
             try:
                 app.add_exception_handler(401, auth_redirect_handler)
+                app.add_exception_handler(403, forbidden_handler)
                 app.add_middleware(CSRFMiddleware)
             except RuntimeError:
                 pass  # Already started — middleware was added in __init__
@@ -491,16 +492,12 @@ class Admin:
         self.config.auth.validate_auth_model()
 
         # 2. Database tables should be created via Alembic migrations
-        skip_create_tables = (
-            os.environ.get("SKIP_CREATE_TABLES", "false").lower() == "true"
-        )
+        skip_create_tables = os.environ.get("SKIP_CREATE_TABLES", "false").lower() == "true"
         if not skip_create_tables:
             await self.database._create_tables()
 
         # 3. Seed default roles
-        await self.database._seed_roles(
-            self.seed_roles, self.seed_roles_overwrite
-        )
+        await self.database._seed_roles(self.seed_roles, self.seed_roles_overwrite)
 
         # 4. Create and store session backend
         self._session_backend = self.database._init_session_backend(
@@ -526,7 +523,18 @@ class Admin:
         if self.config.behavior.auto_discover:
             self.registry.auto_discover()
 
-        # 8.2 Attach audit event listeners (after registry is populated)
+        # 8.2 Apply skip_models — mark listed models to hide from admin
+        skip_models = self.config.behavior.skip_models
+        # Built-in internal models are always hidden from admin
+        default_skip = {"RefreshToken", "UserPermission", "UserTOTP"}
+        all_skip = default_skip | skip_models
+        skip_lower = {s.lower() for s in all_skip}
+        for registered in self.registry.all():
+            model_name = getattr(registered.model, "__name__", "").lower()
+            if model_name in skip_lower:
+                registered.admin.skip_auto_routes = True
+
+        # 8.3 Attach audit event listeners (after registry is populated)
         from fastapi_admin_kit.audit.listener import attach_audit_listener
 
         engine = self.database.engine
@@ -576,15 +584,11 @@ class Admin:
         else:
             registered = self.registry.register(model)
         if self._jinja_env:
-            self._jinja_env.env.globals["registered_models"] = (
-                self.registry.all()
-            )
+            self._jinja_env.env.globals["registered_models"] = self.registry.all()
             if self._nav_groups_built:
                 self._nav_groups_built = self._build_sidebar()
                 self.template._nav_groups_built = self._nav_groups_built
-                self._jinja_env.env.globals["nav_groups"] = (
-                    self._nav_groups_built
-                )
+                self._jinja_env.env.globals["nav_groups"] = self._nav_groups_built
         if admin_class is not None:
             return registered
         return _RegistrationProxy(self, registered)
@@ -621,14 +625,14 @@ class Admin:
 
         Useful for overriding built-in admin models::
 
-            from fastapi_admin_kit.auth.models import AdminUser
-            from fastapi_admin_kit.admin.builtin_models import AdminUserAdmin
+            from fastapi_admin_kit.auth.models import User
+            from fastapi_admin_kit.admin.builtin_models import UserAdmin
 
-            class MyAdminUserAdmin(AdminUserAdmin):
+            class MyUserAdmin(UserAdmin):
                 list_display = ["id", "email", "full_name"]
 
-            admin.unregister(AdminUser)
-            admin.register(AdminUser, MyAdminUserAdmin)
+            admin.unregister(User)
+            admin.register(User, MyUserAdmin)
         """
         table_name = model.__tablename__
         self.registry._models.pop(table_name, None)
@@ -683,6 +687,10 @@ class Admin:
                 session_factory = sync_sessionmaker(bind=engine, expire_on_commit=False)
                 db_session = session_factory()
 
+        # Inject auth_model into the backend if provided
+        if self.config.auth.auth_backend is not None and self.config.auth.auth_model is not None:
+            self.config.auth.auth_backend._auth_model = self.config.auth.auth_model
+
         state = AdminState(
             engine=engine,
             session_backend=self._session_backend,
@@ -714,6 +722,11 @@ class Admin:
         # Unified signing-key source for sessions, CSRF, and JWT (see AdminState).
         app.state.admin_secret_key = state.secret_key
 
+        # Wire the password hasher to the User model
+        from fastapi_admin_kit.auth.models import User
+
+        User.set_hasher(self.config.auth.get_hasher())
+
     def _mount_static(self, app: FastAPI) -> None:
         """Mount the static files directory and uploads directory."""
         static_dir = Path(__file__).parent.parent / "static"
@@ -731,9 +744,7 @@ class Admin:
             self.config.storage.storage.ensure_dir()
             app.mount(
                 self.config.storage.uploads_url,
-                StaticFiles(
-                    directory=str(self.config.storage.storage.upload_dir)
-                ),
+                StaticFiles(directory=str(self.config.storage.storage.upload_dir)),
                 name="admin_uploads",
             )
 
@@ -772,18 +783,14 @@ class Admin:
         def _get_flash_messages(request) -> list[dict[str, str]]:
             try:
                 session_backend = request.app.state.admin_session_backend
-                cookie_name = getattr(
-                    session_backend, "cookie_name", "admin_session"
-                )
+                cookie_name = getattr(session_backend, "cookie_name", "admin_session")
                 raw = request.cookies.get(cookie_name)
                 if not raw or not hasattr(session_backend, "load"):
                     return []
                 data = session_backend.load(raw)
                 if not isinstance(data, dict):
                     return []
-                return (
-                    data.pop("admin_flash", []) if "admin_flash" in data else []
-                )
+                return data.pop("admin_flash", []) if "admin_flash" in data else []
             except Exception:
                 return []
 
@@ -867,26 +874,18 @@ class Admin:
             _fp = _static_dir / _f
             if _fp.is_file():
                 _hash_data += _fp.read_bytes()
-        _static_version = (
-            hashlib.md5(_hash_data).hexdigest()[:12] if _hash_data else "dev"
-        )
+        _static_version = hashlib.md5(_hash_data).hexdigest()[:12] if _hash_data else "dev"
         self._jinja_env.env.globals["static_version"] = _static_version
 
         # Theme config globals
         self._jinja_env.env.globals["theme_preset"] = "editorial"
         if self.config.ui.theme:
-            self._jinja_env.env.globals["theme_css"] = (
-                self.config.ui.theme.to_css_variables()
-            )
+            self._jinja_env.env.globals["theme_css"] = self.config.ui.theme.to_css_variables()
             self._jinja_env.env.globals["theme_font_import_url"] = (
                 self.config.ui.theme.font_import_url
             )
-            self._jinja_env.env.globals["theme_preset"] = (
-                self.config.ui.theme.preset
-            )
-        self._jinja_env.env.globals["ui_config"] = (
-            self.config.ui.apply_to_template_context()
-        )
+            self._jinja_env.env.globals["theme_preset"] = self.config.ui.theme.preset
+        self._jinja_env.env.globals["ui_config"] = self.config.ui.apply_to_template_context()
 
         app.state.admin_jinja_env = self._jinja_env
 
@@ -952,34 +951,30 @@ class Admin:
     def _register_builtin_models(self) -> None:
         """Auto-register built-in admin models with default admin classes."""
         from fastapi_admin_kit.admin.builtin_models import (
-            AdminLoginAttemptAdmin,
-            AdminPermissionAdmin,
-            AdminRefreshTokenAdmin,
-            AdminRoleAdmin,
-            AdminUserAdmin,
-            AdminUserPermissionAdmin,
-            AdminUserTOTPAdmin,
+            # UserPermissionAdmin,
+            # UserTOTPAdmin,
             AuditLogAdmin,
+            LoginAttemptAdmin,
+            PermissionAdmin,
+            RoleAdmin,
+            UserAdmin,
         )
         from fastapi_admin_kit.audit.models import AuditLog
         from fastapi_admin_kit.auth.models import (
-            AdminLoginAttempt,
-            AdminPermission,
-            AdminRefreshToken,
-            AdminRole,
-            AdminUser,
-            AdminUserPermission,
-            AdminUserTOTP,
+            LoginAttempt,
+            Permission,
+            Role,
+            User,
         )
 
         builtin_models = [
-            (AdminUser, AdminUserAdmin),
-            (AdminRole, AdminRoleAdmin),
-            (AdminRefreshToken, AdminRefreshTokenAdmin),
-            (AdminPermission, AdminPermissionAdmin),
-            (AdminUserPermission, AdminUserPermissionAdmin),
-            (AdminUserTOTP, AdminUserTOTPAdmin),
-            (AdminLoginAttempt, AdminLoginAttemptAdmin),
+            (User, UserAdmin),
+            (Role, RoleAdmin),
+            # (RefreshToken, RefreshTokenAdmin),
+            (Permission, PermissionAdmin),
+            # (UserPermission, UserPermissionAdmin),
+            # (UserTOTP, UserTOTPAdmin),
+            (LoginAttempt, LoginAttemptAdmin),
             (AuditLog, AuditLogAdmin),
         ]
 
@@ -1036,8 +1031,6 @@ class Admin:
         """Thin wrapper — returns sidebar kwargs for TemplateResponse contexts."""
         return self.template.sidebar_template_kwargs(request)
 
-    def apply_sidebar_context(
-        self, request: Any, user: Any, context: dict
-    ) -> dict:
+    def apply_sidebar_context(self, request: Any, user: Any, context: dict) -> dict:
         """Inject nav_groups + permissions_map into a template context dict."""
         return self.template.apply_sidebar_context(request, user, context)

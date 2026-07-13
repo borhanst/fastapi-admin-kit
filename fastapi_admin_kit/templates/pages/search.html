@@ -1,0 +1,120 @@
+{# pages/search.html — search page with Alpine.js error binding #}
+{% extends "base.html" %}
+
+{% block title %}Search {{ registered.verbose_name_plural }} — Admin{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="searchApp()" x-init="init()">
+  <nav class="breadcrumb">
+    <a href="{{ admin_path | default('/admin') }}/" class="breadcrumb-segment">
+      {{ icon("home", size="16px") }}
+      Dashboard
+    </a>
+    <span class="breadcrumb-separator">/</span>
+    <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/" class="breadcrumb-segment">
+      {{ registered.verbose_name_plural }}
+    </a>
+    <span class="breadcrumb-separator">/</span>
+    <span class="breadcrumb-current">Search</span>
+  </nav>
+
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1 class="page-header-title">Search {{ registered.verbose_name_plural }}</h1>
+      <p class="page-header-subtitle">Search by {{ search_fields | join(', ') }}</p>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <div class="field-wrapper" :class="{ 'has-error': error }">
+      <div class="filter-bar-search">
+        {{ icon("magnifying-glass", class="filter-bar-search-icon", size="20px") }}
+        <input type="text" name="q" x-model="q"
+               @input.debounce.300ms="doSearch()"
+               placeholder="Search {{ registered.verbose_name_plural | lower }}..."
+               class="filter-bar-search-input"
+               autofocus>
+      </div>
+      <template x-if="error">
+        <ul class="field-errors">
+          <li x-text="error"></li>
+        </ul>
+      </template>
+    </div>
+  </div>
+
+  <div class="table-container">
+    <div class="overflow-x-auto">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th class="col-header">ID</th>
+            <th class="col-header">Name</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-if="results.length > 0">
+            <template x-for="item in results" :key="item.id">
+              <tr class="data-row">
+                <td class="col-cell" x-text="item.id"></td>
+                <td class="col-cell">
+                  <a :href="adminPath + '/{{ registered.table_name }}/' + item.id"
+                     class="text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)] transition-colors"
+                     x-text="item.label"></a>
+                </td>
+              </tr>
+            </template>
+          </template>
+          <template x-if="!loading && results.length === 0 && !error">
+            <tr>
+              <td colspan="2" class="empty-cell">
+                <div class="empty-state">
+                  {{ icon("document-text", size="48px", css_class="empty-state-icon") }}
+                  <p class="empty-state-text" x-text="'No results found for &quot;' + q + '&quot;'"></p>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+function searchApp() {
+  return {
+    q: {{ q | tojson }},
+    results: [],
+    error: null,
+    loading: false,
+    adminPath: {{ admin_path | default('/admin') | tojson }},
+    searchUrl: {{ admin_path | default('/admin') | tojson }} + '/{{ registered.table_name }}/search',
+
+    init() {
+      if (this.q) this.doSearch();
+    },
+
+    async doSearch() {
+      this.error = null;
+      this.loading = true;
+      try {
+        const resp = await fetch(this.searchUrl + '?q=' + encodeURIComponent(this.q));
+        const data = await resp.json();
+        if (data.error) {
+          this.error = data.error;
+          this.results = [];
+        } else {
+          this.results = data;
+        }
+      } catch (e) {
+        this.error = 'An unexpected error occurred.';
+        this.results = [];
+      } finally {
+        this.loading = false;
+      }
+    }
+  };
+}
+</script>
+{% endblock %}

@@ -24,9 +24,7 @@ class AuditEventBus:
             "DELETE": [],
         }
 
-    def subscribe(
-        self, event_type: str, listener: Callable[[AuditEvent], None]
-    ) -> None:
+    def subscribe(self, event_type: str, listener: Callable[[AuditEvent], None]) -> None:
         """Register a listener for a specific event type.
 
         Args:

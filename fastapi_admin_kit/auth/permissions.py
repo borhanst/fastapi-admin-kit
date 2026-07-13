@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi_admin_kit.auth.models import AdminPermission, AdminUserPermission
+from fastapi_admin_kit.auth.models import Permission, UserPermission
 from fastapi_admin_kit.types import PermissionSet
 
 if TYPE_CHECKING:
@@ -21,7 +21,7 @@ class PermissionChecker:
 
     Merges permissions from:
     1. All assigned roles (M2M via admin_user_roles)
-    2. Direct per-user overrides (AdminUserPermission)
+    2. Direct per-user overrides (UserPermission)
 
     Role permissions are OR'd together, then direct overrides are OR'd on top.
     """
@@ -42,9 +42,7 @@ class PermissionChecker:
         self._role_ids: list[int] = (
             snap["role_ids"] if "role_ids" in snap else getattr(user, "role_ids", [])
         )
-        self._user_id: int | str | None = (
-            snap.get("id") if snap else getattr(user, "id", None)
-        )
+        self._user_id: int | str | None = snap.get("id") if snap else getattr(user, "id", None)
         self._role_cache: dict[str, PermissionSet | None] | None = None
         self._direct_cache: dict[str, PermissionSet | None] | None = None
         self._cache: dict[tuple[str, str], bool] = {}
@@ -61,10 +59,15 @@ class PermissionChecker:
 
         from sqlalchemy import select
 
+        from fastapi_admin_kit.auth.models import admin_role_permissions
+
         result = await self.session.execute(
-            select(AdminPermission).where(
-                AdminPermission.role_id.in_(self._role_ids)
+            select(Permission)
+            .join(
+                admin_role_permissions,
+                Permission.id == admin_role_permissions.c.permission_id,
             )
+            .where(admin_role_permissions.c.role_id.in_(self._role_ids))
         )
         for perm in result.scalars():
             table = perm.table_name
@@ -94,9 +97,7 @@ class PermissionChecker:
         from sqlalchemy import select
 
         result = await self.session.execute(
-            select(AdminUserPermission).where(
-                AdminUserPermission.user_id == self._user_id
-            )
+            select(UserPermission).where(UserPermission.user_id == self._user_id)
         )
         for perm in result.scalars():
             table = perm.table_name

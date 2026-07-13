@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -52,9 +53,7 @@ class RegisteredModel:
             return [f for f in self.admin.list_display if f in valid]
         return [c.name for c in self.columns if not c.primary_key]
 
-    def get_widget(
-        self, field_name: str, resolver: WidgetResolver | None = None
-    ) -> Widget:
+    def get_widget(self, field_name: str, resolver: WidgetResolver | None = None) -> Widget:
         from fastapi_admin_kit.inspection import auto_label
         from fastapi_admin_kit.widgets.registry import widget_registry
         from fastapi_admin_kit.widgets.relation import (
@@ -71,9 +70,7 @@ class RegisteredModel:
             return overrides[field_name]
 
         col = next((c for c in self.columns if c.name == field_name), None)
-        rel = next(
-            (r for r in self.relationships if r.name == field_name), None
-        )
+        rel = next((r for r in self.relationships if r.name == field_name), None)
         if col is not None:
             widget = resolver.resolve(col)
             if (
@@ -91,9 +88,14 @@ class RegisteredModel:
                     related_table=rel.target_model.__tablename__,
                     related_verbose=related_verbose,
                 )
+            table_name = rel.target_model.__tablename__
+            search_path = table_name
+            if search_path.startswith("admin_"):
+                search_path = search_path[len("admin_") :]
             return MultiRelationWidget(
-                related_table=rel.target_model.__tablename__,
+                related_table=table_name,
                 related_verbose=related_verbose,
+                search_url=f"/admin/{search_path}/search",
             )
         return resolver.resolve(  # type: ignore[arg-type]
             type("_Col", (), {"type": type(None), "name": field_name})()
@@ -170,9 +172,14 @@ class AdminRegistry:
 
         admin = admin_class() if admin_class else ModelAdmin()
         table_name = model.__tablename__
-        verbose_name = (
-            admin.verbose_name or table_name.replace("_", " ").title()
-        )
+        if admin.verbose_name:
+            verbose_name = admin.verbose_name
+        else:
+            class_name = getattr(model, "__name__", None)
+            if class_name and not class_name.startswith("_"):
+                verbose_name = re.sub(r"([A-Z])", r" \1", class_name).strip().title()
+            else:
+                verbose_name = table_name.replace("_", " ").title()
         if admin.verbose_name_plural:
             verbose_name_plural = admin.verbose_name_plural
         elif (
@@ -236,10 +243,7 @@ class AdminRegistry:
                     cls = mapper.class_
                     if cls not in seen:
                         seen.add(cls)
-                        if (
-                            hasattr(cls, "__tablename__")
-                            and cls.__tablename__ not in self._models
-                        ):
+                        if hasattr(cls, "__tablename__") and cls.__tablename__ not in self._models:
                             discovered.append(self.register(cls))
 
         # Discover SQLModel subclasses (if installed)

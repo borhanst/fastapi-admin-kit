@@ -42,9 +42,7 @@ class FormParser(Protocol):
 class HTMLRenderer(Protocol):
     """Single responsibility: return an HTML TemplateResponse."""
 
-    async def render(
-        self, request: Request, context: dict[str, Any]
-    ) -> Response: ...
+    async def render(self, request: Request, context: dict[str, Any]) -> Response: ...
 
 
 @runtime_checkable

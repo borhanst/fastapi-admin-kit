@@ -6,11 +6,17 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import delete, func, insert, select
+from sqlalchemy.orm import selectinload
 
 from fastapi_admin_kit.auth.csrf import require_csrf_token
 from fastapi_admin_kit.auth.dependencies import get_current_admin_user
-from fastapi_admin_kit.auth.models import AdminPermission, AdminRole
+from fastapi_admin_kit.auth.models import (
+    Permission,
+    Role,
+    admin_role_permissions,
+    admin_user_roles,
+)
 from fastapi_admin_kit.auth.protocol import AdminUserProtocol
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.views.sidebar import inject_sidebar_context
@@ -22,9 +28,7 @@ async def _require_superuser(
     user: AdminUserProtocol = Depends(get_current_admin_user),
 ) -> AdminUserProtocol:
     if not getattr(user, "is_superuser", False):
-        raise HTTPException(
-            status_code=403, detail="Superuser access required."
-        )
+        raise HTTPException(status_code=403, detail="Superuser access required.")
     return user
 
 
@@ -43,12 +47,42 @@ async def tables_search(
     if q:
         q_lower = q.lower()
         results = [
-            r
-            for r in results
-            if q_lower in r["label"].lower() or q_lower in r["id"].lower()
+            r for r in results if q_lower in r["label"].lower() or q_lower in r["id"].lower()
         ]
 
     return JSONResponse(content=results)
+
+
+@router.get("/permissions/search")
+async def permissions_search(
+    request: Request,
+    q: str = Query("", description="Search query"),
+    ids: str = Query("", description="Comma-separated permission IDs to load"),
+    _: AdminUserProtocol = Depends(_require_superuser),
+):
+    """Search existing permissions for the multi-select picker."""
+    session = get_db_session(request)
+
+    if ids:
+        id_list = [int(i.strip()) for i in ids.split(",") if i.strip().isdigit()]
+        if id_list:
+            result = await session.execute(select(Permission).where(Permission.id.in_(id_list)))
+            perms = result.scalars().all()
+            return JSONResponse(
+                content=[{"id": p.id, "label": p.name, "table_name": p.table_name} for p in perms]
+            )
+
+    query = select(Permission)
+    if q:
+        query = query.where(Permission.name.ilike(f"%{q}%"))
+    query = query.order_by(Permission.name).limit(50)
+
+    result = await session.execute(query)
+    perms = result.scalars().all()
+
+    return JSONResponse(
+        content=[{"id": p.id, "label": p.name, "table_name": p.table_name} for p in perms]
+    )
 
 
 @router.get("/roles", response_class=HTMLResponse)
@@ -60,7 +94,7 @@ async def role_list_view(
     templates = request.app.state.admin_jinja_env
     session = get_db_session(request)
 
-    result = await session.execute(select(AdminRole))
+    result = await session.execute(select(Role).options(selectinload(Role.users)))
     roles = list(result.scalars().all())
 
     role_data = []
@@ -100,10 +134,61 @@ async def role_create_view(
             request,
             {
                 "role": None,
-                "perm_data": {},
-                "search_url": f"{request.app.state.admin_config['admin_path']}/tables/search",
+                "perm_ids": [],
+                "perm_search_url": (
+                    f"{request.app.state.admin_config['admin_path']}" "/permissions/search"
+                ),
             },
         ),
+    )
+
+
+@router.post("/roles", response_class=RedirectResponse)
+async def role_create_save_view(
+    request: Request,
+    _: AdminUserProtocol = Depends(_require_superuser),
+    _csrf: bool = Depends(require_csrf_token),
+):
+    """Create a new role with permissions from form submission."""
+    session = get_db_session(request)
+
+    form = await request.form()
+    name = form.get("name", "").strip()
+    description = form.get("description", "").strip()
+    perm_ids_raw = form.get("perm_ids", "[]")
+
+    if not name:
+        raise HTTPException(status_code=400, detail="Role name is required.")
+
+    existing = await session.execute(select(Role).where(Role.name == name))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Role name already exists.")
+
+    role = Role(name=name, description=description)
+    session.add(role)
+    await session.flush()
+
+    try:
+        perm_ids = json.loads(perm_ids_raw)
+    except (json.JSONDecodeError, TypeError):
+        perm_ids = []
+
+    perm_ids = [int(p) for p in perm_ids if str(p).isdigit()]
+
+    if perm_ids:
+        result = await session.execute(select(Permission).where(Permission.id.in_(perm_ids)))
+        perms = result.scalars().all()
+        if perms:
+            await session.execute(
+                insert(admin_role_permissions),
+                [{"role_id": role.id, "permission_id": p.id} for p in perms],
+            )
+
+    await session.flush()
+
+    return RedirectResponse(
+        url=f"{request.app.state.admin_config['admin_path']}/roles",
+        status_code=302,
     )
 
 
@@ -116,36 +201,15 @@ async def role_edit_view(
     """Show edit form with permission matrix."""
     templates = request.app.state.admin_jinja_env
     session = get_db_session(request)
-    registry = request.app.state.admin_registry
 
-    role = await session.get(AdminRole, role_id)
+    result = await session.execute(
+        select(Role).options(selectinload(Role.permissions)).where(Role.id == role_id)
+    )
+    role = result.scalar_one_or_none()
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
 
-    models = registry.all()
-    model_map = {m.table_name: m.verbose_name for m in models}
-
-    perms = (
-        (
-            await session.execute(
-                select(AdminPermission).where(
-                    AdminPermission.role_id == role_id
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-    perm_data = {}
-    for p in perms:
-        perm_data[p.table_name] = {
-            "_label": model_map.get(p.table_name, p.table_name),
-            "view": p.can_view,
-            "create": p.can_create,
-            "edit": p.can_edit,
-            "delete": p.can_delete,
-        }
+    perm_ids = [p.id for p in role.permissions]
 
     return templates.TemplateResponse(
         request,
@@ -154,14 +218,16 @@ async def role_edit_view(
             request,
             {
                 "role": role,
-                "perm_data": perm_data,
-                "search_url": f"{request.app.state.admin_config['admin_path']}/tables/search",
+                "perm_ids": perm_ids,
+                "perm_search_url": (
+                    f"{request.app.state.admin_config['admin_path']}" "/permissions/search"
+                ),
             },
         ),
     )
 
 
-@router.post("/roles/{role_id}", response_class=HTMLResponse)
+@router.post("/roles/{role_id}", response_class=RedirectResponse)
 async def role_save_view(
     request: Request,
     role_id: int,
@@ -171,55 +237,32 @@ async def role_save_view(
     """Save role permissions from form submission."""
     session = get_db_session(request)
 
-    role = await session.get(AdminRole, role_id)
+    role = await session.get(Role, role_id)
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
 
     form = await request.form()
-    perm_data_raw = form.get("perm_data", "{}")
+    perm_ids_raw = form.get("perm_ids", "[]")
 
     try:
-        perm_data = json.loads(perm_data_raw)
+        perm_ids = json.loads(perm_ids_raw)
     except (json.JSONDecodeError, TypeError):
-        perm_data = {}
+        perm_ids = []
 
-    existing_perms = (
-        (
-            await session.execute(
-                select(AdminPermission).where(
-                    AdminPermission.role_id == role_id
-                )
-            )
-        )
-        .scalars()
-        .all()
+    perm_ids = [int(p) for p in perm_ids if str(p).isdigit()]
+
+    await session.execute(
+        delete(admin_role_permissions).where(admin_role_permissions.c.role_id == role_id)
     )
-    existing_perm_map = {p.table_name: p for p in existing_perms}
 
-    for table, data in perm_data.items():
-        if not any(data.get(a) for a in ["view", "create", "edit", "delete"]):
-            continue
-        if table in existing_perm_map:
-            perm = existing_perm_map[table]
-            perm.can_view = data.get("view", False)
-            perm.can_create = data.get("create", False)
-            perm.can_edit = data.get("edit", False)
-            perm.can_delete = data.get("delete", False)
-        else:
-            perm = AdminPermission(
-                role_id=role_id,
-                table_name=table,
-                can_view=data.get("view", False),
-                can_create=data.get("create", False),
-                can_edit=data.get("edit", False),
-                can_delete=data.get("delete", False),
+    if perm_ids:
+        result = await session.execute(select(Permission).where(Permission.id.in_(perm_ids)))
+        perms = result.scalars().all()
+        if perms:
+            await session.execute(
+                insert(admin_role_permissions),
+                [{"role_id": role_id, "permission_id": p.id} for p in perms],
             )
-            session.add(perm)
-
-    tables_in_form = set(perm_data.keys())
-    for table, perm in existing_perm_map.items():
-        if table not in tables_in_form:
-            await session.delete(perm)
 
     await session.flush()
 
@@ -239,16 +282,24 @@ async def role_delete_view(
     """Delete role (refuse if users assigned)."""
     session = get_db_session(request)
 
-    role = await session.get(AdminRole, role_id)
+    role = await session.get(Role, role_id)
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
 
-    user_count = len(role.users)
-    if user_count > 0:
+    user_count = await session.scalar(
+        select(func.count())
+        .select_from(admin_user_roles)
+        .where(admin_user_roles.c.role_id == role_id)
+    )
+    if user_count and user_count > 0:
         raise HTTPException(
             status_code=400,
             detail=f"Cannot delete role. {user_count} user(s) are still assigned.",
         )
+
+    await session.execute(
+        delete(admin_role_permissions).where(admin_role_permissions.c.role_id == role_id)
+    )
 
     await session.delete(role)
     await session.flush()

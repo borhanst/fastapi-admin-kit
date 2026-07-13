@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 
+from fastapi_admin_kit.admin.builtin_models import flush_pending_perm_ops
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.flash import add_flash
 from fastapi_admin_kit.registry import RegisteredModel
@@ -53,14 +54,8 @@ class BaseView:
         # Instantiate dependencies — DIP: inject via class attributes
         self.query_provider = self.query_provider_class(registered)
         self.form_parser = self.form_parser_class(registered)
-        self.html_renderer = (
-            self.html_renderer_class() if self.html_renderer_class else None
-        )
-        self.api_renderer = (
-            self.api_renderer_class(registered)
-            if self.api_renderer_class
-            else None
-        )
+        self.html_renderer = self.html_renderer_class() if self.html_renderer_class else None
+        self.api_renderer = self.api_renderer_class(registered) if self.api_renderer_class else None
 
     def _get_extra_context(self, request: Request) -> dict[str, Any]:
         """Inject AdminExtra CSS/JS into template context.
@@ -133,12 +128,8 @@ class BaseView:
                 m2m_data[rel_key] = parsed.pop(rel_key)
         return m2m_data
 
-    async def _apply_m2m_from_data(
-        self, obj: Any, m2m_data: dict[str, Any], session: Any
-    ) -> None:
+    async def _apply_m2m_from_data(self, obj: Any, m2m_data: dict[str, Any], session: Any) -> None:
         """Apply MANYTOMANY data extracted by _pop_manytomany_keys."""
-        import json as _json
-
         from sqlalchemy import inspect as sa_inspect
 
         if not m2m_data:
@@ -153,18 +144,7 @@ class BaseView:
             if rel_key not in m2m_data:
                 continue
             raw = m2m_data[rel_key]
-            pk_list = []
-            if isinstance(raw, list):
-                for item in raw:
-                    if isinstance(item, str) and item.startswith("["):
-                        try:
-                            pk_list.extend(_json.loads(item))
-                        except (ValueError, TypeError):
-                            pk_list.append(item)
-                    else:
-                        pk_list.append(item)
-            else:
-                pk_list = [raw]
+            pk_list = list(raw) if isinstance(raw, list) else [raw]
             target_model = rel_prop.mapper.class_
             objs = []
             for pk in pk_list:
@@ -172,11 +152,14 @@ class BaseView:
                     continue
                 try:
                     from fastapi_admin_kit.inspection import cast_pk_value
+
                     loaded = await session.get(target_model, cast_pk_value(target_model, pk))
                     if loaded:
                         objs.append(loaded)
                 except (ValueError, TypeError):
                     pass
+            # Pre-load the collection inside the async greenlet so the
+            # subsequent setattr does not trigger a lazy load (MissingGreenlet).
             await session.refresh(obj, [rel_key])
             setattr(obj, rel_key, objs)
 
@@ -226,9 +209,7 @@ class ListView(BaseView):
             )
         return display_columns
 
-    async def _build_filter_fields(
-        self, request: Request
-    ) -> dict[str, dict[str, Any]]:
+    async def _build_filter_fields(self, request: Request) -> dict[str, dict[str, Any]]:
         """Build filter field metadata."""
         if not self.admin.list_filter:
             return {}
@@ -236,9 +217,7 @@ class ListView(BaseView):
         model = self.registered.model
         filter_fields: dict[str, dict[str, Any]] = {}
         for filter_field in self.admin.list_filter:
-            filter_fields[
-                filter_field
-            ] = await self.query_provider._get_filter_choices(
+            filter_fields[filter_field] = await self.query_provider._get_filter_choices(
                 model, filter_field, session
             )
         return filter_fields
@@ -267,9 +246,7 @@ class ListView(BaseView):
                 if val:
                     active_filters[filter_field] = val
                 for suffix in ("__gte", "__lte", "__from", "__to"):
-                    val = request.query_params.get(
-                        f"filter_{filter_field}{suffix}", ""
-                    )
+                    val = request.query_params.get(f"filter_{filter_field}{suffix}", "")
                     if val:
                         active_filters[f"{filter_field}{suffix}"] = val
 
@@ -297,31 +274,21 @@ class ListView(BaseView):
             "ordering": ordering,
             "permissions": checker.permission_set(self.registered.table_name)
             if checker
-            else PermissionSet(
-                can_view=True, can_create=True, can_edit=True, can_delete=True
-            ),
+            else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),
             "list_actions": self.admin.get_list_actions(),
             "row_actions": self.admin.get_row_actions(),
             "list_tabs": getattr(self.admin, "list_tabs", []),
             "list_sections": getattr(self.admin, "list_sections", []),
             "ordering_field": getattr(self.admin, "ordering_field", None),
-            "hide_ordering_field": getattr(
-                self.admin, "hide_ordering_field", False
-            ),
-            "list_filter_options": getattr(
-                self.admin, "list_filter_options", {}
-            ),
-            "list_filter_horizontal": getattr(
-                self.admin, "list_filter_horizontal", False
-            ),
+            "hide_ordering_field": getattr(self.admin, "hide_ordering_field", False),
+            "list_filter_options": getattr(self.admin, "list_filter_options", {}),
+            "list_filter_horizontal": getattr(self.admin, "list_filter_horizontal", False),
         }
         template_context.update(self._get_extra_context(request))
         await inject_sidebar_context(request, template_context)
         return template_context
 
-    async def html_response(
-        self, request: Request, q: str = "", page: int = 1
-    ) -> Response:
+    async def html_response(self, request: Request, q: str = "", page: int = 1) -> Response:
         checker = await _resolve_permission_checker(request)
         if checker:
             await checker.load_permissions(self.registered.table_name)
@@ -403,9 +370,7 @@ class CreateView(BaseView):
             "is_create": is_create,
             "permissions": checker.permission_set(self.registered.table_name)
             if checker
-            else PermissionSet(
-                can_view=True, can_create=True, can_edit=True, can_delete=True
-            ),
+            else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),
             "detail_actions": self.admin.get_detail_actions(),
             "submit_line_actions": self.admin.get_submit_line_actions(),
             "conditional_fields": getattr(self.admin, "conditional_fields", {}),
@@ -422,9 +387,7 @@ class CreateView(BaseView):
 
         return template_context
 
-    async def _create_object(
-        self, request: Request, parsed: dict[str, Any]
-    ) -> RedirectResponse:
+    async def _create_object(self, request: Request, parsed: dict[str, Any]) -> RedirectResponse:
         """Create object in database."""
         try:
             session = get_db_session(request)
@@ -434,20 +397,16 @@ class CreateView(BaseView):
             obj = self.registered.model(**resolved)
             self.admin.on_create(obj, request)
             session.add(obj)
-            await self._apply_m2m_from_data(obj, m2m_data, session)
             await session.flush()
+            await self._apply_m2m_from_data(obj, m2m_data, session)
             self.admin.after_create(obj, request)
-            await add_flash(
-                request, "success", f"{self.registered.verbose_name} created."
-            )
+            await flush_pending_perm_ops(request)
+            await add_flash(request, "success", f"{self.registered.verbose_name} created.")
         except Exception:
             session = get_db_session(request)
             await session.rollback()
             raise
-        url = (
-            f"{request.app.state.admin_config['admin_path']}"
-            f"/{self.registered.table_name}/"
-        )
+        url = f"{request.app.state.admin_config['admin_path']}/{self.registered.table_name}/"
         return RedirectResponse(url=url, status_code=303)
 
     async def html_response(self, request: Request) -> Response:
@@ -456,9 +415,7 @@ class CreateView(BaseView):
             await checker.load_permissions(self.registered.table_name)
 
         if request.method == "GET":
-            ctx = await self._build_form_context(
-                request, is_create=True, checker=checker
-            )
+            ctx = await self._build_form_context(request, is_create=True, checker=checker)
             return await self.html_renderer.render(request, ctx)
 
         # POST
@@ -502,11 +459,16 @@ class CreateView(BaseView):
         if errors:
             raise HTTPException(status_code=422, detail=errors)
         session = get_db_session(request)
-        obj = self.registered.model(**parsed)
+        m2m_data = self._pop_manytomany_keys(self.registered.model, parsed)
+        resolved = self._resolve_rel_keys(parsed)
+        resolved = self.admin.prepare_create_data(resolved, request)
+        obj = self.registered.model(**resolved)
         self.admin.on_create(obj, request)
         session.add(obj)
         await session.flush()
+        await self._apply_m2m_from_data(obj, m2m_data, session)
         self.admin.after_create(obj, request)
+        await flush_pending_perm_ops(request)
         return await self.api_renderer.render(request, self._serialize(obj))
 
 
@@ -517,9 +479,7 @@ class EditView(BaseView):
     form_parser_class = HTMLFormParser
     api_renderer_class = ItemAPIRenderer
 
-    async def _resolve_rel_labels(
-        self, obj: Any, request: Request
-    ) -> dict[str, str]:
+    async def _resolve_rel_labels(self, obj: Any, request: Request) -> dict[str, str]:
         """Resolve display labels for relationship fields from FK values."""
         from sqlalchemy import inspect as sa_inspect
 
@@ -585,9 +545,7 @@ class EditView(BaseView):
             "is_create": is_create,
             "permissions": checker.permission_set(self.registered.table_name)
             if checker
-            else PermissionSet(
-                can_view=True, can_create=True, can_edit=True, can_delete=True
-            ),
+            else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),
             "detail_actions": self.admin.get_detail_actions(),
             "submit_line_actions": self.admin.get_submit_line_actions(),
             "conditional_fields": getattr(self.admin, "conditional_fields", {}),
@@ -648,17 +606,13 @@ class EditView(BaseView):
             self.admin.on_update(obj, parsed, request)
             await session.flush()
             self.admin.after_update(obj, request)
-            await add_flash(
-                request, "success", f"{self.registered.verbose_name} updated."
-            )
+            await flush_pending_perm_ops(request)
+            await add_flash(request, "success", f"{self.registered.verbose_name} updated.")
         except Exception:
             session = get_db_session(request)
             await session.rollback()
             raise
-        url = (
-            f"{request.app.state.admin_config['admin_path']}"
-            f"/{self.registered.table_name}/"
-        )
+        url = f"{request.app.state.admin_config['admin_path']}/{self.registered.table_name}/"
         return RedirectResponse(url=url, status_code=303)
 
     async def _build_detail_context(
@@ -691,9 +645,7 @@ class EditView(BaseView):
             "is_create": False,
             "permissions": checker.permission_set(self.registered.table_name)
             if checker
-            else PermissionSet(
-                can_view=True, can_create=True, can_edit=True, can_delete=True
-            ),
+            else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),
         }
         template_context.update(self._get_extra_context(request))
         await inject_sidebar_context(request, template_context)
@@ -708,11 +660,7 @@ class EditView(BaseView):
         if checker:
             await checker.load_permissions(self.registered.table_name)
 
-        perms = (
-            checker.permission_set(self.registered.table_name)
-            if checker
-            else None
-        )
+        perms = checker.permission_set(self.registered.table_name) if checker else None
 
         if request.method == "GET":
             if perms and not perms.can_edit and perms.can_view:
@@ -796,6 +744,7 @@ class EditView(BaseView):
             self.admin.on_update(obj, parsed, request)
             await session.flush()
             self.admin.after_update(obj, request)
+            await flush_pending_perm_ops(request)
         except Exception:
             session = get_db_session(request)
             await session.rollback()
@@ -816,17 +765,12 @@ class DeleteView(BaseView):
             await session.delete(obj)
             await session.flush()
             self.admin.after_delete(obj, request)
-            await add_flash(
-                request, "success", f"{self.registered.verbose_name} deleted."
-            )
+            await add_flash(request, "success", f"{self.registered.verbose_name} deleted.")
         except Exception:
             session = get_db_session(request)
             await session.rollback()
             raise
-        url = (
-            f"{request.app.state.admin_config['admin_path']}"
-            f"/{self.registered.table_name}/"
-        )
+        url = f"{request.app.state.admin_config['admin_path']}/{self.registered.table_name}/"
         return RedirectResponse(url=url, status_code=303)
 
     async def api_response(
@@ -866,10 +810,7 @@ class BulkView(BaseView):
                 checker = await _resolve_permission_checker(request)
                 ctx = await list_view.get_context(request, "", 1, checker)
                 return await self.html_renderer.render(request, ctx)
-            url = (
-                f"{request.app.state.admin_config['admin_path']}"
-                f"/{self.registered.table_name}/"
-            )
+            url = f"{request.app.state.admin_config['admin_path']}/{self.registered.table_name}/"
             return RedirectResponse(url=url, status_code=303)
 
         if action == "delete_selected":
@@ -898,9 +839,7 @@ class BulkView(BaseView):
             else:
                 action_fn = getattr(self.admin, f"action_{action}", None)
                 if not action_fn:
-                    raise HTTPException(
-                        status_code=400, detail=f"Unknown action: {action}"
-                    )
+                    raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
                 for pid in ids:
                     obj = await session.get(self.registered.model, pid)
                     if obj:
@@ -913,10 +852,7 @@ class BulkView(BaseView):
             ctx = await list_view.get_context(request, "", 1, checker)
             return await self.html_renderer.render(request, ctx)
 
-        url = (
-            f"{request.app.state.admin_config['admin_path']}"
-            f"/{self.registered.table_name}/"
-        )
+        url = f"{request.app.state.admin_config['admin_path']}/{self.registered.table_name}/"
         return RedirectResponse(url=url, status_code=303)
 
     async def api_response(self, request: Request) -> Any:
@@ -959,9 +895,7 @@ class BulkView(BaseView):
 
         action_fn = getattr(self.admin, f"action_{action}", None)
         if not action_fn:
-            raise HTTPException(
-                status_code=400, detail=f"Unknown action: {action}"
-            )
+            raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
 
         executed = 0
         for pid in ids:
@@ -994,49 +928,81 @@ class SearchView(BaseView):
     ) -> Any:
         return await self._search(request, q, limit, exclude_id)
 
-    async def _search(
-        self, request: Request, q: str, limit: int = 20, exclude_id: str = ""
+    def _is_browser_request(self, request: Request) -> bool:
+        accept = request.headers.get("accept", "")
+        return "text/html" in accept or "text/xhtml" in accept
+
+    def _render_search_page(
+        self,
+        request: Request,
+        q: str,
+        error: str | None = None,
+        results: list | None = None,
     ) -> Any:
+        templates = request.app.state.admin_jinja_env
+        admin_path = request.app.state.admin_config["admin_path"]
+        search_fields = getattr(self.admin, "search_fields", None) or ["name", "title"]
+        return templates.TemplateResponse(
+            request,
+            "pages/search.html",
+            {
+                "registered": self.registered,
+                "admin_path": admin_path,
+                "q": q,
+                "error": error,
+                "results": results,
+                "search_fields": search_fields,
+            },
+            status_code=422 if error else 200,
+        )
+
+    async def _search(self, request: Request, q: str, limit: int = 20, exclude_id: str = "") -> Any:
         from fastapi.responses import JSONResponse
-        from sqlalchemy import or_, select
+        from sqlalchemy import select
 
-        session = get_db_session(request)
-        model = self.registered.model
-        base = select(model)
+        is_browser = self._is_browser_request(request)
 
-        clauses = []
-        if q:
+        try:
+            session = get_db_session(request)
+            model = self.registered.model
+
+            from fastapi_admin_kit.search_utils import apply_search_filter
+
             search_fields = getattr(self.admin, "search_fields", None) or [
                 "name",
                 "title",
             ]
-            for sf in search_fields:
-                if hasattr(model, sf):
-                    col = getattr(model, sf)
-                    if hasattr(col, "ilike"):
-                        clauses.append(col.ilike(f"%{q}%"))
+            base = apply_search_filter(select(model), model, search_fields, q)
 
-        if clauses:
-            base = base.where(or_(*clauses))
+            if exclude_id:
+                pk_col = getattr(model, self.registered.pk_field, None)
+                if pk_col is not None:
+                    from fastapi_admin_kit.inspection import cast_pk_value
 
-        if exclude_id:
-            pk_col = getattr(model, self.registered.pk_field, None)
-            if pk_col is not None:
-                from fastapi_admin_kit.inspection import cast_pk_value
-                base = base.where(pk_col != cast_pk_value(model, exclude_id))
+                    base = base.where(pk_col != cast_pk_value(model, exclude_id))
 
-        base = base.limit(limit)
-        result = session.execute(base)
-        if hasattr(result, "__await__"):
-            result = await result
-        rows = result.scalars().all()
+            base = base.limit(limit)
+            result = session.execute(base)
+            if hasattr(result, "__await__"):
+                result = await result
+            rows = result.scalars().all()
 
-        results = []
-        for row in rows:
-            pk = getattr(row, self.registered.pk_field)
-            from fastapi_admin_kit.inspection import model_display_name
+            results = []
+            for row in rows:
+                pk = getattr(row, self.registered.pk_field)
+                from fastapi_admin_kit.inspection import model_display_name
 
-            label = model_display_name(row)
-            results.append({"id": str(pk), "label": label})
+                label = model_display_name(row)
+                results.append({"id": str(pk), "label": label})
 
-        return JSONResponse(results)
+            if is_browser:
+                return self._render_search_page(request, q, results=results)
+            return JSONResponse(results)
+
+        except Exception as exc:
+            error_msg = str(exc) or "An unexpected error occurred while searching."
+            if is_browser:
+                return self._render_search_page(request, q, error=error_msg)
+            from fastapi.responses import JSONResponse as _JSONResponse
+
+            return _JSONResponse(status_code=500, content={"error": error_msg})

@@ -19,9 +19,7 @@ def delete_factory(registered: RegisteredModel):
         _resolve_view_class,
     )
 
-    view_class = _resolve_view_class(
-        registered.admin, "delete_view_class", DeleteView
-    )
+    view_class = _resolve_view_class(registered.admin, "delete_view_class", DeleteView)
     view_instance = view_class(registered)
 
     async def _handler(request: Request, **kwargs: Any):

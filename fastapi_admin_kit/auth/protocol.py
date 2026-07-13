@@ -19,4 +19,4 @@ class AdminUserProtocol(Protocol):
 
     # Many-to-many roles — the admin reads this to look up permissions.
     # Must be an iterable of role objects, each with an `id` attribute.
-    roles: list  # list of AdminRole objects (or compatible)
+    roles: list  # list of Role objects (or compatible)

@@ -2,6 +2,7 @@
 
 from fastapi_admin_kit.admin import Admin
 from fastapi_admin_kit.admin.decorators import column
+from fastapi_admin_kit.auth.mixins import AuthModelMixin
 from fastapi_admin_kit.config import DatabaseConfig, DatabaseType
 from fastapi_admin_kit.exceptions import ConfigError
 from fastapi_admin_kit.nav import (
@@ -40,6 +41,7 @@ from fastapi_admin_kit.views import (
 __all__ = [
     "Admin",
     "AdminRegistry",
+    "AuthModelMixin",
     "ConfigError",
     "DatabaseConfig",
     "DatabaseType",
@@ -73,4 +75,4 @@ __all__ = [
     # Per-model assets
     "AdminExtra",
 ]
-__version__ = "0.1.2"
+__version__ = "0.2.0"

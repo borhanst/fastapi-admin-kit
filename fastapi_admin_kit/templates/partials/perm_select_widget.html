@@ -1,0 +1,46 @@
+{# partials/perm_select_widget.html
+   Multi-select widget for picking existing permissions.
+   Args: perm_search_url, perm_ids (list of selected permission IDs)
+#}
+<div x-data="permSelectWidget('{{ perm_search_url }}', {{ perm_ids | tojson | forceescape }})">
+  <input type="hidden" name="perm_ids" x-effect="$el.value = JSON.stringify(selectedIds)">
+
+  {# Selected permissions #}
+  <div x-show="selectedItems.length > 0" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+    <template x-for="(item, index) in selectedItems" :key="item.id">
+      <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--primary-500); color: white; border-radius: 9999px; font-size: 0.8125rem; font-weight: 500;">
+        <span x-text="item.label"></span>
+        <button type="button" @click="remove(index)"
+                style="background: none; border: none; color: white; cursor: pointer; padding: 0; line-height: 1; opacity: 0.8;"
+                onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </span>
+    </template>
+  </div>
+
+  {# Empty state #}
+  <div x-show="selectedItems.length === 0" style="text-align: center; padding: 24px 0; font-size: 0.875rem; color: var(--text-secondary);">
+    No permissions selected. Search below to add.
+  </div>
+
+  {# Search input #}
+  <div style="position: relative;">
+    <input type="text" x-model="searchQuery" @input="search()" @focus="open = true" @click.outside="open = false"
+           placeholder="Search permissions..."
+           class="form-input" style="width: 100%;">
+    <div x-show="open && results.length > 0" x-cloak
+         style="position: absolute; z-index: 50; width: 100%; margin-top: 4px; background: var(--surface-raised); border: 1px solid var(--surface-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); max-height: 200px; overflow-y: auto;">
+      <template x-for="result in results" :key="result.id">
+        <div @click="add(result)"
+             style="padding: 8px 12px; cursor: pointer; font-size: 0.875rem; color: var(--text-primary);"
+             onmouseover="this.style.background='var(--surface-inset)'" onmouseout="this.style.background=''">
+          <span x-text="result.label"></span>
+          <span style="font-size: 0.75rem; color: var(--text-secondary); margin-left: 8px;" x-text="result.table_name"></span>
+        </div>
+      </template>
+    </div>
+  </div>
+</div>

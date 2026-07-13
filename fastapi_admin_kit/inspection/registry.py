@@ -20,9 +20,7 @@ class ModelInspector:
     and separable from the registry's storage concerns.
     """
 
-    def inspect_model(
-        self, model: type
-    ) -> tuple[list[ColumnMeta], list[RelationMeta]]:
+    def inspect_model(self, model: type) -> tuple[list[ColumnMeta], list[RelationMeta]]:
         """Inspect a SQLAlchemy or SQLModel model and return column + relationship metadata.
 
         Args:
@@ -149,9 +147,7 @@ class ModelInspector:
             ValueError: If the model is not a valid SQLAlchemy model.
         """
         if not hasattr(model, "__tablename__"):
-            raise ValueError(
-                f"{model.__name__} is not a SQLAlchemy model (no __tablename__)"
-            )
+            raise ValueError(f"{model.__name__} is not a SQLAlchemy model (no __tablename__)")
 
     def extract_metadata(
         self,

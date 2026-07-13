@@ -51,9 +51,7 @@ async def _resolve_permission_checker(request: Request) -> Any:
 class ListHTMLRenderer:
     """SRP: Render list view as HTML template."""
 
-    async def render(
-        self, request: Request, context: dict[str, Any]
-    ) -> Response:
+    async def render(self, request: Request, context: dict[str, Any]) -> Response:
         templates = request.app.state.admin_jinja_env
         is_htmx = request.headers.get("HX-Request") == "true"
         template = "partials/list_table.html" if is_htmx else "pages/list.html"
@@ -63,14 +61,10 @@ class ListHTMLRenderer:
 class FormHTMLRenderer:
     """SRP: Render create/edit form as HTML template."""
 
-    async def render(
-        self, request: Request, context: dict[str, Any]
-    ) -> Response:
+    async def render(self, request: Request, context: dict[str, Any]) -> Response:
         templates = request.app.state.admin_jinja_env
         status = 422 if context.get("errors") else 200
-        return templates.TemplateResponse(
-            request, "pages/form.html", context, status_code=status
-        )
+        return templates.TemplateResponse(request, "pages/form.html", context, status_code=status)
 
 
 # ---------------------------------------------------------------------------
@@ -202,11 +196,7 @@ class HTMLFormParser:
             widget = self.registered.get_widget(field_meta.name)
 
             if isinstance(widget, _FILE_WIDGET_TYPES):
-                action = (
-                    form_data.get(f"_action_{field_meta.name}", "keep")
-                    if obj
-                    else None
-                )
+                action = form_data.get(f"_action_{field_meta.name}", "keep") if obj else None
                 await _handle_file_field(
                     request,
                     widget,
@@ -217,11 +207,7 @@ class HTMLFormParser:
                     parsed=parsed,
                     errors=errors,
                 )
-                if (
-                    obj is None
-                    and field_meta.name not in errors
-                    and field_meta.name not in parsed
-                ):
+                if obj is None and field_meta.name not in errors and field_meta.name not in parsed:
                     parsed[field_meta.name] = None
                 continue
 
@@ -259,11 +245,21 @@ class JSONBodyParser:
     async def parse(
         self, request: Request, obj: Any | None = None
     ) -> tuple[dict[str, Any], dict[str, list[str]]]:
+        from sqlalchemy import inspect as sa_inspect
+
         body = await request.json()
         valid_fields = {col.name for col in self.registered.columns}
-        filtered = {
-            k: v for k, v in body.items() if k in valid_fields and k != "id"
-        }
+        # Relationship keys (FK / many-to-many) are handled separately by the
+        # view (resolved to FK columns or applied as m2m collections), so they
+        # must not be stripped from the parsed payload here.
+        rel_fields = set()
+        try:
+            mapper = sa_inspect(self.registered.model)
+            rel_fields = {r.key for r in mapper.relationships}
+        except Exception:
+            pass
+        allowed = (valid_fields | rel_fields) - {"id"}
+        filtered = {k: v for k, v in body.items() if k in allowed}
         return filtered, {}
 
 
@@ -345,10 +341,7 @@ class DefaultQueryProvider:
                                 col = prop.columns[0] if prop.columns else None
                                 if col is not None:
                                     for fk in col.foreign_keys:
-                                        if (
-                                            fk.column.table
-                                            == rel.mapper.persist_selectable
-                                        ):
+                                        if fk.column.table == rel.mapper.persist_selectable:
                                             target_model = rel.mapper.class_
                                             break
                         if target_model is not None:
@@ -424,7 +417,9 @@ class DefaultQueryProvider:
 
         Returns (items, total, page, per_page).
         """
-        from sqlalchemy import and_, asc, desc, or_, select
+        from sqlalchemy import and_, asc, desc, select
+
+        from fastapi_admin_kit.search_utils import apply_search_filter
 
         session = get_db_session(request)
         registered = self.registered
@@ -483,38 +478,24 @@ class DefaultQueryProvider:
 
             # Range filters
             for filter_field in registered.admin.list_filter:
-                gte_val = request.query_params.get(
-                    f"filter_{filter_field}__gte", ""
-                )
-                lte_val = request.query_params.get(
-                    f"filter_{filter_field}__lte", ""
-                )
-                from_val = request.query_params.get(
-                    f"filter_{filter_field}__from", ""
-                )
-                to_val = request.query_params.get(
-                    f"filter_{filter_field}__to", ""
-                )
+                gte_val = request.query_params.get(f"filter_{filter_field}__gte", "")
+                lte_val = request.query_params.get(f"filter_{filter_field}__lte", "")
+                from_val = request.query_params.get(f"filter_{filter_field}__from", "")
+                to_val = request.query_params.get(f"filter_{filter_field}__to", "")
 
                 if (gte_val or lte_val) and hasattr(model, filter_field):
                     col = getattr(model, filter_field)
                     if gte_val:
                         try:
                             filter_clauses.append(
-                                col
-                                >= type(col.property.columns[0].type)().coerce(
-                                    gte_val
-                                )
+                                col >= type(col.property.columns[0].type)().coerce(gte_val)
                             )
                         except Exception:
                             pass
                     if lte_val:
                         try:
                             filter_clauses.append(
-                                col
-                                <= type(col.property.columns[0].type)().coerce(
-                                    lte_val
-                                )
+                                col <= type(col.property.columns[0].type)().coerce(lte_val)
                             )
                         except Exception:
                             pass
@@ -559,14 +540,7 @@ class DefaultQueryProvider:
                 base = base.where(and_(*filter_clauses))
 
         if q and registered.admin.search_fields:
-            clauses = []
-            for sf in registered.admin.search_fields:
-                if hasattr(model, sf):
-                    col = getattr(model, sf)
-                    if hasattr(col, "ilike"):
-                        clauses.append(col.ilike(f"%{q}%"))
-            if clauses:
-                base = base.where(or_(*clauses))
+            base = apply_search_filter(base, model, registered.admin.search_fields, q)
 
         query_ordering = request.query_params.get("ordering", "")
         if query_ordering:
@@ -575,15 +549,9 @@ class DefaultQueryProvider:
             order = registered.admin.ordering or []
         if order:
             col_name = order[0].lstrip("-")
-            col = (
-                getattr(model, col_name, None)
-                if hasattr(model, col_name)
-                else None
-            )
+            col = getattr(model, col_name, None) if hasattr(model, col_name) else None
             if col is not None:
-                base = base.order_by(
-                    desc(col) if order[0].startswith("-") else asc(col)
-                )
+                base = base.order_by(desc(col) if order[0].startswith("-") else asc(col))
 
         per_page = registered.admin.per_page
 
@@ -624,11 +592,15 @@ class DefaultQueryProvider:
             if rel.direction.name == "MANYTOMANY":
                 options.append(selectinload(getattr(self.registered.model, rel.key)))
         from fastapi_admin_kit.inspection import cast_pk_value
+
         int_id = cast_pk_value(self.registered.model, id)
         if options:
             from sqlalchemy import select
-            stmt = select(self.registered.model).options(*options).where(
-                getattr(self.registered.model, self.registered.pk_field) == int_id
+
+            stmt = (
+                select(self.registered.model)
+                .options(*options)
+                .where(getattr(self.registered.model, self.registered.pk_field) == int_id)
             )
             result = await session.execute(stmt)
             return result.scalar_one_or_none()

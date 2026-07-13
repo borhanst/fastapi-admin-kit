@@ -333,6 +333,7 @@ class ArrayWidget(Widget):
         if isinstance(value, str):
             try:
                 import json
+
                 ctx["value"] = json.loads(value)
             except (json.JSONDecodeError, TypeError):
                 ctx["value"] = []
@@ -348,6 +349,7 @@ class ArrayWidget(Widget):
         if isinstance(raw, str):
             try:
                 import json
+
                 return json.loads(raw)
             except (json.JSONDecodeError, TypeError):
                 return [raw] if raw else []

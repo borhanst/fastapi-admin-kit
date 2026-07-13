@@ -32,17 +32,22 @@ pwd_context = _PasswordHasher()
 class AuthBackend(ABC):
     """Abstract authentication backend — verify credentials & load users."""
 
+    def __init__(self, auth_model: type | None = None) -> None:
+        self._auth_model = auth_model
+
     @abstractmethod
     async def authenticate(
-        self, email: str, password: str, session: Any
+        self,
+        credential: str,
+        password: str,
+        session: Any,
+        login_field: str = "email",
     ) -> AdminUserProtocol | None:
         """Verify credentials. Return user object if valid, ``None`` otherwise."""
         ...
 
     @abstractmethod
-    async def get_user(
-        self, user_id: int | str, session: Any
-    ) -> AdminUserProtocol | None:
+    async def get_user(self, user_id: int | str, session: Any) -> AdminUserProtocol | None:
         """Load user by PK. Return ``None`` if not found or inactive."""
         ...
 
@@ -53,41 +58,54 @@ class AuthBackend(ABC):
 
 
 class BuiltinAuthBackend(AuthBackend):
-    """Default backend that works with the built-in ``AdminUser`` model."""
+    """Default backend that works with the built-in ``User`` model or custom auth_model."""
+
+    def _get_model(self) -> type:
+        if self._auth_model is not None:
+            return self._auth_model
+        from fastapi_admin_kit.auth.models import User
+
+        return User
 
     async def authenticate(
-        self, email: str, password: str, session: Any
+        self,
+        credential: str,
+        password: str,
+        session: Any,
+        login_field: str = "email",
     ) -> AdminUserProtocol | None:
         from sqlalchemy import select
 
-        from fastapi_admin_kit.auth.models import AdminUser
+        model = self._get_model()
+        field = getattr(model, login_field, None)
+        if field is None:
+            field = getattr(model, "email", None)
+        if field is None:
+            return None
 
         result = await session.execute(
-            select(AdminUser).where(
-                AdminUser.email == email, AdminUser.is_active.is_(True)
-            )
+            select(model).where(field == credential, model.is_active.is_(True))
         )
         user = result.scalar_one_or_none()
 
         if not user:
             return None
-        if not pwd_context.verify(password, user.hashed_password):
+        if not user.verify_password(password):
             return None
         return user
 
-    async def get_user(
-        self, user_id: int | str, session: Any
-    ) -> AdminUserProtocol | None:
+    async def get_user(self, user_id: int | str, session: Any) -> AdminUserProtocol | None:
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
 
-        from fastapi_admin_kit.auth.models import AdminUser
+        model = self._get_model()
+        query = select(model).where(model.id == user_id, model.is_active.is_(True))
 
-        result = await session.execute(
-            select(AdminUser)
-            .options(selectinload(AdminUser.roles))
-            .where(AdminUser.id == user_id, AdminUser.is_active.is_(True))
-        )
+        # Eagerly load roles if the model has a roles relationship
+        if hasattr(model, "roles"):
+            query = query.options(selectinload(model.roles))
+
+        result = await session.execute(query)
         return result.scalar_one_or_none()
 
     async def on_logout(self, user_id: int | str | None = None) -> None:

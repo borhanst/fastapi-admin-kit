@@ -37,7 +37,7 @@ class AuditContext:
         """Set audit context from a user object and/or request.
 
         Args:
-            user: An object with 'id' and 'email' attributes (e.g. AdminUser)
+            user: An object with 'id' and 'email' attributes (e.g. User)
             request: A Starlette/FastAPI Request with client and headers
         """
         data: dict[str, Any] = {}

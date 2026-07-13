@@ -15,30 +15,32 @@ async def inject_sidebar_context(request: Request, context: dict[str, Any]) -> d
 
         snapshot = getattr(request.state, "admin_user_snapshot", None)
         is_superuser = (
-            bool(snapshot.get("is_superuser", False))
-            if snapshot
-            else bool(getattr(user, "is_superuser", False))
-        ) if user else False
+            (
+                bool(snapshot.get("is_superuser", False))
+                if snapshot
+                else bool(getattr(user, "is_superuser", False))
+            )
+            if user
+            else False
+        )
 
         permissions_map: dict = {}
         if user and not is_superuser:
             try:
                 from sqlalchemy import select
 
-                from fastapi_admin_kit.auth.models import AdminPermission, AdminUserPermission
+                from fastapi_admin_kit.auth.models import (
+                    Permission,
+                    UserPermission,
+                    admin_role_permissions,
+                )
                 from fastapi_admin_kit.db import get_db_session
                 from fastapi_admin_kit.types import PermissionSet
 
                 snapshot = getattr(request.state, "admin_user_snapshot", None)
-                user_id = (
-                    snapshot.get("id")
-                    if snapshot
-                    else getattr(user, "id", None)
-                )
+                user_id = snapshot.get("id") if snapshot else getattr(user, "id", None)
                 role_ids = (
-                    snapshot.get("role_ids", [])
-                    if snapshot
-                    else getattr(user, "role_ids", [])
+                    snapshot.get("role_ids", []) if snapshot else getattr(user, "role_ids", [])
                 )
 
                 session = get_db_session(request)
@@ -46,9 +48,12 @@ async def inject_sidebar_context(request: Request, context: dict[str, Any]) -> d
                 # Load permissions from all roles, merge with OR logic
                 if role_ids:
                     result = await session.execute(
-                        select(AdminPermission).where(
-                            AdminPermission.role_id.in_(role_ids)
+                        select(Permission)
+                        .join(
+                            admin_role_permissions,
+                            Permission.id == admin_role_permissions.c.permission_id,
                         )
+                        .where(admin_role_permissions.c.role_id.in_(role_ids))
                     )
                     for perm in result.scalars():
                         if perm.table_name in permissions_map:
@@ -70,9 +75,7 @@ async def inject_sidebar_context(request: Request, context: dict[str, Any]) -> d
                 # Load direct user permission overrides, merge on top
                 if user_id is not None:
                     result = await session.execute(
-                        select(AdminUserPermission).where(
-                            AdminUserPermission.user_id == user_id
-                        )
+                        select(UserPermission).where(UserPermission.user_id == user_id)
                     )
                     for perm in result.scalars():
                         if perm.table_name in permissions_map:

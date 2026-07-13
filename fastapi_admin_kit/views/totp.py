@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from fastapi_admin_kit.auth.csrf import require_csrf_token
 from fastapi_admin_kit.auth.dependencies import get_current_admin_user
-from fastapi_admin_kit.auth.models import AdminUserTOTP
+from fastapi_admin_kit.auth.models import UserTOTP
 from fastapi_admin_kit.auth.protocol import AdminUserProtocol
 from fastapi_admin_kit.auth.totp import (
     generate_backup_codes,
@@ -34,9 +34,7 @@ async def totp_setup_view(
     templates = request.app.state.admin_jinja_env
     session = get_db_session(request)
 
-    result = await session.execute(
-        select(AdminUserTOTP).where(AdminUserTOTP.user_id == user.id)
-    )
+    result = await session.execute(select(UserTOTP).where(UserTOTP.user_id == user.id))
     totp_record = result.scalar_one_or_none()
 
     secret = None
@@ -48,7 +46,7 @@ async def totp_setup_view(
     else:
         if totp_record is None:
             secret = generate_secret()
-            totp_record = AdminUserTOTP(
+            totp_record = UserTOTP(
                 user_id=user.id,
                 secret_key=secret,
                 enabled=False,
@@ -86,9 +84,7 @@ async def totp_enable_post(
 
     code = form.get("code", "").strip()
 
-    result = await session.execute(
-        select(AdminUserTOTP).where(AdminUserTOTP.user_id == user.id)
-    )
+    result = await session.execute(select(UserTOTP).where(UserTOTP.user_id == user.id))
     totp_record = result.scalar_one_or_none()
 
     if totp_record is None:
@@ -141,7 +137,6 @@ async def totp_disable_post(
     _csrf: bool = Depends(require_csrf_token),
 ):
     """Disable 2FA after verifying TOTP code and password."""
-    from fastapi_admin_kit.auth.backend import pwd_context
 
     session = get_db_session(request)
     form = await request.form()
@@ -149,7 +144,7 @@ async def totp_disable_post(
     code = form.get("code", "").strip()
     password = form.get("password", "")
 
-    if not pwd_context.verify(password, user.hashed_password):
+    if not user.verify_password(password):
         templates = request.app.state.admin_jinja_env
         return templates.TemplateResponse(
             request,
@@ -163,9 +158,7 @@ async def totp_disable_post(
             ),
         )
 
-    result = await session.execute(
-        select(AdminUserTOTP).where(AdminUserTOTP.user_id == user.id)
-    )
+    result = await session.execute(select(UserTOTP).where(UserTOTP.user_id == user.id))
     totp_record = result.scalar_one_or_none()
 
     if totp_record is None or not totp_record.enabled:
@@ -204,9 +197,7 @@ async def totp_regenerate_backup_codes(
     """Generate new backup codes (invalidates old ones)."""
     session = get_db_session(request)
 
-    result = await session.execute(
-        select(AdminUserTOTP).where(AdminUserTOTP.user_id == user.id)
-    )
+    result = await session.execute(select(UserTOTP).where(UserTOTP.user_id == user.id))
     totp_record = result.scalar_one_or_none()
 
     if totp_record is None or not totp_record.enabled:

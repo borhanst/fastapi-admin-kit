@@ -5,11 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import Request
-from sqlalchemy import and_, asc, desc, or_, select
+from sqlalchemy import and_, asc, desc, select
 from sqlalchemy.orm import joinedload
 
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.registry import RegisteredModel
+from fastapi_admin_kit.search_utils import apply_search_filter
 from fastapi_admin_kit.types import PermissionSet
 from fastapi_admin_kit.views.sidebar import inject_sidebar_context
 
@@ -140,10 +141,7 @@ class ViewContextBuilder:
                                 col = prop.columns[0] if prop.columns else None
                                 if col is not None:
                                     for fk in col.foreign_keys:
-                                        if (
-                                            fk.column.table
-                                            == rel.mapper.persist_selectable
-                                        ):
+                                        if fk.column.table == rel.mapper.persist_selectable:
                                             target_model = rel.mapper.class_
                                             break
                         if target_model is not None:
@@ -156,11 +154,7 @@ class ViewContextBuilder:
                         target_model, "title", None
                     )
                     if order_col is not None:
-                        q = (
-                            sa_select(target_model)
-                            .order_by(order_col)
-                            .limit(100)
-                        )
+                        q = sa_select(target_model).order_by(order_col).limit(100)
                     else:
                         pk = sa_inspect(target_model).primary_key[0]
                         q = sa_select(target_model).order_by(pk).limit(100)
@@ -288,35 +282,23 @@ class ViewContextBuilder:
 
             # Support range filters: filter_field__gte, filter_field__lte, etc.
             for filter_field in registered.admin.list_filter:
-                gte_val = request.query_params.get(
-                    f"filter_{filter_field}__gte", ""
-                )
-                lte_val = request.query_params.get(
-                    f"filter_{filter_field}__lte", ""
-                )
-                from_val = request.query_params.get(
-                    f"filter_{filter_field}__from", ""
-                )
-                to_val = request.query_params.get(
-                    f"filter_{filter_field}__to", ""
-                )
+                gte_val = request.query_params.get(f"filter_{filter_field}__gte", "")
+                lte_val = request.query_params.get(f"filter_{filter_field}__lte", "")
+                from_val = request.query_params.get(f"filter_{filter_field}__from", "")
+                to_val = request.query_params.get(f"filter_{filter_field}__to", "")
 
                 if (gte_val or lte_val) and hasattr(model, filter_field):
                     col = getattr(model, filter_field)
                     if gte_val:
                         try:
                             col_type = type(col.property.columns[0].type)
-                            filter_clauses.append(
-                                col >= col_type().coerce(gte_val)
-                            )
+                            filter_clauses.append(col >= col_type().coerce(gte_val))
                         except Exception:
                             pass
                     if lte_val:
                         try:
                             col_type = type(col.property.columns[0].type)
-                            filter_clauses.append(
-                                col <= col_type().coerce(lte_val)
-                            )
+                            filter_clauses.append(col <= col_type().coerce(lte_val))
                         except Exception:
                             pass
 
@@ -369,14 +351,7 @@ class ViewContextBuilder:
                 base = base.where(and_(*filter_clauses))
 
         if q and registered.admin.search_fields:
-            clauses = []
-            for sf in registered.admin.search_fields:
-                if hasattr(model, sf):
-                    col = getattr(model, sf)
-                    if hasattr(col, "ilike"):
-                        clauses.append(col.ilike(f"%{q}%"))
-            if clauses:
-                base = base.where(or_(*clauses))
+            base = apply_search_filter(base, model, registered.admin.search_fields, q)
 
         query_ordering = request.query_params.get("ordering", "")
         if query_ordering:
@@ -385,15 +360,9 @@ class ViewContextBuilder:
             order = registered.admin.ordering or []
         if order:
             col_name = order[0].lstrip("-")
-            col = (
-                getattr(model, col_name, None)
-                if hasattr(model, col_name)
-                else None
-            )
+            col = getattr(model, col_name, None) if hasattr(model, col_name) else None
             if col is not None:
-                base = base.order_by(
-                    desc(col) if order[0].startswith("-") else asc(col)
-                )
+                base = base.order_by(desc(col) if order[0].startswith("-") else asc(col))
 
         per_page = registered.admin.per_page
 
@@ -477,27 +446,17 @@ class ViewContextBuilder:
             "filter_fields": filter_fields,
             "active_filters": active_filters,
             "ordering": ordering,
-            "permissions": permission_checker.permission_set(
-                registered.table_name
-            )
+            "permissions": permission_checker.permission_set(registered.table_name)
             if permission_checker
-            else PermissionSet(
-                can_view=True, can_create=True, can_edit=True, can_delete=True
-            ),
+            else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),
             "list_actions": registered.admin.get_list_actions(),
             "row_actions": registered.admin.get_row_actions(),
             "list_tabs": getattr(registered.admin, "list_tabs", []),
             "list_sections": getattr(registered.admin, "list_sections", []),
             "ordering_field": getattr(registered.admin, "ordering_field", None),
-            "hide_ordering_field": getattr(
-                registered.admin, "hide_ordering_field", False
-            ),
-            "list_filter_options": getattr(
-                registered.admin, "list_filter_options", {}
-            ),
-            "list_filter_horizontal": getattr(
-                registered.admin, "list_filter_horizontal", False
-            ),
+            "hide_ordering_field": getattr(registered.admin, "hide_ordering_field", False),
+            "list_filter_options": getattr(registered.admin, "list_filter_options", {}),
+            "list_filter_horizontal": getattr(registered.admin, "list_filter_horizontal", False),
         }
         await inject_sidebar_context(request, template_context)
         return template_context
@@ -538,24 +497,14 @@ class ViewContextBuilder:
             "fieldsets": ctx.fieldsets,
             "errors": ctx.errors,
             "is_create": is_create,
-            "permissions": permission_checker.permission_set(
-                registered.table_name
-            )
+            "permissions": permission_checker.permission_set(registered.table_name)
             if permission_checker
-            else PermissionSet(
-                can_view=True, can_create=True, can_edit=True, can_delete=True
-            ),
+            else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),
             "detail_actions": registered.admin.get_detail_actions(),
             "submit_line_actions": registered.admin.get_submit_line_actions(),
-            "conditional_fields": getattr(
-                registered.admin, "conditional_fields", {}
-            ),
-            "warn_unsaved_form": getattr(
-                registered.admin, "warn_unsaved_form", True
-            ),
-            "compressed_fields": getattr(
-                registered.admin, "compressed_fields", True
-            ),
+            "conditional_fields": getattr(registered.admin, "conditional_fields", {}),
+            "warn_unsaved_form": getattr(registered.admin, "warn_unsaved_form", True),
+            "compressed_fields": getattr(registered.admin, "compressed_fields", True),
             "change_form_show_cancel_button": getattr(
                 registered.admin, "change_form_show_cancel_button", True
             ),
@@ -576,13 +525,9 @@ class ViewContextBuilder:
         template_context = {
             "model": registered,
             "registered": registered,
-            "permissions": permission_checker.permission_set(
-                registered.table_name
-            )
+            "permissions": permission_checker.permission_set(registered.table_name)
             if permission_checker
-            else PermissionSet(
-                can_view=True, can_create=True, can_edit=True, can_delete=True
-            ),
+            else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),
         }
         await inject_sidebar_context(request, template_context)
         return template_context

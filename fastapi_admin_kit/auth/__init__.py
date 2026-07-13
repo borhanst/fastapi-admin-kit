@@ -5,14 +5,17 @@ from __future__ import annotations
 from fastapi_admin_kit.auth.backend import AuthBackend, BuiltinAuthBackend
 from fastapi_admin_kit.auth.csrf import (
     auth_redirect_handler,
+    forbidden_handler,
     require_csrf_token,
     set_csrf_cookie,
 )
+from fastapi_admin_kit.auth.hasher import BcryptHasher, PasswordHasher
+from fastapi_admin_kit.auth.mixins import AuthModelMixin
 from fastapi_admin_kit.auth.models import (
-    AdminPermission,
-    AdminRole,
-    AdminUser,
-    AdminUserPermission,
+    Permission,
+    Role,
+    User,
+    UserPermission,
 )
 from fastapi_admin_kit.auth.session import (
     SessionBackend,
@@ -20,15 +23,19 @@ from fastapi_admin_kit.auth.session import (
 )
 
 __all__ = [
-    "AdminPermission",
-    "AdminRole",
-    "AdminUser",
-    "AdminUserPermission",
+    "AuthModelMixin",
+    "BcryptHasher",
+    "Permission",
+    "PasswordHasher",
+    "Role",
+    "User",
+    "UserPermission",
     "AuthBackend",
     "BuiltinAuthBackend",
     "SessionBackend",
     "SignedCookieSessionBackend",
     "auth_redirect_handler",
+    "forbidden_handler",
     "require_csrf_token",
     "set_csrf_cookie",
 ]
