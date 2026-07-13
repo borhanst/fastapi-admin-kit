@@ -403,13 +403,17 @@ class TestSearchFallback:
 
 
 class TestSearchUnauthorized:
-    def test_unauthorized_returns_401(self, admin_app):
+    def test_unauthorized_returns_json_error(self, admin_app):
         client = TestClient(admin_app)
         resp = client.get(
             "/admin/search_products/search",
             params={"q": "Laptop"},
         )
-        assert resp.status_code in {401, 403}
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "error" in data
+        assert "Not authenticated" in data["error"]
+        assert data["results"] == []
 
 
 class TestSearchLabel:

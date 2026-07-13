@@ -1,0 +1,37 @@
+{# pages/403.html — permission denied error page #}
+{% extends "base.html" %}
+
+{% block title %}Permission Denied — Admin{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <nav class="breadcrumb">
+    <a href="{{ admin_path | default('/admin') }}/" class="breadcrumb-segment">
+      {{ icon("home", size="16px") }}
+      Dashboard
+    </a>
+    <span class="breadcrumb-separator">/</span>
+    <span class="breadcrumb-current">Access Denied</span>
+  </nav>
+
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1 class="page-header-title">Permission Denied</h1>
+      <p class="page-header-subtitle">{{ detail }}</p>
+    </div>
+  </div>
+
+  <div class="rounded-lg border p-4" style="background: var(--color-danger-50, #fef2f2); border-color: var(--color-danger-100, #fecaca);">
+    <div class="flex items-start gap-3">
+      <div class="shrink-0">
+        {{ icon("x-mark", size="20px", class="text-[var(--color-danger)]") }}
+      </div>
+      <div class="flex-1">
+        <p class="text-sm" style="color: var(--color-danger-700, #b91c1c);">{{ detail }}</p>
+      </div>
+    </div>
+  </div>
+
+  <a href="{{ admin_path | default('/admin') }}/" class="btn btn-primary" style="margin-top: 16px;">Back to Dashboard</a>
+</div>
+{% endblock %}

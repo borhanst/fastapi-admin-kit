@@ -52,12 +52,44 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             Depends(require_csrf_token),
         ],
     )
-    router.add_api_route(
-        "/search",
-        search_v.html_response,
-        methods=["GET"],
-        dependencies=[Depends(require_permission(registered.table_name, "view"))],
-    )
+
+    @router.get("/search")
+    async def search_view(
+        request: Request,
+        q: str = "",
+        limit: int = 20,
+        exclude_id: str = "",
+    ):
+        from fastapi.responses import JSONResponse
+
+        error_msg = None
+        current_user = None
+
+        try:
+            from fastapi_admin_kit.auth.identity import get_current_user_from_cookie
+            from fastapi_admin_kit.db import get_db_session
+
+            current_user = await get_current_user_from_cookie(request)
+            if current_user is None:
+                error_msg = "Not authenticated. Please log in."
+            else:
+                session = get_db_session(request)
+                from fastapi_admin_kit.auth.permissions import PermissionChecker
+
+                checker = PermissionChecker(session=session, user=current_user)
+                if not await checker.has_permission(registered.table_name, "view"):
+                    error_msg = f"You do not have permission to view {registered.table_name}."
+        except Exception as exc:
+            error_msg = str(exc) or "An unexpected error occurred."
+
+        if error_msg:
+            return JSONResponse(
+                status_code=200,
+                content={"error": error_msg, "results": []},
+            )
+
+        return await search_v.api_response(request, q=q, limit=limit, exclude_id=exclude_id)
+
     router.add_api_route(
         "/bulk",
         bulk_v.html_response,

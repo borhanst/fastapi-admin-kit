@@ -187,9 +187,11 @@ class Admin:
             from fastapi_admin_kit.auth.csrf import (
                 CSRFMiddleware,
                 auth_redirect_handler,
+                forbidden_handler,
             )
 
             app.add_exception_handler(401, auth_redirect_handler)
+            app.add_exception_handler(403, forbidden_handler)
             app.add_middleware(CSRFMiddleware)
             self._csrf_middleware_added = True
         else:
@@ -442,10 +444,12 @@ class Admin:
             from fastapi_admin_kit.auth.csrf import (
                 CSRFMiddleware,
                 auth_redirect_handler,
+                forbidden_handler,
             )
 
             try:
                 app.add_exception_handler(401, auth_redirect_handler)
+                app.add_exception_handler(403, forbidden_handler)
                 app.add_middleware(CSRFMiddleware)
             except RuntimeError:
                 pass  # Already started — middleware was added in __init__

@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi_admin_kit.auth.backend import AuthBackend, BuiltinAuthBackend
 from fastapi_admin_kit.auth.csrf import (
     auth_redirect_handler,
+    forbidden_handler,
     require_csrf_token,
     set_csrf_cookie,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "SessionBackend",
     "SignedCookieSessionBackend",
     "auth_redirect_handler",
+    "forbidden_handler",
     "require_csrf_token",
     "set_csrf_cookie",
 ]

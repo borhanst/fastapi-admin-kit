@@ -234,3 +234,29 @@ async def auth_redirect_handler(request: Request, exc: HTTPException) -> Respons
             content={"detail": exc.detail or "Not authenticated"},
         )
     raise exc
+
+
+async def forbidden_handler(request: Request, exc: HTTPException) -> Response:
+    """Exception handler for 403 Forbidden errors.
+
+    Returns HTML error page for browser requests, JSON for API clients.
+    """
+    if exc.status_code == 403:
+        accept = request.headers.get("accept", "")
+        if "text/html" in accept or "text/xhtml" in accept:
+            templates = request.app.state.admin_jinja_env
+            admin_path = request.app.state.admin_config["admin_path"]
+            detail = exc.detail or "You do not have permission to access this resource."
+            return templates.TemplateResponse(
+                request,
+                "pages/403.html",
+                {"admin_path": admin_path, "detail": detail},
+                status_code=403,
+            )
+        from starlette.responses import JSONResponse
+
+        return JSONResponse(
+            status_code=403,
+            content={"detail": exc.detail or "Forbidden"},
+        )
+    raise exc

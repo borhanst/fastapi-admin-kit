@@ -928,40 +928,81 @@ class SearchView(BaseView):
     ) -> Any:
         return await self._search(request, q, limit, exclude_id)
 
+    def _is_browser_request(self, request: Request) -> bool:
+        accept = request.headers.get("accept", "")
+        return "text/html" in accept or "text/xhtml" in accept
+
+    def _render_search_page(
+        self,
+        request: Request,
+        q: str,
+        error: str | None = None,
+        results: list | None = None,
+    ) -> Any:
+        templates = request.app.state.admin_jinja_env
+        admin_path = request.app.state.admin_config["admin_path"]
+        search_fields = getattr(self.admin, "search_fields", None) or ["name", "title"]
+        return templates.TemplateResponse(
+            request,
+            "pages/search.html",
+            {
+                "registered": self.registered,
+                "admin_path": admin_path,
+                "q": q,
+                "error": error,
+                "results": results,
+                "search_fields": search_fields,
+            },
+            status_code=422 if error else 200,
+        )
+
     async def _search(self, request: Request, q: str, limit: int = 20, exclude_id: str = "") -> Any:
         from fastapi.responses import JSONResponse
         from sqlalchemy import select
 
-        session = get_db_session(request)
-        model = self.registered.model
+        is_browser = self._is_browser_request(request)
 
-        from fastapi_admin_kit.search_utils import apply_search_filter
+        try:
+            session = get_db_session(request)
+            model = self.registered.model
 
-        search_fields = getattr(self.admin, "search_fields", None) or [
-            "name",
-            "title",
-        ]
-        base = apply_search_filter(select(model), model, search_fields, q)
+            from fastapi_admin_kit.search_utils import apply_search_filter
 
-        if exclude_id:
-            pk_col = getattr(model, self.registered.pk_field, None)
-            if pk_col is not None:
-                from fastapi_admin_kit.inspection import cast_pk_value
+            search_fields = getattr(self.admin, "search_fields", None) or [
+                "name",
+                "title",
+            ]
+            base = apply_search_filter(select(model), model, search_fields, q)
 
-                base = base.where(pk_col != cast_pk_value(model, exclude_id))
+            if exclude_id:
+                pk_col = getattr(model, self.registered.pk_field, None)
+                if pk_col is not None:
+                    from fastapi_admin_kit.inspection import cast_pk_value
 
-        base = base.limit(limit)
-        result = session.execute(base)
-        if hasattr(result, "__await__"):
-            result = await result
-        rows = result.scalars().all()
+                    base = base.where(pk_col != cast_pk_value(model, exclude_id))
 
-        results = []
-        for row in rows:
-            pk = getattr(row, self.registered.pk_field)
-            from fastapi_admin_kit.inspection import model_display_name
+            base = base.limit(limit)
+            result = session.execute(base)
+            if hasattr(result, "__await__"):
+                result = await result
+            rows = result.scalars().all()
 
-            label = model_display_name(row)
-            results.append({"id": str(pk), "label": label})
+            results = []
+            for row in rows:
+                pk = getattr(row, self.registered.pk_field)
+                from fastapi_admin_kit.inspection import model_display_name
 
-        return JSONResponse(results)
+                label = model_display_name(row)
+                results.append({"id": str(pk), "label": label})
+
+            if is_browser:
+                return self._render_search_page(request, q, results=results)
+            return JSONResponse(results)
+
+        except Exception as exc:
+            error_msg = str(exc) or "An unexpected error occurred while searching."
+            if is_browser:
+                return self._render_search_page(request, q, error=error_msg)
+            from fastapi.responses import JSONResponse as _JSONResponse
+
+            return _JSONResponse(status_code=500, content={"error": error_msg})
