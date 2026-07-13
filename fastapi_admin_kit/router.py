@@ -445,25 +445,20 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         results = []
 
         search_fields = getattr(registered.admin, "search_fields", None) or ["name", "title"]
-        clauses = []
-        for sf in search_fields:
-            if hasattr(model, sf):
-                col = getattr(model, sf)
-                if hasattr(col, "ilike"):
-                    clauses.append(col.ilike(f"%{q}%"))
 
-        if clauses:
-            from sqlalchemy import or_, select
+        from sqlalchemy import select
 
-            query = select(model).where(or_(*clauses)).limit(20)
-            result = await session.execute(query)
-            for obj in result.scalars():
-                label = str(
-                    getattr(obj, "name", None)
-                    or getattr(obj, "title", None)
-                    or f"#{getattr(obj, 'id', '?')}"
-                )
-                results.append({"id": str(obj.id), "label": label})
+        from fastapi_admin_kit.search_utils import apply_search_filter
+
+        query = apply_search_filter(select(model), model, search_fields, q).limit(20)
+        result = await session.execute(query)
+        for obj in result.scalars():
+            label = str(
+                getattr(obj, "name", None)
+                or getattr(obj, "title", None)
+                or f"#{getattr(obj, 'id', '?')}"
+            )
+            results.append({"id": str(obj.id), "label": label})
 
         return JSONResponse(content=results)
 

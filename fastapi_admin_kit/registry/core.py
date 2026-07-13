@@ -88,9 +88,14 @@ class RegisteredModel:
                     related_table=rel.target_model.__tablename__,
                     related_verbose=related_verbose,
                 )
+            table_name = rel.target_model.__tablename__
+            search_path = table_name
+            if search_path.startswith("admin_"):
+                search_path = search_path[len("admin_") :]
             return MultiRelationWidget(
-                related_table=rel.target_model.__tablename__,
+                related_table=table_name,
                 related_verbose=related_verbose,
+                search_url=f"/admin/{search_path}/search",
             )
         return resolver.resolve(  # type: ignore[arg-type]
             type("_Col", (), {"type": type(None), "name": field_name})()

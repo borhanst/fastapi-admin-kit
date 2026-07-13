@@ -3,7 +3,7 @@
    Args: perm_search_url, perm_ids (list of selected permission IDs)
 #}
 <div x-data="permSelectWidget('{{ perm_search_url }}', {{ perm_ids | tojson | forceescape }})">
-  <input type="hidden" name="perm_ids" :value="JSON.stringify(selectedIds)">
+  <input type="hidden" name="perm_ids" x-effect="$el.value = JSON.stringify(selectedIds)">
 
   {# Selected permissions #}
   <div x-show="selectedItems.length > 0" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">

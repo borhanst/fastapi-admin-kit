@@ -3,7 +3,7 @@
    Full-width table with dark mode support.
 #}
 <div x-data="permissionWidget('{{ search_url }}', {{ perm_data | tojson | forceescape }})">
-  <input type="hidden" name="perm_data" :value="serializedPermData">
+  <input type="hidden" name="perm_data" x-effect="$el.value = serializedPermData">
 
   <div x-show="selectedTables.length > 0" style="width: 100%;">
     <div style="border: 1px solid var(--surface-border); border-radius: var(--radius-lg); overflow: hidden;">

@@ -69,8 +69,6 @@ async def _apply_m2m_from_data(
     obj: Any, m2m_data: dict[str, Any], registered: RegisteredModel, session: Any
 ) -> None:
     """Apply MANYTOMANY data extracted by _pop_manytomany_keys."""
-    import json as _json
-
     from sqlalchemy import inspect as sa_inspect
 
     if not m2m_data:
@@ -85,18 +83,7 @@ async def _apply_m2m_from_data(
         if rel_key not in m2m_data:
             continue
         raw = m2m_data[rel_key]
-        pk_list = []
-        if isinstance(raw, list):
-            for item in raw:
-                if isinstance(item, str) and item.startswith("["):
-                    try:
-                        pk_list.extend(_json.loads(item))
-                    except (ValueError, TypeError):
-                        pk_list.append(item)
-                else:
-                    pk_list.append(item)
-        else:
-            pk_list = [raw]
+        pk_list = list(raw) if isinstance(raw, list) else [raw]
         target_model = rel_prop.mapper.class_
         objs = []
         for pk in pk_list:
@@ -110,6 +97,8 @@ async def _apply_m2m_from_data(
                     objs.append(loaded)
             except (ValueError, TypeError):
                 pass
+        # Pre-load the collection inside the async greenlet so the
+        # subsequent setattr does not trigger a lazy load (MissingGreenlet).
         await session.refresh(obj, [rel_key])
         setattr(obj, rel_key, objs)
 

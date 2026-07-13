@@ -34,6 +34,37 @@ class ProductAdmin(ModelAdmin):
     list_filter = ["category", "is_active"]
 ```
 
+### Searching across relations
+
+`search_fields` also accepts Django-style `relation__field` lookups, so you can
+search by an attribute of a related model — both foreign keys (many-to-one) and
+many-to-many relationships:
+
+```python
+@admin.register(Order)
+class OrderAdmin(ModelAdmin):
+    # "user" is a FK → searches User.email
+    search_fields = ["id", "user__email"]
+
+@admin.register(Article)
+class ArticleAdmin(ModelAdmin):
+    # "tags" is a many-to-many → searches Tag.name
+    search_fields = ["title", "tags__name"]
+```
+
+How it works:
+
+- A field containing `__` (e.g. `tags__name`) is split into a relationship name
+  (`tags`) and a target attribute (`name`).
+- The query joins the related model and applies a case-insensitive `ilike`
+  (`%term%`) on the target column.
+- Because a many-to-many join can produce duplicate parent rows, `.distinct()`
+  is automatically applied, so each matching record is returned exactly once.
+- An unknown `relation__field` entry is silently ignored (no error).
+
+This works for both the list-view search box and the relation-picker
+autocomplete.
+
 ### Pattern C — Full Override
 
 Control every aspect of the admin view:

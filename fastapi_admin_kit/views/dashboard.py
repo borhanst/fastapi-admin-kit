@@ -99,10 +99,15 @@ def dashboard_view_factory(admin: Any):
                 }
             )
 
-        # Fetch last 10 audit entries
+        # Fetch last 10 audit entries for the current user
         from fastapi_admin_kit.audit.models import AuditLog
 
-        audit_query = select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(10)
+        audit_query = (
+            select(AuditLog)
+            .where(AuditLog.user_id == current_user.id)
+            .order_by(AuditLog.timestamp.desc())
+            .limit(10)
+        )
         recent_audit = (await session.execute(audit_query)).scalars().all()
 
         # Get 5 most recently active models for Quick Actions
@@ -111,6 +116,7 @@ def dashboard_view_factory(admin: Any):
                 AuditLog.table_name,
                 func.max(AuditLog.timestamp).label("last_activity"),
             )
+            .where(AuditLog.user_id == current_user.id)
             .group_by(AuditLog.table_name)
             .order_by(func.max(AuditLog.timestamp).desc())
             .limit(5)

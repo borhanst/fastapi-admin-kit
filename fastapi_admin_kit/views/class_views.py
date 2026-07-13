@@ -130,8 +130,6 @@ class BaseView:
 
     async def _apply_m2m_from_data(self, obj: Any, m2m_data: dict[str, Any], session: Any) -> None:
         """Apply MANYTOMANY data extracted by _pop_manytomany_keys."""
-        import json as _json
-
         from sqlalchemy import inspect as sa_inspect
 
         if not m2m_data:
@@ -146,18 +144,7 @@ class BaseView:
             if rel_key not in m2m_data:
                 continue
             raw = m2m_data[rel_key]
-            pk_list = []
-            if isinstance(raw, list):
-                for item in raw:
-                    if isinstance(item, str) and item.startswith("["):
-                        try:
-                            pk_list.extend(_json.loads(item))
-                        except (ValueError, TypeError):
-                            pk_list.append(item)
-                    else:
-                        pk_list.append(item)
-            else:
-                pk_list = [raw]
+            pk_list = list(raw) if isinstance(raw, list) else [raw]
             target_model = rel_prop.mapper.class_
             objs = []
             for pk in pk_list:
@@ -171,6 +158,8 @@ class BaseView:
                         objs.append(loaded)
                 except (ValueError, TypeError):
                     pass
+            # Pre-load the collection inside the async greenlet so the
+            # subsequent setattr does not trigger a lazy load (MissingGreenlet).
             await session.refresh(obj, [rel_key])
             setattr(obj, rel_key, objs)
 
@@ -470,10 +459,14 @@ class CreateView(BaseView):
         if errors:
             raise HTTPException(status_code=422, detail=errors)
         session = get_db_session(request)
-        obj = self.registered.model(**parsed)
+        m2m_data = self._pop_manytomany_keys(self.registered.model, parsed)
+        resolved = self._resolve_rel_keys(parsed)
+        resolved = self.admin.prepare_create_data(resolved, request)
+        obj = self.registered.model(**resolved)
         self.admin.on_create(obj, request)
         session.add(obj)
         await session.flush()
+        await self._apply_m2m_from_data(obj, m2m_data, session)
         self.admin.after_create(obj, request)
         await flush_pending_perm_ops(request)
         return await self.api_renderer.render(request, self._serialize(obj))
@@ -937,26 +930,18 @@ class SearchView(BaseView):
 
     async def _search(self, request: Request, q: str, limit: int = 20, exclude_id: str = "") -> Any:
         from fastapi.responses import JSONResponse
-        from sqlalchemy import or_, select
+        from sqlalchemy import select
 
         session = get_db_session(request)
         model = self.registered.model
-        base = select(model)
 
-        clauses = []
-        if q:
-            search_fields = getattr(self.admin, "search_fields", None) or [
-                "name",
-                "title",
-            ]
-            for sf in search_fields:
-                if hasattr(model, sf):
-                    col = getattr(model, sf)
-                    if hasattr(col, "ilike"):
-                        clauses.append(col.ilike(f"%{q}%"))
+        from fastapi_admin_kit.search_utils import apply_search_filter
 
-        if clauses:
-            base = base.where(or_(*clauses))
+        search_fields = getattr(self.admin, "search_fields", None) or [
+            "name",
+            "title",
+        ]
+        base = apply_search_filter(select(model), model, search_fields, q)
 
         if exclude_id:
             pk_col = getattr(model, self.registered.pk_field, None)

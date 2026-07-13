@@ -630,7 +630,7 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {{ _field_wrapper_open(field_ctx) }}
   {{ _label(field_ctx) }}
   <div x-data="multiRelation({{ val | tojson | forceescape }}, '{{ url }}', [])">
-    <input type="hidden" name="{{ name }}" :value="JSON.stringify(selectedIds)">
+    <input type="hidden" name="{{ name }}" x-effect="$el.value = JSON.stringify(selectedIds)">
     <div class="flex flex-wrap gap-2" style="margin-bottom: 8px;">
       <template x-for="(item, index) in selectedItems" :key="item.id">
         <span class="tag-chip">

@@ -5,11 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import Request
-from sqlalchemy import and_, asc, desc, or_, select
+from sqlalchemy import and_, asc, desc, select
 from sqlalchemy.orm import joinedload
 
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.registry import RegisteredModel
+from fastapi_admin_kit.search_utils import apply_search_filter
 from fastapi_admin_kit.types import PermissionSet
 from fastapi_admin_kit.views.sidebar import inject_sidebar_context
 
@@ -350,14 +351,7 @@ class ViewContextBuilder:
                 base = base.where(and_(*filter_clauses))
 
         if q and registered.admin.search_fields:
-            clauses = []
-            for sf in registered.admin.search_fields:
-                if hasattr(model, sf):
-                    col = getattr(model, sf)
-                    if hasattr(col, "ilike"):
-                        clauses.append(col.ilike(f"%{q}%"))
-            if clauses:
-                base = base.where(or_(*clauses))
+            base = apply_search_filter(base, model, registered.admin.search_fields, q)
 
         query_ordering = request.query_params.get("ordering", "")
         if query_ordering:

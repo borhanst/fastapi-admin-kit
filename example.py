@@ -14,6 +14,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Table,
     Text,
     select,
 )
@@ -156,6 +157,51 @@ class OrderItem(Base):
 
     def __str__(self) -> str:
         return f"Item in Order #{self.order_id}"
+
+
+# Association table for the many-to-many Article <-> Tag relationship.
+article_tags = Table(
+    "article_tags",
+    Base.metadata,
+    Column("article_id", Integer, ForeignKey("articles.id"), primary_key=True),
+    Column("tag_id", Integer, ForeignKey("tags.id"), primary_key=True),
+)
+
+
+class Tag(Base):
+    """Tag model for articles (many-to-many)."""
+
+    __tablename__ = "tags"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False, unique=True)
+    description = Column(Text, nullable=True)
+
+    articles = relationship(
+        "Article", secondary=article_tags, back_populates="tags"
+    )
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class Article(Base):
+    """Article model with a many-to-many relationship to Tag."""
+
+    __tablename__ = "articles"
+
+    id = Column(Integer, primary_key=True)
+    title = Column(String(200), nullable=False)
+    body = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    tags = relationship(
+        "Tag", secondary=article_tags, back_populates="articles"
+    )
+
+    def __str__(self) -> str:
+        return self.title
 
 
 # ============================================================================
@@ -444,6 +490,30 @@ class OrderAdmin(ModelAdmin):
         pass
 
 
+class ArticleAdmin(ModelAdmin):
+    """Admin for Article — demonstrates many-to-many search via tags__name."""
+
+    list_display = ["id", "title", "tags", "created_at"]
+    search_fields = ["title", "tags__name"]
+    list_filter = ["created_at"]
+    ordering = ["-created_at"]
+    verbose_name = "Article"
+    verbose_name_plural = "Articles"
+    tag = "content"
+    icon = "document-text"
+
+
+class TagAdmin(ModelAdmin):
+    """Admin for Tag — demonstrates FK/relation search on the related side."""
+
+    list_display = ["id", "name", "description"]
+    search_fields = ["name", "description"]
+    verbose_name = "Tag"
+    verbose_name_plural = "Tags"
+    tag = "content"
+    icon = "tag"
+
+
 # ============================================================================
 # Dashboard Callback — custom data injection
 # ============================================================================
@@ -715,6 +785,8 @@ admin.register(Category, CategoryAdmin)
 admin.register(Product, ProductAdmin)
 admin.register(User, UserAdmin)
 admin.register(Order, OrderAdmin)
+admin.register(Tag, TagAdmin)
+admin.register(Article, ArticleAdmin)
 
 
 # ============================================================================

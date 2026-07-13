@@ -168,3 +168,56 @@ def test_rbac_403_without_permission(client):
     test_client, admin, engine = client
     resp = test_client.get("/admin/products/")
     assert resp.status_code in {401, 403}
+
+
+def test_role_create_saves_junction_full_app(client, admin_user):
+    """Regression: role create must persist admin_role_permissions (end-to-end)."""
+    from sqlalchemy import select
+
+    from fastapi_admin_kit.auth.models import (
+        Permission,
+        Role,
+        admin_role_permissions,
+    )
+
+    test_client, admin, engine = client
+    cookie = create_session_cookie(admin_user.id)
+    csrf_token, csrf_cookie = _get_csrf(test_client)
+
+    async def _seed_perm():
+        async with AsyncSession(engine) as s:
+            s.add(Permission(name="t_e2e", table_name="t_e2e"))
+            await s.commit()
+
+    run_async(_seed_perm())
+
+    async def _pid():
+        async with AsyncSession(engine) as s:
+            return (
+                (await s.execute(select(Permission).where(Permission.table_name == "t_e2e")))
+                .scalar_one()
+                .id
+            )
+
+    pid = run_async(_pid())
+
+    resp = test_client.post(
+        "/admin/roles",
+        data={"name": "E2ERole", "perm_ids": f"[{pid}]", "csrf_token": csrf_token},
+        cookies={"admin_session": cookie, "admin_csrf_token": csrf_cookie},
+        follow_redirects=False,
+    )
+    assert resp.status_code in {302, 303}
+
+    async def _check():
+        async with AsyncSession(engine) as s:
+            rid = (await s.execute(select(Role).where(Role.name == "E2ERole"))).scalar_one().id
+            return (
+                await s.execute(
+                    select(admin_role_permissions).where(admin_role_permissions.c.role_id == rid)
+                )
+            ).fetchall()
+
+    rows = run_async(_check())
+    assert len(rows) == 1
+    assert rows[0].permission_id == pid

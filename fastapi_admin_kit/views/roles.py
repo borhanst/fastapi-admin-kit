@@ -6,11 +6,17 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import delete, func, insert, select
+from sqlalchemy.orm import selectinload
 
 from fastapi_admin_kit.auth.csrf import require_csrf_token
 from fastapi_admin_kit.auth.dependencies import get_current_admin_user
-from fastapi_admin_kit.auth.models import Permission, Role
+from fastapi_admin_kit.auth.models import (
+    Permission,
+    Role,
+    admin_role_permissions,
+    admin_user_roles,
+)
 from fastapi_admin_kit.auth.protocol import AdminUserProtocol
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.views.sidebar import inject_sidebar_context
@@ -88,7 +94,7 @@ async def role_list_view(
     templates = request.app.state.admin_jinja_env
     session = get_db_session(request)
 
-    result = await session.execute(select(Role))
+    result = await session.execute(select(Role).options(selectinload(Role.users)))
     roles = list(result.scalars().all())
 
     role_data = []
@@ -167,11 +173,16 @@ async def role_create_save_view(
     except (json.JSONDecodeError, TypeError):
         perm_ids = []
 
+    perm_ids = [int(p) for p in perm_ids if str(p).isdigit()]
+
     if perm_ids:
         result = await session.execute(select(Permission).where(Permission.id.in_(perm_ids)))
         perms = result.scalars().all()
-        for perm in perms:
-            role.permissions.append(perm)
+        if perms:
+            await session.execute(
+                insert(admin_role_permissions),
+                [{"role_id": role.id, "permission_id": p.id} for p in perms],
+            )
 
     await session.flush()
 
@@ -191,7 +202,10 @@ async def role_edit_view(
     templates = request.app.state.admin_jinja_env
     session = get_db_session(request)
 
-    role = await session.get(Role, role_id)
+    result = await session.execute(
+        select(Role).options(selectinload(Role.permissions)).where(Role.id == role_id)
+    )
+    role = result.scalar_one_or_none()
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
 
@@ -235,13 +249,20 @@ async def role_save_view(
     except (json.JSONDecodeError, TypeError):
         perm_ids = []
 
-    role.permissions.clear()
+    perm_ids = [int(p) for p in perm_ids if str(p).isdigit()]
+
+    await session.execute(
+        delete(admin_role_permissions).where(admin_role_permissions.c.role_id == role_id)
+    )
 
     if perm_ids:
         result = await session.execute(select(Permission).where(Permission.id.in_(perm_ids)))
         perms = result.scalars().all()
-        for perm in perms:
-            role.permissions.append(perm)
+        if perms:
+            await session.execute(
+                insert(admin_role_permissions),
+                [{"role_id": role_id, "permission_id": p.id} for p in perms],
+            )
 
     await session.flush()
 
@@ -265,14 +286,20 @@ async def role_delete_view(
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
 
-    user_count = len(role.users)
-    if user_count > 0:
+    user_count = await session.scalar(
+        select(func.count())
+        .select_from(admin_user_roles)
+        .where(admin_user_roles.c.role_id == role_id)
+    )
+    if user_count and user_count > 0:
         raise HTTPException(
             status_code=400,
             detail=f"Cannot delete role. {user_count} user(s) are still assigned.",
         )
 
-    role.permissions.clear()
+    await session.execute(
+        delete(admin_role_permissions).where(admin_role_permissions.c.role_id == role_id)
+    )
 
     await session.delete(role)
     await session.flush()

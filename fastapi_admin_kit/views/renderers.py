@@ -245,9 +245,21 @@ class JSONBodyParser:
     async def parse(
         self, request: Request, obj: Any | None = None
     ) -> tuple[dict[str, Any], dict[str, list[str]]]:
+        from sqlalchemy import inspect as sa_inspect
+
         body = await request.json()
         valid_fields = {col.name for col in self.registered.columns}
-        filtered = {k: v for k, v in body.items() if k in valid_fields and k != "id"}
+        # Relationship keys (FK / many-to-many) are handled separately by the
+        # view (resolved to FK columns or applied as m2m collections), so they
+        # must not be stripped from the parsed payload here.
+        rel_fields = set()
+        try:
+            mapper = sa_inspect(self.registered.model)
+            rel_fields = {r.key for r in mapper.relationships}
+        except Exception:
+            pass
+        allowed = (valid_fields | rel_fields) - {"id"}
+        filtered = {k: v for k, v in body.items() if k in allowed}
         return filtered, {}
 
 
@@ -405,7 +417,9 @@ class DefaultQueryProvider:
 
         Returns (items, total, page, per_page).
         """
-        from sqlalchemy import and_, asc, desc, or_, select
+        from sqlalchemy import and_, asc, desc, select
+
+        from fastapi_admin_kit.search_utils import apply_search_filter
 
         session = get_db_session(request)
         registered = self.registered
@@ -526,14 +540,7 @@ class DefaultQueryProvider:
                 base = base.where(and_(*filter_clauses))
 
         if q and registered.admin.search_fields:
-            clauses = []
-            for sf in registered.admin.search_fields:
-                if hasattr(model, sf):
-                    col = getattr(model, sf)
-                    if hasattr(col, "ilike"):
-                        clauses.append(col.ilike(f"%{q}%"))
-            if clauses:
-                base = base.where(or_(*clauses))
+            base = apply_search_filter(base, model, registered.admin.search_fields, q)
 
         query_ordering = request.query_params.get("ordering", "")
         if query_ordering:
