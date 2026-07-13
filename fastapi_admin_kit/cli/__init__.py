@@ -71,7 +71,7 @@ def main() -> None:
     # Dispatch
     if args.command in ("createsuperuser", "users", "changepassword"):
         handle_user_command(args)
-    elif args.command == "createpermissions":
+    elif args.command in ("createpermissions", "deletepermissions"):
         handle_permission_command(args)
     elif args.command in ("migrate", "migrate-permissions"):
         handle_migrate_command(args)

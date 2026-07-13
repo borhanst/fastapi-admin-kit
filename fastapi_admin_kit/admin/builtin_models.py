@@ -224,6 +224,7 @@ class PermissionAdmin(ModelAdmin):
     verbose_name_plural = "Permissions"
     list_display = [
         "id",
+        "name",
         "table_name",
         "can_view",
         "can_create",
@@ -233,6 +234,7 @@ class PermissionAdmin(ModelAdmin):
     formfield_overrides = {
         "table_name": AutocompleteWidget(suggestions_fn=_get_table_names),
     }
+    search_fields = ("name", "table_name")
 
 
 class AuditLogAdmin(ModelAdmin):
