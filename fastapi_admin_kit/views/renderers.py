@@ -187,6 +187,8 @@ class HTMLFormParser:
         self, request: Request, obj: Any | None = None
     ) -> tuple[dict[str, Any], dict[str, list[str]]]:
         form_data = await request.form()
+        # Cache form data on request for reuse by inline objects
+        request._cached_form_data = form_data
         parsed: dict[str, Any] = {}
         errors: dict[str, list[str]] = {}
 

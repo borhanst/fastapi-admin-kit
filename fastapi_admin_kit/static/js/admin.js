@@ -71,12 +71,56 @@ document.addEventListener('alpine:init', () => {
 
   /* ── Relation Picker ─────────────────────────────────────────────── */
 
-  Alpine.data('relationPicker', (initialId, initialLabel, searchUrl) => ({
+  Alpine.data('relationPicker', (initialId, initialLabel, searchUrl, fixed = false) => ({
     selectedId: initialId || '',
     searchQuery: initialLabel || '',
     results: [],
     open: false,
+    fixed: fixed,
+    dropdownStyle: '',
     _debounce: null,
+
+    init() {
+      if (this.fixed) {
+        this._updatePosition = () => {
+          if (this.open && this.$refs.searchInput) {
+            this._setPosition();
+          }
+        };
+        window.addEventListener('scroll', this._updatePosition, true);
+        window.addEventListener('resize', this._updatePosition);
+      }
+    },
+
+    destroy() {
+      if (this.fixed) {
+        window.removeEventListener('scroll', this._updatePosition, true);
+        window.removeEventListener('resize', this._updatePosition);
+      }
+    },
+
+    _setPosition() {
+      const input = this.$refs.searchInput;
+      if (!input) return;
+      const rect = input.getBoundingClientRect();
+      const style = getComputedStyle(document.documentElement);
+      const bgColor = style.getPropertyValue('--surface-overlay').trim() || '#FFFFFF';
+      const borderColor = style.getPropertyValue('--surface-border').trim() || '#E2E8F0';
+      this.dropdownStyle = `
+        position: fixed;
+        top: ${rect.bottom + 4}px;
+        left: ${rect.left}px;
+        width: ${rect.width}px;
+        z-index: 99999;
+        background: ${bgColor};
+        border: 1px solid ${borderColor};
+        border-radius: 8px;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        max-height: 200px;
+        overflow-y: auto;
+        min-width: 200px;
+      `;
+    },
 
     async search() {
       clearTimeout(this._debounce);
@@ -89,6 +133,7 @@ document.addEventListener('alpine:init', () => {
           const resp = await fetch(`${searchUrl}?q=${encodeURIComponent(this.searchQuery)}`);
           if (resp.ok) {
             this.results = await resp.json();
+            if (this.fixed) this._setPosition();
           }
         } catch (e) {
           console.error('Relation search error:', e);
@@ -107,6 +152,14 @@ document.addEventListener('alpine:init', () => {
       this.selectedId = '';
       this.searchQuery = '';
       this.results = [];
+    },
+
+    close() {
+      if (this.fixed) {
+        setTimeout(() => { this.open = false; }, 200);
+      } else {
+        this.open = false;
+      }
     },
   }));
 
@@ -709,6 +762,65 @@ document.addEventListener('alpine:init', () => {
         container.appendChild(fallback);
         textarea.type = 'hidden';
       }
+    },
+  }));
+
+  /* ── Inline Formset Component ────────────────────────────────────── */
+
+  Alpine.data('inlineFormset', (prefix, type) => ({
+    prefix: prefix,
+    type: type,
+    forms: [],
+    totalForms: 0,
+
+    init() {
+      // Initialize with existing data from the server
+      const initialData = this.$el.dataset.initial;
+      if (initialData) {
+        try {
+          const parsed = JSON.parse(initialData);
+          this.forms = parsed.map(item => ({
+            id: item.id || '',
+            _delete: false,
+            ...item
+          }));
+        } catch (e) {
+          console.error('Failed to parse inline formset initial data:', e);
+        }
+      }
+      this.totalForms = this.forms.length;
+    },
+
+    addForm() {
+      const newForm = { id: '', _delete: false };
+      // Initialize all fields as empty
+      const fieldNames = this.$el.dataset.fields;
+      if (fieldNames) {
+        try {
+          const fields = JSON.parse(fieldNames);
+          fields.forEach(field => {
+            newForm[field] = '';
+          });
+        } catch (e) {
+          console.error('Failed to parse fields:', e);
+        }
+      }
+      this.forms.push(newForm);
+      this.totalForms = this.forms.length;
+      this.$dispatch('change');
+    },
+
+    removeForm(index) {
+      const form = this.forms[index];
+      if (form.id) {
+        // Mark for deletion (existing object)
+        form._delete = true;
+      } else {
+        // Remove from array (new object)
+        this.forms.splice(index, 1);
+        this.totalForms = this.forms.length;
+      }
+      this.$dispatch('change');
     },
   }));
 

@@ -1,0 +1,179 @@
+{# partials/inline_stacked.html — Stacked inline formset rendering #}
+
+{% from "macros/form_fields.html" import render_field %}
+
+<div class="inline-formset"
+     x-data="inlineFormset('{{ formset.prefix }}', 'stacked')"
+     data-fields="{{ formset.fields | tojson }}"
+     data-boolean-fields="{{ formset.boolean_fields | tojson }}"
+     data-initial="{{ formset.initial | tojson | forceescape }}"
+     data-field-metas="{{ formset.field_metas | map(attribute='name') | list | tojson }}">
+  <div class="inline-formset__header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 8px 12px; background: var(--surface-inset); border-radius: var(--radius-md);">
+    <h3 style="margin: 0; font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--text-primary);">
+      {{ formset.verbose_name_plural }}
+    </h3>
+    {% if formset.can_add %}
+    <button type="button" @click="addForm()" class="btn btn-secondary btn-sm" style="margin: 0;">
+      {{ icon("plus", size="16px") }} Add {{ formset.verbose_name }}
+    </button>
+    {% endif %}
+  </div>
+
+  {# Management form fields #}
+  <input type="hidden" name="{{ formset.prefix }}-TOTAL_FORMS" :value="totalForms">
+  <input type="hidden" name="{{ formset.prefix }}-INITIAL_FORMS" value="{{ formset.initial | length }}">
+  <input type="hidden" name="{{ formset.prefix }}-MIN_NUM_FORMS" value="{{ formset.min_num }}">
+  <input type="hidden" name="{{ formset.prefix }}-MAX_NUM_FORMS" value="{{ formset.max_num | default('') }}">
+
+  {# Existing forms #}
+  <template x-for="(form, index) in forms" :key="form.id || ('new-' + index)">
+    <div class="inline-formset__row" style="padding: 16px; margin-bottom: 12px; border: 1px solid var(--surface-border); border-radius: var(--radius-md); background: var(--surface-base);"
+         :style="form._delete ? 'opacity: 0.5;' : ''">
+      <input type="hidden" :name="`${prefix}-${index}-id`" :value="form.id || ''">
+
+      {% if formset.can_delete and formset.can_remove %}
+      <div style="display: flex; align-items: center; justify-content: flex-end; margin-bottom: 8px;">
+        <label style="display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer;">
+          <input type="checkbox" :name="`${prefix}-${index}-DELETE`"
+                 :checked="form._delete"
+                 @change="form._delete = $event.target.checked"
+                 style="cursor: pointer;">
+          Delete
+        </label>
+      </div>
+      {% endif %}
+
+      <div class="form--two-column form--normal" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        {% for field_meta in formset.field_metas %}
+        <div class="field-wrapper">
+          <label class="field-label">
+            {{ field_meta.label }}{% if field_meta.required %}<span class="required-star">*</span>{% endif %}
+          </label>
+
+          {% if field_meta.readonly or not formset.can_change %}
+          {# Read-only field #}
+          {% if field_meta.field_type == 'boolean' %}
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" disabled
+                   :checked="form.{{ field_meta.name }} === '1' || form.{{ field_meta.name }} === 'true' || form.{{ field_meta.name }} === true"
+                   style="cursor: not-allowed;">
+            <span style="font-size: var(--text-sm); color: var(--text-secondary);">Active</span>
+          </div>
+          {% else %}
+          <div class="form-input" style="cursor: default; background: var(--surface-inset);">
+            <span x-text="form.{{ field_meta.name }} || '-'"></span>
+          </div>
+          {% endif %}
+          <input type="hidden" :name="`${prefix}-${index}-{{ field_meta.name }}`" :value="form.{{ field_meta.name }} || ''">
+
+          {% elif field_meta.field_type == 'boolean' %}
+          {# Boolean / Checkbox field #}
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox"
+                   :name="`${prefix}-${index}-{{ field_meta.name }}`"
+                   :checked="form.{{ field_meta.name }} === '1' || form.{{ field_meta.name }} === 'true' || form.{{ field_meta.name }} === true"
+                   @change="form.{{ field_meta.name }} = $event.target.checked ? '1' : '0'"
+                   style="cursor: pointer;">
+            <span style="font-size: var(--text-sm); color: var(--text-secondary);">Active</span>
+          </div>
+
+          {% elif field_meta.field_type == 'number' %}
+          {# Number field #}
+          <input type="number"
+                 :name="`${prefix}-${index}-{{ field_meta.name }}`"
+                 :value="form.{{ field_meta.name }} || ''"
+                 @input="form.{{ field_meta.name }} = $event.target.value"
+                 step="any"
+                 {% if field_meta.required %}required{% endif %}
+                 class="form-input">
+
+          {% elif field_meta.field_type == 'date' %}
+          {# Date field #}
+          <input type="date"
+                 :name="`${prefix}-${index}-{{ field_meta.name }}`"
+                 :value="form.{{ field_meta.name }} || ''"
+                 @input="form.{{ field_meta.name }} = $event.target.value"
+                 {% if field_meta.required %}required{% endif %}
+                 class="form-input">
+
+          {% elif field_meta.field_type == 'datetime' %}
+          {# DateTime field #}
+          <input type="datetime-local"
+                 :name="`${prefix}-${index}-{{ field_meta.name }}`"
+                 :value="form.{{ field_meta.name }} || ''"
+                 @input="form.{{ field_meta.name }} = $event.target.value"
+                 {% if field_meta.required %}required{% endif %}
+                 class="form-input">
+
+          {% elif field_meta.field_type == 'select' %}
+          {# Select / Enum field #}
+          <select :name="`${prefix}-${index}-{{ field_meta.name }}`"
+                  @change="form.{{ field_meta.name }} = $event.target.value"
+                  {% if field_meta.required %}required{% endif %}
+                  class="form-select">
+            <option value="">Select {{ field_meta.label }}...</option>
+            {% for choice_value, choice_label in field_meta.choices or [] %}
+            <option value="{{ choice_value }}"
+                    :selected="form.{{ field_meta.name }} === '{{ choice_value }}'">{{ choice_label }}</option>
+            {% endfor %}
+          </select>
+
+          {% elif field_meta.field_type == 'relation' %}
+          {# Relation / ForeignKey field with search #}
+          <div x-data="relationPicker(form.{{ field_meta.name }} || '', form._{{ field_meta.name }}_label || '', '{{ field_meta.search_url }}', true)"
+               style="position: relative;">
+            <input type="hidden" :name="`${prefix}-${index}-{{ field_meta.name }}`" :value="selectedId">
+            <div style="position: relative; display: flex; align-items: center;">
+              <input type="text" x-model="searchQuery" @input="search()" @click.outside="close()" @focus="open = true; if(fixed) _setPosition()"
+                     x-ref="searchInput"
+                     @keydown.escape="open = false"
+                     placeholder="Search {{ field_meta.label | lower }}..."
+                     class="form-input" style="padding-right: 30px;">
+              <button type="button" x-show="selectedId" @click="clear()"
+                      style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 2px; display: flex; align-items: center; justify-content: center;"
+                      title="Clear selection">
+                <span style="font-size: 14px;">&#x2715;</span>
+              </button>
+            </div>
+            {# Backdrop #}
+            <div x-show="open && results.length > 0" x-cloak
+                 @click="open = false"
+                 style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 99998; background: transparent;">
+            </div>
+            {# Dropdown #}
+            <div x-show="open && results.length > 0" x-cloak
+                 :style="fixed ? dropdownStyle : ''"
+                 :class="fixed ? '' : 'relation-picker-dropdown'"
+                 style="background: var(--surface-overlay); border: 1px solid var(--surface-border); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); max-height: 200px; overflow-y: auto; min-width: 200px;">
+              <template x-for="result in results" :key="result.id">
+                <div @click="select(result)"
+                     style="padding: 10px 14px; cursor: pointer; font-size: var(--text-sm); border-bottom: 1px solid var(--surface-border);"
+                     @mouseenter="$el.style.background = 'var(--surface-hover)'"
+                     @mouseleave="$el.style.background = 'transparent'">
+                  <span x-text="result.label"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          {% else %}
+          {# Default: Text field #}
+          <input type="text"
+                 :name="`${prefix}-${index}-{{ field_meta.name }}`"
+                 :value="form.{{ field_meta.name }} || ''"
+                 @input="form.{{ field_meta.name }} = $event.target.value"
+                 {% if field_meta.required %}required{% endif %}
+                 placeholder="{{ field_meta.placeholder }}"
+                 class="form-input">
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </template>
+
+  {# Empty state #}
+  <div x-show="forms.length === 0" style="text-align: center; padding: 24px; color: var(--text-secondary); font-size: var(--text-sm);">
+    No {{ formset.verbose_name_plural | lower }} yet.{% if formset.can_add %} Click "Add {{ formset.verbose_name }}" to add one.{% endif %}
+  </div>
+</div>

@@ -36,6 +36,7 @@ from fastapi_admin_kit.dashboard import (
     ProgressComponent,
     TableComponent,
 )
+from fastapi_admin_kit.inline import StackedInline, TabularInline
 from fastapi_admin_kit.models import Base as AdminBase
 from fastapi_admin_kit.types import TabConfig, TableSection
 from fastapi_admin_kit.widgets.inputs import ArrayWidget, WysiwygWidget
@@ -205,6 +206,59 @@ class Article(Base):
 
 
 # ============================================================================
+# Inline Admin Classes
+# ============================================================================
+# Inline admin allows editing related objects directly on the parent form.
+# Use TabularInline for compact table layout, StackedInline for full form blocks.
+
+
+class ProductTabularInline(TabularInline):
+    """Tabular inline for Products on Category form.
+
+    When editing a Category, you can add/edit Products directly on the same page.
+    Products are displayed as compact table rows.
+    """
+
+    model = Product
+    fields = ["name", "price", "stock", "is_active"]
+    extra = 1
+    verbose_name = "Product"
+    verbose_name_plural = "Products"
+    ordering = ["name"]
+    fk_name = "category_id"
+
+
+class OrderItemTabularInline(TabularInline):
+    """Tabular inline for OrderItems on Order form.
+
+    When editing an Order, you can add/edit OrderItems directly on the same page.
+    OrderItems are displayed as compact table rows.
+    """
+
+    model = OrderItem
+    fields = ["product", "quantity", "price"]
+    extra = 1
+    verbose_name = "Order Item"
+    verbose_name_plural = "Order Items"
+    fk_name = "order_id"
+
+
+class OrderItemStackedInline(StackedInline):
+    """Stacked inline for OrderItems on Order form.
+
+    Alternative layout: each OrderItem is shown as a full form block.
+    Use this when you have many fields per inline object.
+    """
+
+    model = OrderItem
+    fields = ["product", "quantity", "price"]
+    extra = 1
+    verbose_name = "Order Item"
+    verbose_name_plural = "Order Items"
+    fk_name = "order_id"
+
+
+# ============================================================================
 # ModelAdmin Customizations — showcasing all UnfoldAdmin features
 # ============================================================================
 
@@ -220,6 +274,9 @@ class CategoryAdmin(ModelAdmin):
     verbose_name_plural = "Categories"
     icon = "folder"
     tag = "catalog"
+
+    # Inline admin — edit Products directly on Category form
+    inlines = [ProductTabularInline]
 
     # Actions
     actions_list = ["export_categories"]
@@ -416,6 +473,10 @@ class OrderAdmin(ModelAdmin):
     verbose_name_plural = "Orders"
     tag = "order"
     icon = "shopping-cart"
+
+    # Inline admin — edit OrderItems directly on Order form
+    # Using TabularInline for compact table layout
+    inlines = [OrderItemTabularInline]
 
     # Per-model UI overrides
     list_style = "compact"
@@ -829,6 +890,7 @@ async def health():
 #   Password: admin
 #
 # UnfoldAdmin features to try:
+#   - Inline admin: edit Products on Category page, OrderItems on Order page
 #   - Custom actions: select products and click "Export" or "Deactivate"
 #   - Row actions: click action buttons on each row
 #   - Tabs: switch between All/Active/Out of Stock views
@@ -841,6 +903,11 @@ async def health():
 #   - Topbar: environment badge, history link, view on site
 #   - Sidebar: collapsible nav groups with icons
 #   - Unsaved changes warning: try navigating away from a dirty form
+#
+# Inline Admin:
+#   - TabularInline: compact table layout (used for Products, OrderItems)
+#   - StackedInline: full form block layout (defined as OrderItemStackedInline)
+#   - To use stacked layout, change: inlines = [OrderItemStackedInline]
 
 
 if __name__ == "__main__":
