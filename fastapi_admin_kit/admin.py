@@ -45,6 +45,8 @@ DEFAULT_SEED_ROLES: list[SeedRole] = [
                 "create": False,
                 "edit": False,
                 "delete": False,
+                "export": False,
+                "import": False,
             },
         },
     ),
@@ -418,6 +420,8 @@ class Admin:
                                 can_create=perms.get("create", False),
                                 can_edit=perms.get("edit", False),
                                 can_delete=perms.get("delete", False),
+                                can_export=perms.get("export", False),
+                                can_import=perms.get("import", False),
                             )
                             session.add(perm)
 
@@ -448,6 +452,8 @@ class Admin:
                                 can_create=perms.get("create", False),
                                 can_edit=perms.get("edit", False),
                                 can_delete=perms.get("delete", False),
+                                can_export=perms.get("export", False),
+                                can_import=perms.get("import", False),
                             )
                             session.add(perm)
 
@@ -672,6 +678,8 @@ class Admin:
                                         can_create=existing.can_create or perm.can_create,
                                         can_edit=existing.can_edit or perm.can_edit,
                                         can_delete=existing.can_delete or perm.can_delete,
+                                        can_export=existing.can_export or perm.can_export,
+                                        can_import=existing.can_import or perm.can_import,
                                     )
                                 else:
                                     permissions_map[perm.table_name] = PermissionSet(
@@ -679,6 +687,8 @@ class Admin:
                                         can_create=perm.can_create,
                                         can_edit=perm.can_edit,
                                         can_delete=perm.can_delete,
+                                        can_export=perm.can_export,
+                                        can_import=perm.can_import,
                                     )
                     except Exception:
                         pass

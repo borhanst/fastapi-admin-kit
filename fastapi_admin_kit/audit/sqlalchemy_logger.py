@@ -32,6 +32,12 @@ class SqlAlchemyAuditLogger(AuditLogger):
     def log_delete(self, event: AuditEvent) -> None:
         self._buffer(event)
 
+    def log_export(self, event: AuditEvent) -> None:
+        self._buffer(event)
+
+    def log_import(self, event: AuditEvent) -> None:
+        self._buffer(event)
+
     def _buffer(self, event: AuditEvent) -> None:
         entry = AuditLog(
             user_id=event.user_id,

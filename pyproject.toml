@@ -63,6 +63,7 @@ dev = [
 sqlmodel = ["sqlmodel>=0.0.39"]
 postgres = ["asyncpg>=0.29.0"]
 mysql = ["aiomysql>=0.2.0"]
+excel = ["openpyxl>=3.1.0"]
 docs = [
     "mkdocs>=1.6.0",
     "mkdocs-material>=9.5.0",

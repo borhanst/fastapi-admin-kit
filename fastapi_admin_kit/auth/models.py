@@ -129,6 +129,8 @@ class Permission(Base):
     can_create = Column(Boolean, default=False)
     can_edit = Column(Boolean, default=False)
     can_delete = Column(Boolean, default=False)
+    can_export = Column(Boolean, default=False)
+    can_import = Column(Boolean, default=False)
 
     roles = relationship("Role", secondary=admin_role_permissions, back_populates="permissions")
 
@@ -158,6 +160,8 @@ class UserPermission(Base):
     can_create = Column(Boolean, default=False)
     can_edit = Column(Boolean, default=False)
     can_delete = Column(Boolean, default=False)
+    can_export = Column(Boolean, default=False)
+    can_import = Column(Boolean, default=False)
 
     user = relationship("User", back_populates="direct_permissions")
 

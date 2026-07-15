@@ -826,6 +826,7 @@ class Admin:
             "bars-": "menu",
             "bars-3": "menu",
             "arrow-down-tray": "download",
+            "arrow-up-tray": "upload",
             "arrow-path": "refresh",
             "paper-airplane": "send",
             "exclamation-triangle": "warning",

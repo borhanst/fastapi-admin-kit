@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from fastapi_admin_kit.audit.events import AuditEvent
 
 # Context variable to store audit context (user, IP, user_agent, etc.)
 _current_audit_context: ContextVar[dict] = ContextVar("_current_audit_context", default={})
@@ -60,3 +63,32 @@ class AuditContext:
     def clear_context(self) -> None:
         """Clear the audit context."""
         clear_audit_context()
+
+
+async def log_audit_event(request: Any, event: AuditEvent) -> None:
+    """Persist an AuditEvent directly to the database.
+
+    Used for EXPORT/IMPORT events that don't go through the SQLAlchemy
+    before_flush listener.
+    """
+    from fastapi_admin_kit.audit.models import AuditLog
+    from fastapi_admin_kit.db import get_db_session
+
+    session = get_db_session(request)
+    ctx = get_audit_context()
+
+    entry = AuditLog(
+        action=event.event_type,
+        model_name=event.model_name,
+        table_name=event.table_name,
+        object_id=event.object_id,
+        object_repr=event.object_repr,
+        changes=event.changes,
+        full_snapshot=event.full_snapshot,
+        user_id=event.user_id or ctx.get("user_id"),
+        user_email=event.user_email or ctx.get("user_email"),
+        ip_address=event.ip_address or ctx.get("ip_address"),
+        user_agent=event.user_agent or ctx.get("user_agent"),
+    )
+    session.add(entry)
+    await session.flush()

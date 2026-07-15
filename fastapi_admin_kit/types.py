@@ -58,6 +58,8 @@ class PermissionSet:
     can_create: bool = False
     can_edit: bool = False
     can_delete: bool = False
+    can_export: bool = False
+    can_import: bool = False
 
 
 @dataclass

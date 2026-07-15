@@ -26,3 +26,11 @@ class AuditLogger(ABC):
     @abstractmethod
     def log_delete(self, event: AuditEvent) -> None:
         """Persist a DELETE audit event."""
+
+    @abstractmethod
+    def log_export(self, event: AuditEvent) -> None:
+        """Persist an EXPORT audit event."""
+
+    @abstractmethod
+    def log_import(self, event: AuditEvent) -> None:
+        """Persist an IMPORT audit event."""
