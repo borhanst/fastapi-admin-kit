@@ -1,0 +1,153 @@
+{# pages/ai/dashboard.html — AI Operations Dashboard #}
+{% extends "base.html" %}
+
+{% block title %}{{ title | default("AI Dashboard") }}{% endblock %}
+
+{% block content %}
+<div class="dashboard-wrapper" style="display: flex; flex-direction: column; gap: 28px;">
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1 class="page-header-title">AI Dashboard</h1>
+      <p class="page-header-subtitle" style="color: var(--text-tertiary); font-size: var(--text-sm);">
+        Monitor AI agent performance, costs, and tool calls.
+      </p>
+    </div>
+    <div class="page-header-right">
+      <span class="badge badge-success" style="font-size: var(--text-2xs);">
+        <span style="width: 6px; height: 6px; background: var(--success-500); border-radius: 50%; display: inline-block; margin-right: 6px; animation: pulse 2s infinite;"></span>
+        AI Online
+      </span>
+    </div>
+  </div>
+
+  <div class="stat-cards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;">
+    {% for stat in agent_stats %}
+    <div class="dashboard-stat-card">
+      <div class="stat-header">
+        <div class="stat-icon stat-icon--purple">
+          <span class="material-symbols-outlined" style="font-size: 20px;">smart_toy</span>
+        </div>
+        <span class="stat-label">{{ stat.name }}</span>
+      </div>
+      <div class="stat-count">{{ stat.total_runs | default(0) }}</div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="stat-subtitle">runs today</span>
+      </div>
+      <div style="margin-top: 8px; font-size: var(--text-xs); color: var(--text-tertiary);">
+        Tokens: {{ stat.total_tokens | default(0) }} &middot; Cost: ${{ "%.4f" | format(stat.total_cost | default(0)) }}
+      </div>
+      <div style="margin-top: 4px; font-size: var(--text-xs); color: var(--text-tertiary);">
+        Success: {{ stat.success_rate | default(0) }}%
+      </div>
+      <svg class="stat-wave" viewBox="0 0 80 30" fill="none">
+        <path d="M0 20 Q20 5 40 15 T80 10 V30 H0Z" fill="currentColor" opacity="0.3"/>
+        <path d="M0 25 Q25 12 50 20 T80 15 V30 H0Z" fill="currentColor" opacity="0.5"/>
+      </svg>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+    <div style="background: var(--surface-raised); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); overflow: hidden;">
+      <div style="padding: 20px 24px; border-bottom: 1px solid var(--surface-border); display: flex; align-items: center; gap: 10px;">
+        <div style="width: 36px; height: 36px; border-radius: var(--radius-md); background: rgba(139, 92, 246, 0.12); display: flex; align-items: center; justify-content: center;">
+          <span class="material-symbols-outlined" style="font-size: 18px;">build</span>
+        </div>
+        <div>
+          <h2 style="font-family: var(--font-display); font-size: var(--text-md); font-weight: 700; color: var(--text-primary);">Available Tools</h2>
+          <p style="font-size: var(--text-xs); color: var(--text-tertiary);">Tools bound to AI agents</p>
+        </div>
+      </div>
+      <div id="ai-tools-list" style="padding: 16px 24px;">
+        <p style="font-size: var(--text-sm); color: var(--text-tertiary);">Loading tools...</p>
+      </div>
+    </div>
+
+    <div style="background: var(--surface-raised); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); overflow: hidden;">
+      <div style="padding: 20px 24px; border-bottom: 1px solid var(--surface-border); display: flex; align-items: center; gap: 10px;">
+        <div style="width: 36px; height: 36px; border-radius: var(--radius-md); background: rgba(20, 184, 166, 0.12); display: flex; align-items: center; justify-content: center;">
+          <span class="material-symbols-outlined" style="font-size: 18px;">chat</span>
+        </div>
+        <div>
+          <h2 style="font-family: var(--font-display); font-size: var(--text-md); font-weight: 700; color: var(--text-primary);">Quick Chat</h2>
+          <p style="font-size: var(--text-xs); color: var(--text-tertiary);">Send a message to an agent</p>
+        </div>
+      </div>
+      <div style="padding: 16px 24px;">
+        <div style="margin-bottom: 12px;">
+          <label style="font-size: var(--text-sm); font-weight: 500; color: var(--text-secondary); display: block; margin-bottom: 4px;">Agent</label>
+          <select id="chat-agent" style="width: 100%; padding: 8px 12px; border: 1px solid var(--surface-border); border-radius: var(--radius-md); background: var(--surface-base); color: var(--text-primary); font-size: var(--text-sm);">
+            {% for stat in agent_stats %}
+            <option value="{{ stat.name }}">{{ stat.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label style="font-size: var(--text-sm); font-weight: 500; color: var(--text-secondary); display: block; margin-bottom: 4px;">Message</label>
+          <textarea id="chat-message" rows="3" style="width: 100%; padding: 8px 12px; border: 1px solid var(--surface-border); border-radius: var(--radius-md); background: var(--surface-base); color: var(--text-primary); font-size: var(--text-sm; resize: vertical;"></textarea>
+        </div>
+        <button onclick="sendChat()" class="btn btn-primary btn-sm" style="width: 100%;">Send Message</button>
+        <div id="chat-response" style="margin-top: 12px; padding: 12px; border-radius: var(--radius-md); background: var(--surface-base); border: 1px solid var(--surface-border); font-size: var(--text-sm); color: var(--text-secondary); display: none;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  fetch('{{ admin_path }}/ai/tools')
+    .then(r => r.json())
+    .then(tools => {
+      const el = document.getElementById('ai-tools-list');
+      if (tools.length === 0) {
+        el.innerHTML = '<p style="font-size: var(--text-sm); color: var(--text-tertiary);">No tools registered.</p>';
+        return;
+      }
+      el.innerHTML = tools.map(t =>
+        '<div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--surface-border);">' +
+        '<div><span style="font-weight: 600; font-size: var(--text-sm);">' + t.name + '</span>' +
+        '<span style="margin-left: 8px; font-size: var(--text-xs); color: var(--text-tertiary);">' + t.category + '</span></div>' +
+        '<span style="font-size: var(--text-xs); color: var(--text-tertiary);">' + t.description + '</span></div>'
+      ).join('');
+    })
+    .catch(() => {
+      document.getElementById('ai-tools-list').innerHTML = '<p style="font-size: var(--text-sm); color: var(--error-500);">Failed to load tools.</p>';
+    });
+});
+
+function sendChat() {
+  const agent = document.getElementById('chat-agent').value;
+  const message = document.getElementById('chat-message').value;
+  const resp = document.getElementById('chat-response');
+  if (!message.trim()) return;
+  resp.style.display = 'block';
+  resp.textContent = 'Sending...';
+  fetch('{{ admin_path }}/ai/chat', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({agent, message})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) {
+      resp.textContent = 'Error: ' + data.error;
+      resp.style.borderColor = 'var(--error-500)';
+    } else {
+      resp.textContent = data.output;
+      resp.style.borderColor = 'var(--surface-border)';
+    }
+  })
+  .catch(e => {
+    resp.textContent = 'Request failed: ' + e.message;
+    resp.style.borderColor = 'var(--error-500)';
+  });
+}
+</script>
+
+<style>
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+</style>
+{% endblock %}

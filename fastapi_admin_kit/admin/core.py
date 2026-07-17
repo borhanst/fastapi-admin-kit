@@ -178,6 +178,9 @@ class Admin:
         mobile_sidebar: str = "overlay",
         dashboard_permission: str | None = None,
         settings_permission: str | None = None,
+        # AI
+        ai: Any = None,
+        ai_enabled: bool = False,
     ):
         self.registry = AdminRegistry()
         self._app: FastAPI | None = app
@@ -294,6 +297,10 @@ class Admin:
 
         # Built sidebar (populated during setup)
         self._nav_groups_built: list[Any] = []
+
+        # AI
+        self._ai_config = ai
+        self._ai_enabled = ai_enabled
 
         # Internal state (populated during setup)
         self._session_backend: Any = None
@@ -551,6 +558,10 @@ class Admin:
         if self.config.nav.require_tags:
             self._validate_tags()
 
+        # 9.1 Add AI nav group before building sidebar
+        if self._ai_enabled:
+            self._add_ai_nav_group()
+
         # 10. Build sidebar structure (once at startup)
         self._nav_groups_built = self._build_sidebar()
         self.template._nav_groups_built = self._nav_groups_built
@@ -559,6 +570,10 @@ class Admin:
 
         # 11. Build and mount routers
         self._build_router(app)
+
+        # 12. Setup AI routes if enabled
+        if self._ai_enabled:
+            self._setup_ai_routes(app)
 
     # ------------------------------------------------------------------
     # Register
@@ -836,6 +851,11 @@ class Admin:
             "bolt": "bolt",
             "cog-": "settings",
             "cog-6-tooth": "settings",
+            "smart_toy": "smart_toy",
+            "monitoring": "monitoring",
+            "build": "build",
+            "sparkles": "auto_awesome",
+            "robot": "smart_toy",
         }
 
         def _icon(name: str, size: str = "", **kwargs) -> str:
@@ -981,6 +1001,59 @@ class Admin:
         for model, admin_class in builtin_models:
             if model.__tablename__ not in self.registry._models:
                 self.registry.register(model, admin_class)
+
+    # ------------------------------------------------------------------
+    # AI Setup
+    # ------------------------------------------------------------------
+
+    def _add_ai_nav_group(self) -> None:
+        """Add the AI nav group to nav_groups before sidebar build."""
+        from fastapi_admin_kit.nav import NavGroupConfig, NavItemConfig
+
+        ai_nav = NavGroupConfig(
+            tag="ai",
+            label="AI",
+            icon="smart_toy",
+            order=900,
+            collapsed_by_default=False,
+            extra_items=[
+                NavItemConfig(
+                    label="Dashboard",
+                    url="/admin/ai/dashboard",
+                    icon="monitoring",
+                    order=1,
+                ),
+                NavItemConfig(
+                    label="Logs",
+                    url="/admin/ai/logs",
+                    icon="description",
+                    order=2,
+                ),
+                NavItemConfig(
+                    label="Tools",
+                    url="/admin/ai/tools",
+                    icon="build",
+                    order=3,
+                ),
+                NavItemConfig(
+                    label="Agents",
+                    url="/admin/ai/agents",
+                    icon="smart_toy",
+                    order=4,
+                ),
+            ],
+        )
+        self.config.nav.nav_groups.append(ai_nav)
+
+    def _setup_ai_routes(self, app: FastAPI) -> None:
+        """Initialize AI agents and mount AI routes."""
+        from fastapi_admin_kit.ai.plugin import AIPlugin
+
+        plugin = AIPlugin(agents=self._ai_config.agents if self._ai_config else [])
+        plugin.on_startup(self)
+
+        if self._ai_config and self._ai_config.dashboard_enabled:
+            app.include_router(plugin.get_routes(), prefix=self.router.admin_path)
 
     # ------------------------------------------------------------------
     # Tags validation
