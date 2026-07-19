@@ -383,7 +383,7 @@ class CreateView(BaseView):
         template_context.update(self._get_extra_context(request))
         await inject_sidebar_context(request, template_context)
 
-        template_context = self.admin.get_form_context(template_context, obj, request)
+        template_context = await self.admin.get_form_context(template_context, obj, request)
 
         return template_context
 
@@ -558,7 +558,7 @@ class EditView(BaseView):
         template_context.update(self._get_extra_context(request))
         await inject_sidebar_context(request, template_context)
 
-        template_context = self.admin.get_form_context(template_context, obj, request)
+        template_context = await self.admin.get_form_context(template_context, obj, request)
 
         return template_context
 

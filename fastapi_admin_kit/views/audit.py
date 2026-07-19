@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 
 from fastapi_admin_kit.audit.models import AuditLog
 from fastapi_admin_kit.auth.dependencies import get_current_admin_user
@@ -58,26 +58,27 @@ async def audit_list_view(
     query = query.order_by(desc(AuditLog.timestamp))
     per_page = 25
     offset = (page - 1) * per_page
-    total_query = select(AuditLog)
+
+    # Build count query efficiently using func.count()
+    count_query = select(func.count()).select_from(AuditLog)
     if model:
-        total_query = total_query.where(AuditLog.table_name == model)
+        count_query = count_query.where(AuditLog.table_name == model)
     if user_id:
-        total_query = total_query.where(AuditLog.user_id == user_id)
+        count_query = count_query.where(AuditLog.user_id == user_id)
     if action:
-        total_query = total_query.where(AuditLog.action == action)
+        count_query = count_query.where(AuditLog.action == action)
     if from_date:
-        total_query = total_query.where(
+        count_query = count_query.where(
             AuditLog.timestamp >= datetime.combine(from_date, datetime.min.time())
         )
     if to_date:
-        total_query = total_query.where(
+        count_query = count_query.where(
             AuditLog.timestamp <= datetime.combine(to_date, datetime.max.time())
         )
     if object_id:
-        total_query = total_query.where(AuditLog.object_id == object_id)
+        count_query = count_query.where(AuditLog.object_id == object_id)
 
-    total_result = await session.execute(total_query)
-    total = len(total_result.scalars().all())
+    total = await session.scalar(count_query) or 0
     entries = (await session.execute(query.offset(offset).limit(per_page))).scalars().all()
 
     admin_path = request.app.state.admin_config["admin_path"]

@@ -18,7 +18,7 @@ class AuthConfig:
         password_hasher: Any | None = None,
         session_ttl: int = 28800,
         session_cookie_name: str = "admin_session",
-        session_secure: bool = False,
+        session_secure: bool = True,
         superuser_emails: list[str] | None = None,
         password_min_length: int = 12,
         password_require_uppercase: bool = True,

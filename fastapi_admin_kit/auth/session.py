@@ -75,3 +75,20 @@ class SignedCookieSessionBackend(SessionBackend):
             return self._serializer.loads(token, max_age=self._session_ttl)
         except (BadSignature, SignatureExpired, ValueError):
             return None
+
+    def load(self, token: str | None) -> dict[str, Any] | None:
+        """Alias for decode — used by flash message system."""
+        return self.decode(token)
+
+    def save(self, response: Any, data: dict[str, Any]) -> None:
+        """Encode *data* and set it as a signed cookie on *response*."""
+        token = self.encode(data)
+        response.set_cookie(
+            key=self.cookie_name,
+            value=token,
+            max_age=self._session_ttl,
+            path="/",
+            secure=self.secure,
+            httponly=True,
+            samesite="strict",
+        )

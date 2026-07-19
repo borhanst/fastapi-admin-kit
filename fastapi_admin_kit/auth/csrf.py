@@ -61,7 +61,7 @@ def _verify_csrf_token(secret_key: str, token: str) -> bool:
     return True
 
 
-def set_csrf_cookie(response: Response, secret_key: str) -> str:
+def set_csrf_cookie(response: Response, secret_key: str, secure: bool = False) -> str:
     """Generate and set the CSRF cookie on a response. Returns the token."""
     token = generate_csrf_token(secret_key)
     response.set_cookie(
@@ -69,7 +69,7 @@ def set_csrf_cookie(response: Response, secret_key: str) -> str:
         value=token,
         max_age=CSRF_TOKEN_MAX_AGE,
         path="/",
-        secure=False,
+        secure=secure,
         httponly=False,
         samesite="strict",
     )
@@ -193,12 +193,15 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
         # Set CSRF cookie on all responses so it's always present
         if secret_key:
+            # Use session backend's secure setting for CSRF cookie
+            session_backend = getattr(request.app.state, "admin_session_backend", None)
+            cookie_secure = getattr(session_backend, "secure", False)
             response.set_cookie(
                 key=CSRF_COOKIE_NAME,
                 value=csrf_token,
                 max_age=CSRF_TOKEN_MAX_AGE,
                 path="/",
-                secure=False,
+                secure=cookie_secure,
                 httponly=False,
                 samesite="strict",
             )

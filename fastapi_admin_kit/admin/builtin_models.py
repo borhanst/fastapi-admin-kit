@@ -69,8 +69,31 @@ class UserAdmin(ModelAdmin):
             data["hashed_password"] = ""
         return data
 
+    def validate_create(self, data, request=None):
+        """Validate user creation data — require password and validate strength."""
+        from fastapi_admin_kit.auth.password import validate_password_strength
+
+        password = data.get("password", "")
+        if not password:
+            raise ValueError("Password is required for new users.")
+        errors = validate_password_strength(password)
+        if errors:
+            raise ValueError(errors[0])
+        return data
+
     def on_create(self, obj, request=None):
         pass
+
+    def validate_update(self, obj, data, request=None):
+        """Validate user update data — validate password strength if changed."""
+        from fastapi_admin_kit.auth.password import validate_password_strength
+
+        password = data.get("password", "")
+        if password:
+            errors = validate_password_strength(password)
+            if errors:
+                raise ValueError(errors[0])
+        return data
 
     def on_update(self, obj, data, request=None):
         pass
@@ -121,7 +144,8 @@ class UserAdmin(ModelAdmin):
             request.state._admin_perm_pending_ops = []
         request.state._admin_perm_pending_ops.extend(ops)
 
-    def get_form_context(self, context, obj=None, request=None):
+    async def get_form_context(self, context, obj=None, request=None):
+        """Load direct permissions for the user being edited."""
         from sqlalchemy import select
 
         from fastapi_admin_kit.auth.models import UserPermission
@@ -131,24 +155,10 @@ class UserAdmin(ModelAdmin):
         if obj is not None and request is not None:
             try:
                 session = get_db_session(request)
-                import asyncio
-
-                async def _load_perms():
-                    result = await session.execute(
-                        select(UserPermission).where(UserPermission.user_id == obj.id)
-                    )
-                    return result.scalars().all()
-
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    import concurrent.futures
-
-                    with concurrent.futures.ThreadPoolExecutor() as pool:
-                        perms = pool.submit(asyncio.run, _load_perms()).result()
-                else:
-                    perms = loop.run_until_complete(_load_perms())
-
-                for p in perms:
+                result = await session.execute(
+                    select(UserPermission).where(UserPermission.user_id == obj.id)
+                )
+                for p in result.scalars():
                     perm_data[p.table_name] = {
                         "_label": p.table_name,
                         "view": p.can_view,
@@ -164,39 +174,22 @@ class UserAdmin(ModelAdmin):
         return context
 
     def process_form_data(self, data, request=None):
-        if request is not None:
-            import asyncio
-
-            async def _get_perm_data():
-                form = await request.form()
-                return form.get("perm_data", "{}")
-
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-
-            if loop and loop.is_running():
-                import concurrent.futures
-
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    perm_data_raw = pool.submit(asyncio.run, _get_perm_data()).result()
-            elif loop:
-                perm_data_raw = loop.run_until_complete(_get_perm_data())
-            else:
-                perm_data_raw = asyncio.run(_get_perm_data())
-        else:
-            perm_data_raw = "{}"
-
+        """Extract perm_data from form data and store on request for after_create/after_update."""
         import json
 
-        try:
-            perm_data = json.loads(perm_data_raw)
-        except (json.JSONDecodeError, TypeError):
-            perm_data = {}
+        perm_data_raw = data.pop("perm_data", None)
+        if perm_data_raw is None and request is not None:
+            # Fallback: try to get from request state if already parsed
+            perm_data_raw = getattr(request.state, "_admin_perm_data_raw", None)
 
-        if request is not None and perm_data:
-            request.state._admin_perm_data = perm_data
+        if perm_data_raw is not None:
+            try:
+                perm_data = json.loads(perm_data_raw) if isinstance(perm_data_raw, str) else perm_data_raw
+            except (json.JSONDecodeError, TypeError):
+                perm_data = {}
+
+            if request is not None and perm_data:
+                request.state._admin_perm_data = perm_data
 
         return data
 
@@ -273,14 +266,15 @@ class UserTOTPAdmin(ModelAdmin):
     icon = "lock"
     verbose_name = "2FA Token"
     verbose_name_plural = "2FA Tokens"
-    list_display = ["id", "user_id", "enabled", "secret_key", "created_at"]
+    list_display = ["id", "user_id", "enabled", "created_at"]
+    exclude = ["secret_key", "backup_codes"]
 
 
 class UserPermissionAdmin(ModelAdmin):
     tag = "admin"
     icon = "lock"
-    verbose_name = "User Permission---"
-    verbose_name_plural = "User Permissions---"
+    verbose_name = "User Permission"
+    verbose_name_plural = "User Permissions"
     list_display = [
         "id",
         "user",
