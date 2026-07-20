@@ -10,9 +10,11 @@ from fastapi import Request
 async def inject_sidebar_context(request: Request, context: dict[str, Any]) -> dict[str, Any]:
     """Inject nav_groups + permissions_map into a template context dict."""
     admin_instance: Any = request.app.state.admin
+    user = getattr(request.state, "admin_user", None)
+    if "current_user" not in context:
+        snapshot = getattr(request.state, "admin_user_snapshot", None)
+        context["current_user"] = snapshot or user
     if hasattr(admin_instance, "build_sidebar_context"):
-        user = getattr(request.state, "admin_user", None)
-
         snapshot = getattr(request.state, "admin_user_snapshot", None)
         is_superuser = (
             (

@@ -72,13 +72,14 @@ class UserAdmin(ModelAdmin):
     def validate_create(self, data, request=None):
         """Validate user creation data — require password and validate strength."""
         from fastapi_admin_kit.auth.password import validate_password_strength
+        from fastapi_admin_kit.types import FieldError
 
         password = data.get("password", "")
         if not password:
-            raise ValueError("Password is required for new users.")
+            raise FieldError({"password": ["Password is required for new users."]})
         errors = validate_password_strength(password)
         if errors:
-            raise ValueError(errors[0])
+            raise FieldError({"password": errors})
         return data
 
     def on_create(self, obj, request=None):
@@ -87,12 +88,13 @@ class UserAdmin(ModelAdmin):
     def validate_update(self, obj, data, request=None):
         """Validate user update data — validate password strength if changed."""
         from fastapi_admin_kit.auth.password import validate_password_strength
+        from fastapi_admin_kit.types import FieldError
 
         password = data.get("password", "")
         if password:
             errors = validate_password_strength(password)
             if errors:
-                raise ValueError(errors[0])
+                raise FieldError({"password": errors})
         return data
 
     def on_update(self, obj, data, request=None):
@@ -166,8 +168,10 @@ class UserAdmin(ModelAdmin):
                         "edit": p.can_edit,
                         "delete": p.can_delete,
                     }
-            except Exception:
-                pass
+            except Exception as exc:
+                import logging
+
+                logging.getLogger(__name__).debug("Permission load failed: %s", exc)
 
         context["perm_data"] = perm_data
         context["search_url"] = "/admin/tables/search"
@@ -184,7 +188,10 @@ class UserAdmin(ModelAdmin):
 
         if perm_data_raw is not None:
             try:
-                perm_data = json.loads(perm_data_raw) if isinstance(perm_data_raw, str) else perm_data_raw
+                if isinstance(perm_data_raw, str):
+                    perm_data = json.loads(perm_data_raw)
+                else:
+                    perm_data = perm_data_raw
             except (json.JSONDecodeError, TypeError):
                 perm_data = {}
 

@@ -24,7 +24,7 @@ async def _require_superuser(
     return user
 
 
-@router.get("/audit")
+@router.get("/audit-log")
 async def audit_list_view(
     request: Request,
     model: str | None = Query(None, description="Filter by model name"),
@@ -112,7 +112,7 @@ async def audit_list_view(
     )
 
 
-@router.get("/audit/{entry_id}")
+@router.get("/audit-log/{entry_id}")
 async def audit_detail_view(
     request: Request,
     entry_id: int,

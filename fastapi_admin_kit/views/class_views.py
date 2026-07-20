@@ -17,6 +17,7 @@ from fastapi_admin_kit.admin.builtin_models import flush_pending_perm_ops
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.flash import add_flash
 from fastapi_admin_kit.registry import RegisteredModel
+from fastapi_admin_kit.types import FieldError
 from fastapi_admin_kit.views.context import DisplayColumn
 from fastapi_admin_kit.views.renderers import (
     DefaultQueryProvider,
@@ -436,7 +437,18 @@ class CreateView(BaseView):
             return await self.html_renderer.render(request, ctx)
 
         try:
-            parsed = self.admin.validate_create(parsed, request)
+            result = self.admin.validate_create(parsed, request)
+        except FieldError as e:
+            session = get_db_session(request)
+            await session.rollback()
+            ctx = await self._build_form_context(
+                request,
+                values=parsed,
+                errors=e.field_errors,
+                is_create=True,
+                checker=checker,
+            )
+            return await self.html_renderer.render(request, ctx)
         except ValueError as e:
             session = get_db_session(request)
             await session.rollback()
@@ -448,6 +460,8 @@ class CreateView(BaseView):
                 checker=checker,
             )
             return await self.html_renderer.render(request, ctx)
+
+        parsed = result
 
         parsed = self.admin.process_form_data(parsed, request)
 
@@ -699,7 +713,21 @@ class EditView(BaseView):
             return await self.html_renderer.render(request, ctx)
 
         try:
-            parsed = self.admin.validate_update(obj, parsed, request)
+            result = self.admin.validate_update(obj, parsed, request)
+        except FieldError as e:
+            session = get_db_session(request)
+            await session.rollback()
+            await session.refresh(obj)
+            rel_labels = await self._resolve_rel_labels(obj, request)
+            ctx = await self._build_form_context(
+                request,
+                obj=obj,
+                values=parsed,
+                errors=e.field_errors,
+                checker=checker,
+                rel_labels=rel_labels,
+            )
+            return await self.html_renderer.render(request, ctx)
         except ValueError as e:
             session = get_db_session(request)
             await session.rollback()
@@ -714,6 +742,8 @@ class EditView(BaseView):
                 rel_labels=rel_labels,
             )
             return await self.html_renderer.render(request, ctx)
+
+        parsed = result
 
         parsed = self.admin.process_form_data(parsed, request)
 

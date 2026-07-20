@@ -71,7 +71,7 @@ def set_csrf_cookie(response: Response, secret_key: str, secure: bool = False) -
         path="/",
         secure=secure,
         httponly=False,
-        samesite="strict",
+        samesite="lax",
     )
     return token
 
@@ -193,17 +193,19 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
         # Set CSRF cookie on all responses so it's always present
         if secret_key:
-            # Use session backend's secure setting for CSRF cookie
-            session_backend = getattr(request.app.state, "admin_session_backend", None)
-            cookie_secure = getattr(session_backend, "secure", False)
+            # Derive secure flag from actual request scheme, not session backend config.
+            # The session backend's secure flag may be True (production default), but
+            # if the request came over HTTP (dev), setting Secure=True causes browsers
+            # to silently discard the cookie — breaking the entire CSRF double-submit.
+            is_https = request.url.scheme == "https"
             response.set_cookie(
                 key=CSRF_COOKIE_NAME,
                 value=csrf_token,
                 max_age=CSRF_TOKEN_MAX_AGE,
                 path="/",
-                secure=cookie_secure,
+                secure=is_https,
                 httponly=False,
-                samesite="strict",
+                samesite="lax",
             )
 
         return response
@@ -243,12 +245,36 @@ async def forbidden_handler(request: Request, exc: HTTPException) -> Response:
     """Exception handler for 403 Forbidden errors.
 
     Returns HTML error page for browser requests, JSON for API clients.
+    For unauthenticated users (CSRF errors on login), redirects back to login.
     """
     if exc.status_code == 403:
         accept = request.headers.get("accept", "")
-        if "text/html" in accept or "text/xhtml" in accept:
+        is_html = "text/html" in accept or "text/xhtml" in accept
+
+        # Check if user is authenticated by reading the session cookie
+        is_authenticated = False
+        session_backend = getattr(request.app.state, "admin_session_backend", None)
+        if session_backend is not None:
+            session_token = request.cookies.get(
+                getattr(session_backend, "cookie_name", "admin_session")
+            )
+            if session_token:
+                session_payload = session_backend.decode(session_token)
+                if session_payload is not None:
+                    is_authenticated = True
+
+        admin_path = request.app.state.admin_config["admin_path"]
+
+        # Unauthenticated users get redirected to login with error message
+        if not is_authenticated and is_html:
+            from urllib.parse import quote
+
+            error_msg = exc.detail or "Session expired. Please log in again."
+            redirect_url = f"{admin_path}/login?error={quote(error_msg)}"
+            return RedirectResponse(url=redirect_url, status_code=302)
+
+        if is_html:
             templates = request.app.state.admin_jinja_env
-            admin_path = request.app.state.admin_config["admin_path"]
             detail = exc.detail or "You do not have permission to access this resource."
             return templates.TemplateResponse(
                 request,

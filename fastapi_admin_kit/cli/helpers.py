@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def resolve_table_names(names: list[str], app_module: str | None = None) -> dict[str, str]:
     """Resolve class names or table names to actual table names.
@@ -48,10 +52,9 @@ def resolve_table_names(names: list[str], app_module: str | None = None) -> dict
             module_name = app_module.split(":")[0]
             importlib.import_module(module_name)
         except Exception as exc:
-            print(f"Warning: could not import '{app_module}': {exc}")
+            logger.warning("Could not import '%s': %s", app_module, exc)
 
     # Discover user-defined models via SQLAlchemy declarative registry
-    print("all models", _all_declarative_subclasses(DeclarativeBase))
     try:
         for subclass in _all_declarative_subclasses(DeclarativeBase):
             if hasattr(subclass, "registry"):

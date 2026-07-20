@@ -6,26 +6,46 @@ Get a fully functional admin panel running in 5 minutes.
 
 ```python
 # main.py
+import os
+import secrets
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
-from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, Session
+from sqlalchemy import Column, Integer, String, Float, Boolean
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-from fastapi_admin_kit import Admin, DatabaseConfig
+from fastapi_admin_kit import Admin
+from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
+from fastapi_admin_kit.auth.mixins import AuthModelMixin
+from fastapi_admin_kit.auth.models import Role, admin_user_roles
+from sqlalchemy.orm import relationship
 
-# Database setup — pick one:
+# Database
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./app.db")
+SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
 
-# Option A: Create engine manually
-engine = create_engine("sqlite:///example.db")
+engine = create_async_engine(DATABASE_URL)
+async_session = sessionmaker(engine, class_=AsyncSession)
 
-# Option B: Use DatabaseConfig (auto-creates async engine, normalizes URL)
-# db_config = DatabaseConfig(url="sqlite:///example.db")
 
 class Base(DeclarativeBase):
     pass
 
-# Your models
-from sqlalchemy import Column, Integer, String, Float, Boolean
 
+# User model (required for built-in auth)
+class User(AuthModelMixin, Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), unique=True, nullable=False)
+    full_name = Column(String(255))
+
+    roles = relationship(
+        "Role", secondary=admin_user_roles, back_populates="users"
+    )
+
+
+# Your models
 class Product(Base):
     __tablename__ = "products"
     id = Column(Integer, primary_key=True)
@@ -34,27 +54,27 @@ class Product(Base):
     stock = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
 
-# Create tables
-Base.metadata.create_all(engine)
 
-# FastAPI app
-app = FastAPI()
+# Create tables and initialize admin
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    await admin.setup()
+    yield
+    await engine.dispose()
 
-# Initialize admin — pick one:
 
-# Option A: Pass engine directly
+app = FastAPI(lifespan=lifespan)
+
 admin = Admin(
     app=app,
     engine=engine,
-    secret_key="your-secret-key-change-in-production",
+    base=Base,
+    secret_key=SECRET_KEY,
+    auth_model=User,
+    auth_backend=BuiltinAuthBackend(),
 )
-
-# Option B: Pass database_config (engine created automatically)
-# admin = Admin(
-#     app=app,
-#     database_config=db_config,
-#     secret_key="your-secret-key-change-in-production",
-# )
 
 admin.register(Product)
 ```
@@ -62,6 +82,7 @@ admin.register(Product)
 ## Step 2: Run the Server
 
 ```bash
+pip install fastapi-admin-kit[full]
 uvicorn main:app --reload
 ```
 
@@ -135,6 +156,8 @@ class ProductAdmin(ModelAdmin):
 | Delete | Confirmation dialog before deletion |
 | Audit log | All changes tracked automatically |
 | RBAC | Role-based permissions per model |
+| Command palette | `Cmd+K` / `Ctrl+K` global search |
+| Inline editing | Edit records from the list view |
 
 ## Next Steps
 

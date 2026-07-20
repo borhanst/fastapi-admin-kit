@@ -76,19 +76,31 @@ class SignedCookieSessionBackend(SessionBackend):
         except (BadSignature, SignatureExpired, ValueError):
             return None
 
+    def should_secure(self, request: Any) -> bool:
+        """Return True only when the configured secure flag is set AND the
+        current request arrived over HTTPS.  This prevents browsers from
+        dropping the cookie on plain-HTTP dev servers."""
+        if not self.secure:
+            return False
+        return getattr(request.url, "scheme", "") == "https"
+
     def load(self, token: str | None) -> dict[str, Any] | None:
         """Alias for decode — used by flash message system."""
         return self.decode(token)
 
-    def save(self, response: Any, data: dict[str, Any]) -> None:
+    def save(self, response: Any, data: dict[str, Any], *, request: Any | None = None) -> None:
         """Encode *data* and set it as a signed cookie on *response*."""
         token = self.encode(data)
+        if request is not None:
+            secure = self.should_secure(request)
+        else:
+            secure = self.secure
         response.set_cookie(
             key=self.cookie_name,
             value=token,
             max_age=self._session_ttl,
             path="/",
-            secure=self.secure,
+            secure=secure,
             httponly=True,
             samesite="strict",
         )

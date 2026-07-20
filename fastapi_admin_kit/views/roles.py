@@ -136,7 +136,7 @@ async def role_create_view(
                 "role": None,
                 "perm_ids": [],
                 "perm_search_url": (
-                    f"{request.app.state.admin_config['admin_path']}" "/permissions/search"
+                    f"{request.app.state.admin_config['admin_path']}/permissions/search"
                 ),
             },
         ),
@@ -220,7 +220,7 @@ async def role_edit_view(
                 "role": role,
                 "perm_ids": perm_ids,
                 "perm_search_url": (
-                    f"{request.app.state.admin_config['admin_path']}" "/permissions/search"
+                    f"{request.app.state.admin_config['admin_path']}/permissions/search"
                 ),
             },
         ),

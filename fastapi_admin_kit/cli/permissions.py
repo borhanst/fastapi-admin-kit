@@ -22,7 +22,10 @@ async def _create_permissions(args: argparse.Namespace) -> None:
     from .user import _resolve_database_url
 
     database_url = _resolve_database_url(args.database_url)
-    engine = create_async_engine(database_url, poolclass=NullPool)
+    connect_args = {}
+    if database_url.startswith("sqlite"):
+        connect_args = {"timeout": 30}
+    engine = create_async_engine(database_url, poolclass=NullPool, connect_args=connect_args)
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -67,32 +70,33 @@ async def _create_permissions(args: argparse.Namespace) -> None:
     skipped = 0
 
     async with async_session() as session:
-        for input_name, table_name in resolved.items():
-            print(f"  Resolving '{input_name}' -> table_name='{table_name}'")
-            for action in ACTIONS:
-                perm_name = f"{table_name}_{action}"
+        async with session.no_autoflush:
+            for input_name, table_name in resolved.items():
+                print(f"  Resolving '{input_name}' -> table_name='{table_name}'")
+                for action in ACTIONS:
+                    perm_name = f"{table_name}_{action}"
 
-                result = await session.execute(
-                    select(Permission).where(Permission.name == perm_name)
-                )
-                existing = result.scalar_one_or_none()
+                    result = await session.execute(
+                        select(Permission).where(Permission.name == perm_name)
+                    )
+                    existing = result.scalar_one_or_none()
 
-                if existing:
-                    skipped += 1
-                    continue
+                    if existing:
+                        skipped += 1
+                        continue
 
-                perm = Permission(
-                    name=perm_name,
-                    table_name=table_name,
-                    can_view=(action == "view"),
-                    can_create=(action == "create"),
-                    can_edit=(action == "edit"),
-                    can_delete=(action == "delete"),
-                )
-                session.add(perm)
-                created += 1
+                    perm = Permission(
+                        name=perm_name,
+                        table_name=table_name,
+                        can_view=(action == "view"),
+                        can_create=(action == "create"),
+                        can_edit=(action == "edit"),
+                        can_delete=(action == "delete"),
+                    )
+                    session.add(perm)
+                    created += 1
 
-        await session.commit()
+            await session.commit()
 
     await engine.dispose()
 
@@ -112,7 +116,10 @@ async def _delete_permissions(args: argparse.Namespace) -> None:
     from .user import _resolve_database_url
 
     database_url = _resolve_database_url(args.database_url)
-    engine = create_async_engine(database_url, poolclass=NullPool)
+    connect_args = {}
+    if database_url.startswith("sqlite"):
+        connect_args = {"timeout": 30}
+    engine = create_async_engine(database_url, poolclass=NullPool, connect_args=connect_args)
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
