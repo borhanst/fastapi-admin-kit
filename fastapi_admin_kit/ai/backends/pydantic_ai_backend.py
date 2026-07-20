@@ -82,7 +82,7 @@ class PydanticAIAgent(AIAgent):
                 "pydantic-ai is not installed. Install with: pip install pydantic-ai"
             )
 
-        start = time.perf_counter()
+        start = time.perfgit_counter()
         result = await self._agent.run(message, deps=deps, message_history=message_history)
         latency_ms = int((time.perf_counter() - start) * 1000)
 
