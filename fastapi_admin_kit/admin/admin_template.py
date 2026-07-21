@@ -65,6 +65,7 @@ class AdminTemplate:
             user = getattr(request.state, "admin_user", None)
 
         snapshot = getattr(request.state, "admin_user_snapshot", None)
+        user_for_template = snapshot if snapshot else user
         is_superuser = (
             (
                 bool(snapshot.get("is_superuser", False))
@@ -120,8 +121,10 @@ class AdminTemplate:
                                         can_edit=perm.can_edit,
                                         can_delete=perm.can_delete,
                                     )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        import logging
+
+                        logging.getLogger(__name__).debug("Permission query failed: %s", exc)
 
         def _item_visible(item: Any) -> bool:
             return (
@@ -181,7 +184,7 @@ class AdminTemplate:
         return {
             "nav_groups": filtered_groups,
             "permissions_map": permissions_map,
-            "current_user": user,
+            "current_user": user_for_template,
             "dashboard_visible": dashboard_visible,
             "settings_visible": settings_visible,
         }

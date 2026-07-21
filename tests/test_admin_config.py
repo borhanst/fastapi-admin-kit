@@ -21,7 +21,7 @@ class TestAuthConfig:
         assert config.auth_backend is None
         assert config.session_ttl == 28800
         assert config.session_cookie_name == "admin_session"
-        assert config.session_secure is False
+        assert config.session_secure is True
         assert config.superuser_emails == []
 
     def test_init_with_values(self):

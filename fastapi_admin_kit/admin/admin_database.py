@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
+import logging
+import re
 from typing import Any
 
 from fastapi_admin_kit.config.database import DatabaseConfig
+
+logger = logging.getLogger(__name__)
+
+_TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validate_identifier(name: str, kind: str = "table") -> str:
+    """Validate a SQL identifier to prevent injection."""
+    if not _TABLE_NAME_RE.match(name):
+        raise ValueError(f"Invalid {kind} name: {name!r}")
+    return name
 
 
 class AdminDatabase:
@@ -71,9 +84,11 @@ class AdminDatabase:
         for table_name, table in metadata.tables.items():
             if not inspector.has_table(table_name):
                 continue
+            safe_table = _validate_identifier(table_name)
             existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
             for col in table.columns:
                 if col.name not in existing_cols:
+                    safe_col = _validate_identifier(col.name, "column")
                     col_type = col.type.compile(self.engine.dialect)
                     nullable = "NULL" if col.nullable else "NOT NULL"
                     default = ""
@@ -85,8 +100,8 @@ class AdminDatabase:
                     elif col.default is not None and col.default.is_seq:
                         pass
                     sql = text(
-                        f"""ALTER TABLE {table_name}
-                        ADD COLUMN {col.name} {col_type}
+                        f"""ALTER TABLE {safe_table}
+                        ADD COLUMN {safe_col} {col_type}
                         {nullable}{default}"""
                     )
                     with self.engine.begin() as conn:
@@ -107,9 +122,11 @@ class AdminDatabase:
         for table_name, table in metadata.tables.items():
             if not inspector.has_table(table_name):
                 continue
+            safe_table = _validate_identifier(table_name)
             existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
             for col in table.columns:
                 if col.name not in existing_cols:
+                    safe_col = _validate_identifier(col.name, "column")
                     col_type = col.type.compile(dialect)
                     nullable = "NULL" if col.nullable else "NOT NULL"
                     default = ""
@@ -121,16 +138,20 @@ class AdminDatabase:
                     elif not col.nullable:
                         # SQLite requires a default for NOT NULL columns being added
                         type_defaults = {
-                            "VARCHAR": "''", "TEXT": "''", "INTEGER": "0",
-                            "FLOAT": "0.0", "BOOLEAN": "0", "DATETIME": "''",
+                            "VARCHAR": "''",
+                            "TEXT": "''",
+                            "INTEGER": "0",
+                            "FLOAT": "0.0",
+                            "BOOLEAN": "0",
+                            "DATETIME": "''",
                         }
                         sql_type = col_type.upper().split("(")[0]
                         temp_val = type_defaults.get(sql_type, "''")
                         default = f" DEFAULT {temp_val}"
                     sql = text(
-                        f"""ALTER TABLE {table_name}
+                        f"""ALTER TABLE {safe_table}
                         ADD COLUMN
-                        {col.name} {col_type} {nullable}{default}
+                        {safe_col} {col_type} {nullable}{default}
                         """
                     )
                     sync_conn.execute(sql)
