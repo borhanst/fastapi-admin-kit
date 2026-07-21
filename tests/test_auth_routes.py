@@ -79,6 +79,7 @@ def client(engine, admin_user):
         auth_backend=BuiltinAuthBackend(),
         secret_key=SECRET_KEY,
         auto_discover=False,
+        session_secure=False,  # Test client uses HTTP, not HTTPS
     )
     app = FastAPI()
     asyncio.run(admin.setup(app))

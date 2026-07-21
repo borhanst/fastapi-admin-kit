@@ -237,6 +237,7 @@ class TestAdminTemplate:
         """Test build_sidebar_context without user."""
         mock_request = MagicMock()
         mock_request.state.admin_user = None
+        mock_request.state.admin_user_snapshot = None
         template = AdminTemplate()
 
         with patch(
@@ -253,6 +254,7 @@ class TestAdminTemplate:
         mock_request = MagicMock()
         mock_user = MagicMock()
         mock_request.state.admin_user = mock_user
+        mock_request.state.admin_user_snapshot = None
 
         template = AdminTemplate()
 

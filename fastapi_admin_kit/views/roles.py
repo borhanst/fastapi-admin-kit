@@ -69,7 +69,7 @@ async def permissions_search(
             result = await session.execute(select(Permission).where(Permission.id.in_(id_list)))
             perms = result.scalars().all()
             return JSONResponse(
-                content=[{"id": p.id, "label": p.name, "table_name": p.table_name} for p in perms]
+                content=[{"id": p.id, "name": p.name, "table_name": p.table_name} for p in perms]
             )
 
     query = select(Permission)
@@ -81,7 +81,7 @@ async def permissions_search(
     perms = result.scalars().all()
 
     return JSONResponse(
-        content=[{"id": p.id, "label": p.name, "table_name": p.table_name} for p in perms]
+        content=[{"id": p.id, "name": p.name, "table_name": p.table_name} for p in perms]
     )
 
 
@@ -136,7 +136,7 @@ async def role_create_view(
                 "role": None,
                 "perm_ids": [],
                 "perm_search_url": (
-                    f"{request.app.state.admin_config['admin_path']}" "/permissions/search"
+                    f"{request.app.state.admin_config['admin_path']}/permissions/search"
                 ),
             },
         ),
@@ -220,7 +220,7 @@ async def role_edit_view(
                 "role": role,
                 "perm_ids": perm_ids,
                 "perm_search_url": (
-                    f"{request.app.state.admin_config['admin_path']}" "/permissions/search"
+                    f"{request.app.state.admin_config['admin_path']}/permissions/search"
                 ),
             },
         ),
