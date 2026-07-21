@@ -138,6 +138,82 @@ async def _create_permissions(args: argparse.Namespace) -> None:
     print(f"\nPermissions created: {created}, skipped (already exist): {skipped}")
 
 
+async def _create_admin_permissions(args: argparse.Namespace) -> None:
+    """Create 4 CRUD permissions for all admin models.
+
+    Finds all models by scanning subclasses of the admin Base class.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import NullPool
+
+    from fastapi_admin_kit.auth.models import Permission
+    from fastapi_admin_kit.models.base import Base
+
+    from .helpers import resolve_models_from_base
+    from .user import _resolve_database_url
+
+    admin_base_path = "fastapi_admin_kit.models.base.Base"
+
+    models = resolve_models_from_base(admin_base_path)
+    if not models:
+        print("No admin models found.")
+        return
+
+    table_names: dict[str, str] = {}
+    print(f"Found {len(models)} admin model(s):")
+    for cls in models:
+        table_names[cls.__name__] = cls.__tablename__
+        print(f"  {cls.__name__} -> {cls.__tablename__}")
+
+    database_url = _resolve_database_url(args.database_url)
+    connect_args = {}
+    if database_url.startswith("sqlite"):
+        connect_args = {"timeout": 30}
+    engine = create_async_engine(database_url, poolclass=NullPool, connect_args=connect_args)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    created = 0
+    skipped = 0
+
+    async with async_session() as session:
+        with session.no_autoflush:
+            for display_name, table_name in table_names.items():
+                for action in ACTIONS:
+                    perm_name = f"{table_name}_{action}"
+
+                    result = await session.execute(
+                        select(Permission).where(Permission.name == perm_name)
+                    )
+                    existing = result.scalar_one_or_none()
+
+                    if existing:
+                        skipped += 1
+                        continue
+
+                    perm = Permission(
+                        name=perm_name,
+                        table_name=table_name,
+                        can_view=(action == "view"),
+                        can_create=(action == "create"),
+                        can_edit=(action == "edit"),
+                        can_delete=(action == "delete"),
+                    )
+                    session.add(perm)
+                    created += 1
+
+            await session.commit()
+
+    await engine.dispose()
+
+    print(f"\nPermissions created: {created}, skipped (already exist): {skipped}")
+
+
 async def _delete_permissions(args: argparse.Namespace) -> None:
     """Delete all permissions and clear role-permission associations."""
     from sqlalchemy import delete
@@ -209,6 +285,17 @@ def register_permission_commands(subparsers) -> None:
         help="Database URL (or set DATABASE_URL env var)",
     )
 
+    admin_perm_parser = subparsers.add_parser(
+        "createadminpermissions",
+        help="Create CRUD permissions for all admin models",
+    )
+    admin_perm_parser.add_argument(
+        "-d",
+        "--database-url",
+        default=None,
+        help="Database URL (or set DATABASE_URL env var)",
+    )
+
     del_parser = subparsers.add_parser(
         "deletepermissions",
         help="Delete all permissions and role-permission associations",
@@ -231,5 +318,7 @@ def handle_permission_command(args: argparse.Namespace) -> None:
     """Dispatch permission management commands."""
     if args.command == "createpermissions":
         asyncio.run(_create_permissions(args))
+    elif args.command == "createadminpermissions":
+        asyncio.run(_create_admin_permissions(args))
     elif args.command == "deletepermissions":
         asyncio.run(_delete_permissions(args))

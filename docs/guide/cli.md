@@ -83,6 +83,18 @@ fak createpermissions User Product
 | `-a, --app` | App module to import for model discovery (e.g., `example:app`) |
 | `-d, --database-url` | Database URL |
 
+### createadminpermissions
+
+Create permissions for all admin models (scans subclasses of the admin Base class):
+
+```bash
+fak createadminpermissions
+```
+
+| Option | Description |
+|--------|-------------|
+| `-d, --database-url` | Database URL |
+
 ### deletepermissions
 
 Delete permissions for specified tables:

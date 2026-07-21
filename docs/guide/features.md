@@ -202,6 +202,7 @@ Everything FastAPI Admin Kit offers, in one place.
 | `users` | List all admin users | [CLI Tools](cli.md) |
 | `changepassword` | Change a user's password | [CLI Tools](cli.md) |
 | `createpermissions` | Create permissions for tables | [CLI Tools](cli.md) |
+| `createadminpermissions` | Create permissions for all admin-registered models | [CLI Tools](cli.md) |
 | `deletepermissions` | Delete permissions for tables | [CLI Tools](cli.md) |
 | `migrate` | Add missing columns or drop obsolete columns | [CLI Tools](cli.md) |
 | `migrate-permissions` | Convert old shared permissions to per-role format | [CLI Tools](cli.md) |
