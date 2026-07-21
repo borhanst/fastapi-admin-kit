@@ -276,10 +276,17 @@ async def forbidden_handler(request: Request, exc: HTTPException) -> Response:
         if is_html:
             templates = request.app.state.admin_jinja_env
             detail = exc.detail or "You do not have permission to access this resource."
+            context = {"admin_path": admin_path, "detail": detail}
+            try:
+                from fastapi_admin_kit.views.sidebar import inject_sidebar_context
+
+                await inject_sidebar_context(request, context)
+            except Exception:
+                pass
             return templates.TemplateResponse(
                 request,
                 "pages/403.html",
-                {"admin_path": admin_path, "detail": detail},
+                context,
                 status_code=403,
             )
         from starlette.responses import JSONResponse

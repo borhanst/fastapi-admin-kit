@@ -421,6 +421,24 @@ class CreateView(BaseView):
 
         # POST
         parsed, errors = await self.form_parser.parse(request)
+
+        # Extract perm_data for User model direct permissions
+        if self.registered.table_name == "admin_users":
+            import json
+
+            form = await request.form()
+            perm_data_raw = form.get("perm_data")
+            if perm_data_raw:
+                try:
+                    perm_data = (
+                        json.loads(perm_data_raw)
+                        if isinstance(perm_data_raw, str)
+                        else perm_data_raw
+                    )
+                    request.state._admin_perm_data = perm_data
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
         if errors:
             session = get_db_session(request)
             await session.rollback()
@@ -694,6 +712,24 @@ class EditView(BaseView):
 
         # POST
         parsed, errors = await self.form_parser.parse(request, obj=obj)
+
+        # Extract perm_data for User model direct permissions
+        if self.registered.table_name == "admin_users":
+            import json
+
+            form = await request.form()
+            perm_data_raw = form.get("perm_data")
+            if perm_data_raw:
+                try:
+                    perm_data = (
+                        json.loads(perm_data_raw)
+                        if isinstance(perm_data_raw, str)
+                        else perm_data_raw
+                    )
+                    request.state._admin_perm_data = perm_data
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
         if errors:
             session = get_db_session(request)
             await session.rollback()

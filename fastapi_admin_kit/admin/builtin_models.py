@@ -7,8 +7,33 @@ from fastapi_admin_kit.widgets.relation import MultiRelationWidget
 
 
 async def flush_pending_perm_ops(request):
-    """No-op — direct permissions are now saved immediately."""
-    pass
+    """Flush pending direct-permission writes for the user on the request."""
+    from sqlalchemy import delete
+
+    from fastapi_admin_kit.auth.models import UserPermission
+    from fastapi_admin_kit.db import get_db_session
+
+    perm_ids = getattr(request.state, "_admin_perm_perm_ids", None)
+    if not perm_ids or not isinstance(perm_ids, list):
+        return
+
+    # Get the user object from request state
+    user_obj = getattr(request.state, "_admin_perm_user_obj", None)
+    if user_obj is None:
+        return
+
+    request.state._admin_perm_perm_ids = None
+    session = get_db_session(request)
+    if session is None:
+        return
+
+    # Delete existing direct permissions
+    await session.execute(delete(UserPermission).where(UserPermission.user_id == user_obj.id))
+
+    # Insert new permissions
+    for perm_id in perm_ids:
+        up = UserPermission(user_id=user_obj.id, permission_id=perm_id)
+        session.add(up)
 
 
 def _get_table_names() -> list[str]:
@@ -89,50 +114,16 @@ class UserAdmin(ModelAdmin):
             return
         perm_data = getattr(request.state, "_admin_perm_data", None)
         if perm_data:
-            self._save_direct_permissions_after_commit(obj, perm_data, request)
+            request.state._admin_perm_perm_ids = perm_data
+            request.state._admin_perm_user_obj = obj
 
     def after_update(self, obj, request=None):
         if request is None:
             return
         perm_data = getattr(request.state, "_admin_perm_data", None)
         if perm_data:
-            self._save_direct_permissions_after_commit(obj, perm_data, request)
-
-    def _save_direct_permissions_after_commit(self, obj, perm_data, request):
-        """Save direct user permissions after the user object is committed.
-
-        perm_data: list of permission IDs, e.g. [1, 3, 5]
-        """
-        import asyncio
-
-        from sqlalchemy import delete
-
-        from fastapi_admin_kit.auth.models import UserPermission
-
-        perm_ids = perm_data if isinstance(perm_data, list) else []
-
-        async def _do_save():
-            from fastapi_admin_kit.db import get_db_session
-
-            session = get_db_session(request)
-            # Delete existing direct permissions for this user
-            await session.execute(delete(UserPermission).where(UserPermission.user_id == obj.id))
-
-            # Insert new direct permissions
-            for perm_id in perm_ids:
-                up = UserPermission(user_id=obj.id, permission_id=perm_id)
-                session.add(up)
-
-            await session.commit()
-
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.ensure_future(_do_save())
-            else:
-                loop.run_until_complete(_do_save())
-        except RuntimeError:
-            asyncio.run(_do_save())
+            request.state._admin_perm_perm_ids = perm_data
+            request.state._admin_perm_user_obj = obj
 
     async def get_form_context(self, context, obj=None, request=None):
         """Load direct permissions for the user being edited."""
@@ -168,26 +159,11 @@ class UserAdmin(ModelAdmin):
         return context
 
     def process_form_data(self, data, request=None):
-        """Extract perm_data from form data and store on request for after_create/after_update."""
-        import json
+        """Extract perm_data from request state and store for after_create/after_update.
 
-        perm_data_raw = data.pop("perm_data", None)
-        if perm_data_raw is None and request is not None:
-            # Fallback: try to get from request state if already parsed
-            perm_data_raw = getattr(request.state, "_admin_perm_data_raw", None)
-
-        if perm_data_raw is not None:
-            try:
-                if isinstance(perm_data_raw, str):
-                    perm_data = json.loads(perm_data_raw)
-                else:
-                    perm_data = perm_data_raw
-            except (json.JSONDecodeError, TypeError):
-                perm_data = {}
-
-            if request is not None and perm_data:
-                request.state._admin_perm_data = perm_data
-
+        perm_data should already be extracted by the view and stored on
+        request.state._admin_perm_data before this is called.
+        """
         return data
 
 
