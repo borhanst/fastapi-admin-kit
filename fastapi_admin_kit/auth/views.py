@@ -113,7 +113,6 @@ async def login_post(
     auth_backend: AuthBackend = request.app.state.admin_auth_backend
     login_field = request.app.state.admin_config.get("login_field", "email")
     user = await auth_backend.authenticate(username, password, session, login_field=login_field)
-    print("render page", user)
     if user is not None:
         _login_rate_limiter.reset(client_ip)
         user.last_login = datetime.now(UTC)

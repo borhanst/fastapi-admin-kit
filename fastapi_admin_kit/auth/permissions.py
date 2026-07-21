@@ -96,10 +96,14 @@ class PermissionChecker:
 
         from sqlalchemy import select
 
+        from fastapi_admin_kit.auth.models import Permission
+
         result = await self.session.execute(
-            select(UserPermission).where(UserPermission.user_id == self._user_id)
+            select(UserPermission, Permission)
+            .join(Permission, UserPermission.permission_id == Permission.id)
+            .where(UserPermission.user_id == self._user_id)
         )
-        for perm in result.scalars():
+        for up, perm in result:
             table = perm.table_name
             if table not in self._direct_cache:
                 self._direct_cache[table] = PermissionSet()

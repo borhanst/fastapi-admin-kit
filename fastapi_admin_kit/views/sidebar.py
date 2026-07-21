@@ -77,19 +77,22 @@ async def inject_sidebar_context(request: Request, context: dict[str, Any]) -> d
                 # Load direct user permission overrides, merge on top
                 if user_id is not None:
                     result = await session.execute(
-                        select(UserPermission).where(UserPermission.user_id == user_id)
+                        select(UserPermission, Permission)
+                        .join(Permission, UserPermission.permission_id == Permission.id)
+                        .where(UserPermission.user_id == user_id)
                     )
-                    for perm in result.scalars():
-                        if perm.table_name in permissions_map:
-                            existing = permissions_map[perm.table_name]
-                            permissions_map[perm.table_name] = PermissionSet(
+                    for up, perm in result:
+                        table = perm.table_name
+                        if table in permissions_map:
+                            existing = permissions_map[table]
+                            permissions_map[table] = PermissionSet(
                                 can_view=existing.can_view or perm.can_view,
                                 can_create=existing.can_create or perm.can_create,
                                 can_edit=existing.can_edit or perm.can_edit,
                                 can_delete=existing.can_delete or perm.can_delete,
                             )
                         else:
-                            permissions_map[perm.table_name] = PermissionSet(
+                            permissions_map[table] = PermissionSet(
                                 can_view=perm.can_view,
                                 can_create=perm.can_create,
                                 can_edit=perm.can_edit,

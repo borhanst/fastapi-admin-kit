@@ -7,24 +7,8 @@ from fastapi_admin_kit.widgets.relation import MultiRelationWidget
 
 
 async def flush_pending_perm_ops(request):
-    """Execute any pending direct-permission writes on the request's session.
-
-    Called after ``after_create`` / ``after_update`` so the ops run on the
-    same session (and thus the same SQLite connection) as the main request.
-    """
-    from sqlalchemy import text
-
-    from fastapi_admin_kit.db import get_db_session
-
-    ops = getattr(request.state, "_admin_perm_pending_ops", None)
-    if not ops:
-        return
-    request.state._admin_perm_pending_ops = []
-    session = get_db_session(request)
-    if session is None:
-        return
-    for sql_str, params in ops:
-        await session.execute(text(sql_str), params)
+    """No-op — direct permissions are now saved immediately."""
+    pass
 
 
 def _get_table_names() -> list[str]:
@@ -115,66 +99,72 @@ class UserAdmin(ModelAdmin):
             self._save_direct_permissions_after_commit(obj, perm_data, request)
 
     def _save_direct_permissions_after_commit(self, obj, perm_data, request):
-        delete_sql = "DELETE FROM admin_user_permissions WHERE user_id = :uid"
-        insert_sql = (
-            "INSERT INTO admin_user_permissions"
-            " (user_id, table_name, can_view, can_create, can_edit, can_delete)"
-            " VALUES (:uid, :tn, :cv, :cc, :ce, :cd)"
-        )
+        """Save direct user permissions after the user object is committed.
 
-        ops = []
-        ops.append((delete_sql, {"uid": obj.id}))
+        perm_data: list of permission IDs, e.g. [1, 3, 5]
+        """
+        import asyncio
 
-        for table_name, perms in perm_data.items():
-            if not any(perms.get(a) for a in ["view", "create", "edit", "delete"]):
-                continue
-            ops.append(
-                (
-                    insert_sql,
-                    {
-                        "uid": obj.id,
-                        "tn": table_name,
-                        "cv": 1 if perms.get("view") else 0,
-                        "cc": 1 if perms.get("create") else 0,
-                        "ce": 1 if perms.get("edit") else 0,
-                        "cd": 1 if perms.get("delete") else 0,
-                    },
-                )
-            )
+        from sqlalchemy import delete
 
-        if not hasattr(request.state, "_admin_perm_pending_ops"):
-            request.state._admin_perm_pending_ops = []
-        request.state._admin_perm_pending_ops.extend(ops)
+        from fastapi_admin_kit.auth.models import UserPermission
+
+        perm_ids = perm_data if isinstance(perm_data, list) else []
+
+        async def _do_save():
+            from fastapi_admin_kit.db import get_db_session
+
+            session = get_db_session(request)
+            # Delete existing direct permissions for this user
+            await session.execute(delete(UserPermission).where(UserPermission.user_id == obj.id))
+
+            # Insert new direct permissions
+            for perm_id in perm_ids:
+                up = UserPermission(user_id=obj.id, permission_id=perm_id)
+                session.add(up)
+
+            await session.commit()
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(_do_save())
+            else:
+                loop.run_until_complete(_do_save())
+        except RuntimeError:
+            asyncio.run(_do_save())
 
     async def get_form_context(self, context, obj=None, request=None):
         """Load direct permissions for the user being edited."""
         from sqlalchemy import select
 
-        from fastapi_admin_kit.auth.models import UserPermission
+        from fastapi_admin_kit.auth.models import Permission, UserPermission
         from fastapi_admin_kit.db import get_db_session
 
-        perm_data = {}
+        perm_data = []
         if obj is not None and request is not None:
             try:
                 session = get_db_session(request)
                 result = await session.execute(
-                    select(UserPermission).where(UserPermission.user_id == obj.id)
+                    select(UserPermission, Permission)
+                    .join(Permission, UserPermission.permission_id == Permission.id)
+                    .where(UserPermission.user_id == obj.id)
                 )
-                for p in result.scalars():
-                    perm_data[p.table_name] = {
-                        "_label": p.table_name,
-                        "view": p.can_view,
-                        "create": p.can_create,
-                        "edit": p.can_edit,
-                        "delete": p.can_delete,
-                    }
+                for up, perm in result:
+                    perm_data.append(
+                        {
+                            "id": perm.id,
+                            "name": perm.name,
+                            "table_name": perm.table_name,
+                        }
+                    )
             except Exception as exc:
                 import logging
 
                 logging.getLogger(__name__).debug("Permission load failed: %s", exc)
 
         context["perm_data"] = perm_data
-        context["search_url"] = "/admin/tables/search"
+        context["search_url"] = "/admin/permissions/search"
         return context
 
     def process_form_data(self, data, request=None):

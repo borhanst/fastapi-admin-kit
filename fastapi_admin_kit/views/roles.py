@@ -69,7 +69,7 @@ async def permissions_search(
             result = await session.execute(select(Permission).where(Permission.id.in_(id_list)))
             perms = result.scalars().all()
             return JSONResponse(
-                content=[{"id": p.id, "label": p.name, "table_name": p.table_name} for p in perms]
+                content=[{"id": p.id, "name": p.name, "table_name": p.table_name} for p in perms]
             )
 
     query = select(Permission)
@@ -81,7 +81,7 @@ async def permissions_search(
     perms = result.scalars().all()
 
     return JSONResponse(
-        content=[{"id": p.id, "label": p.name, "table_name": p.table_name} for p in perms]
+        content=[{"id": p.id, "name": p.name, "table_name": p.table_name} for p in perms]
     )
 
 
