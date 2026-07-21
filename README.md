@@ -168,7 +168,8 @@ fak changepassword -e admin@example.com -p newpassword
 fak init myproject
 
 # Permission management
-fak createpermissions User Product
+fak createpermissions --base myapp.models.Base
+fak createpermissions myapp.models.User myapp.models.Product
 ```
 
 All commands accept `-d DATABASE_URL` or read the `DATABASE_URL` environment variable.

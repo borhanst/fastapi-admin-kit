@@ -9,7 +9,12 @@ ACTIONS = ["view", "create", "edit", "delete"]
 
 
 async def _create_permissions(args: argparse.Namespace) -> None:
-    """Create 4 CRUD permissions for specified tables or all registered tables."""
+    """Create 4 CRUD permissions for specified tables or all registered tables.
+
+    Supports two modes for specifying models:
+    1. --base path.to.Base  → create permissions for all subclasses of the base
+    2. Positional args       → full dotted paths to individual models (e.g. app.models.User)
+    """
     from sqlalchemy import select
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
@@ -18,7 +23,7 @@ async def _create_permissions(args: argparse.Namespace) -> None:
     from fastapi_admin_kit.auth.models import Permission
     from fastapi_admin_kit.models.base import Base
 
-    from .helpers import resolve_table_names
+    from .helpers import resolve_model_by_path, resolve_models_from_base, resolve_table_names
     from .user import _resolve_database_url
 
     database_url = _resolve_database_url(args.database_url)
@@ -32,10 +37,42 @@ async def _create_permissions(args: argparse.Namespace) -> None:
 
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    names = args.tables
+    # --- Resolve which models to create permissions for ---
 
-    # If no tables specified, discover all from registry
-    if not names:
+    table_names: dict[str, str] = {}  # display_name -> table_name
+
+    if args.base:
+        # Mode 1: --base flag → import base class, find all subclasses
+        models = resolve_models_from_base(args.base, app_module=args.app)
+        if not models:
+            print(f"No model subclasses found for base '{args.base}'.")
+            await engine.dispose()
+            return
+        print(f"Found {len(models)} model(s) subclassing '{args.base}':")
+        for cls in models:
+            table_names[cls.__name__] = cls.__tablename__
+            print(f"  {cls.__name__} -> {cls.__tablename__}")
+    elif args.tables:
+        # Mode 2: positional args → resolve each one
+        names = args.tables
+        # Detect if these are dotted paths (contain a dot) or legacy short names
+        has_dot = any("." in n for n in names)
+        if has_dot:
+            # Dotted paths — import directly
+            for path in names:
+                try:
+                    cls = resolve_model_by_path(path, app_module=args.app)
+                    table_names[cls.__name__] = cls.__tablename__
+                    print(f"  Resolving '{path}' -> table_name='{cls.__tablename__}'")
+                except (ImportError, AttributeError, TypeError) as exc:
+                    print(f"  WARNING: Could not resolve '{path}': {exc}")
+        else:
+            # Legacy short class/table names
+            table_names = resolve_table_names(names, app_module=args.app)
+            for input_name, tname in table_names.items():
+                print(f"  Resolving '{input_name}' -> table_name='{tname}'")
+    else:
+        # No tables specified — discover all from built-in models
         from fastapi_admin_kit.audit.models import AuditLog
         from fastapi_admin_kit.auth.models import (
             LoginAttempt,
@@ -57,22 +94,20 @@ async def _create_permissions(args: argparse.Namespace) -> None:
             LoginAttempt,
             AuditLog,
         ]
-        names = [cls.__name__ for cls in all_models]
+        for cls in all_models:
+            table_names[cls.__name__] = cls.__tablename__
 
-    if not names:
+    if not table_names:
         print("No tables found to create permissions for.")
         await engine.dispose()
         return
-
-    resolved = resolve_table_names(names, app_module=args.app)
 
     created = 0
     skipped = 0
 
     async with async_session() as session:
-        async with session.no_autoflush:
-            for input_name, table_name in resolved.items():
-                print(f"  Resolving '{input_name}' -> table_name='{table_name}'")
+        with session.no_autoflush:
+            for display_name, table_name in table_names.items():
                 for action in ACTIONS:
                     perm_name = f"{table_name}_{action}"
 
@@ -148,8 +183,17 @@ def register_permission_commands(subparsers) -> None:
         "tables",
         nargs="*",
         help=(
-            "Class or table names (e.g., Product User). "
-            "If empty, creates for all registered tables."
+            "Model paths with dot notation (e.g., myapp.models.User myapp.models.Product). "
+            "If empty and --base is not set, creates for all built-in tables."
+        ),
+    )
+    perm_parser.add_argument(
+        "-b",
+        "--base",
+        default=None,
+        help=(
+            "Dot-notation path to a base class. Creates permissions for all "
+            "SQLAlchemy model subclasses of this base (e.g., myapp.models.Base)"
         ),
     )
     perm_parser.add_argument(

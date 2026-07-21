@@ -63,13 +63,24 @@ fak-admin changepassword -e admin@example.com -p newpassword
 Create permissions for specified tables:
 
 ```bash
+# Base class mode — create permissions for all subclasses
+fak createpermissions --base myapp.models.Base
+
+# Single model — full dot-notation path
+fak createpermissions myapp.models.User
+
+# Multiple models
+fak createpermissions myapp.models.User myapp.models.Product
+
+# Legacy short names (still supported)
 fak createpermissions User Product
-fak-admin createpermissions User Product
 ```
 
 | Option | Description |
 |--------|-------------|
-| `tables` | Class or table names (required) |
+| `tables` | Model paths with dot notation (e.g., `myapp.models.User`) |
+| `-b, --base` | Base class path — creates permissions for all subclasses |
+| `-a, --app` | App module to import for model discovery (e.g., `example:app`) |
 | `-d, --database-url` | Database URL |
 
 ### deletepermissions

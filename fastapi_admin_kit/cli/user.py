@@ -47,7 +47,7 @@ async def _create_superuser(args: argparse.Namespace) -> None:
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as session:
-        async with session.no_autoflush:
+        with session.no_autoflush:
             from sqlalchemy import select
 
             result = await session.execute(select(User).where(User.email == args.email))
@@ -141,7 +141,7 @@ async def _change_password(args: argparse.Namespace) -> None:
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as session:
-        async with session.no_autoflush:
+        with session.no_autoflush:
             from sqlalchemy import select
 
             result = await session.execute(select(User).where(User.email == args.email))
