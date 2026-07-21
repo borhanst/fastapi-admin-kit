@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -12,15 +13,15 @@ class Tool:
 
     name: str
     description: str
-    handler: Callable
+    handler: Callable[..., Awaitable[Any]]
     uses_context: bool = True
     path: str | None = None
     method: str = "POST"
     requires_auth: bool = True
     category: str = "general"
-    _schema: dict | None = field(default=None, repr=False)
+    _schema: dict[str, Any] | None = field(default=None, repr=False)
 
-    def to_schema(self) -> dict:
+    def to_schema(self) -> dict[str, Any]:
         return self._schema or {}
 
 
@@ -34,7 +35,7 @@ class ToolRegistry:
         self,
         name: str,
         description: str,
-        handler: Callable,
+        handler: Callable[..., Awaitable[Any]],
         *,
         uses_context: bool = True,
         path: str | None = None,
@@ -77,10 +78,10 @@ def tool(
     method: str = "POST",
     requires_auth: bool = True,
     category: str = "general",
-) -> Callable:
+) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """Decorator to register a function as an AI tool."""
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
         tool_registry.register(
             name=name,
             description=description,
@@ -91,7 +92,7 @@ def tool(
             requires_auth=requires_auth,
             category=category,
         )
-        func._ai_tool = True
+        func._ai_tool = True  # type: ignore[attr-defined]
         return func
 
     return decorator

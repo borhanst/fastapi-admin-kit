@@ -2,27 +2,35 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+if TYPE_CHECKING:
+    import jinja2
+
+    from fastapi_admin_kit.admin.core import Admin
+    from fastapi_admin_kit.ai.agent import AIAgent
+    from fastapi_admin_kit.auth.permissions import PermissionChecker
+    from fastapi_admin_kit.auth.protocol import AdminUserProtocol
+
 router = APIRouter(prefix="/ai", tags=["ai"])
 
 
-def _get_jinja(request: Request) -> Any:
+def _get_jinja(request: Request) -> jinja2.Environment:
     return request.app.state.admin_jinja_env
 
 
-def _get_admin(request: Request) -> Any:
+def _get_admin(request: Request) -> Admin | None:
     return getattr(request.app.state, "admin", None)
 
 
-def _get_ai_agents(request: Request) -> dict[str, Any]:
+def _get_ai_agents(request: Request) -> dict[str, AIAgent]:
     return getattr(request.app.state, "ai_agents", {})
 
 
-async def _resolve_user(request: Request) -> Any:
+async def _resolve_user(request: Request) -> AdminUserProtocol:
     """Manually resolve the admin user from the session cookie."""
     from fastapi_admin_kit.auth.dependencies import get_session
     from fastapi_admin_kit.auth.identity import resolve_user
@@ -41,7 +49,7 @@ async def _resolve_user(request: Request) -> Any:
     return user
 
 
-async def _resolve_checker(request: Request, user: Any) -> Any:
+async def _resolve_checker(request: Request, user: AdminUserProtocol) -> PermissionChecker:
     """Manually build a permission checker."""
     from fastapi_admin_kit.auth.permissions import PermissionChecker
     from fastapi_admin_kit.db import get_db_session
@@ -52,12 +60,12 @@ async def _resolve_checker(request: Request, user: Any) -> Any:
 
 
 @router.get("/chat")
-async def ai_chat_page(request: Request):
+async def ai_chat_page(request: Request) -> jinja2.TemplateResponse:
     """Full-page AI chat interface."""
     admin = _get_admin(request)
     jinja = _get_jinja(request)
 
-    context = {
+    context: dict[str, object] = {
         "title": "AI Chat",
         "admin_path": admin.admin_path if admin else "/admin",
     }
@@ -66,12 +74,12 @@ async def ai_chat_page(request: Request):
 
 
 @router.get("/logs")
-async def ai_logs_page(request: Request):
+async def ai_logs_page(request: Request) -> jinja2.TemplateResponse:
     """Full-page AI logs viewer."""
     admin = _get_admin(request)
     jinja = _get_jinja(request)
 
-    context = {
+    context: dict[str, object] = {
         "title": "AI Logs",
         "admin_path": admin.admin_path if admin else "/admin",
     }
@@ -80,13 +88,13 @@ async def ai_logs_page(request: Request):
 
 
 @router.get("/dashboard")
-async def ai_dashboard(request: Request):
+async def ai_dashboard(request: Request) -> jinja2.TemplateResponse:
     """AI operations dashboard showing costs, logs, and tool calls."""
     agents = _get_ai_agents(request)
     admin = _get_admin(request)
     jinja = _get_jinja(request)
 
-    stats: list[dict[str, Any]] = []
+    stats: list[dict[str, object]] = []
     for name, agent in agents.items():
         try:
             s = await agent.get_usage_stats(period="day")
@@ -99,7 +107,7 @@ async def ai_dashboard(request: Request):
             }
         stats.append({"name": name, **s})
 
-    context = {
+    context: dict[str, object] = {
         "title": "AI Dashboard",
         "agent_stats": stats,
         "admin_path": admin.admin_path if admin else "/admin",
@@ -173,12 +181,12 @@ async def get_ai_costs(
 
 
 @router.get("/tools")
-async def ai_tools_page(request: Request):
+async def ai_tools_page(request: Request) -> jinja2.TemplateResponse:
     """Full-page AI tools viewer."""
     admin = _get_admin(request)
     jinja = _get_jinja(request)
 
-    context = {
+    context: dict[str, object] = {
         "title": "AI Tools",
         "admin_path": admin.admin_path if admin else "/admin",
     }
@@ -209,7 +217,7 @@ async def get_ai_tools(request: Request) -> JSONResponse:
 async def execute_tool_endpoint(
     tool_name: str,
     request: Request,
-    params: dict | None = None,
+    params: dict[str, object] | None = None,
 ) -> JSONResponse:
     """Execute an AI tool directly (bypasses the LLM)."""
     agents = _get_ai_agents(request)
@@ -245,12 +253,12 @@ async def execute_tool_endpoint(
 
 
 @router.get("/agents")
-async def ai_agents_page(request: Request):
+async def ai_agents_page(request: Request) -> jinja2.TemplateResponse:
     """Full-page AI agents viewer."""
     admin = _get_admin(request)
     jinja = _get_jinja(request)
 
-    context = {
+    context: dict[str, object] = {
         "title": "AI Agents",
         "admin_path": admin.admin_path if admin else "/admin",
     }

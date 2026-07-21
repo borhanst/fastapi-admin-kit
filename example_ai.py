@@ -26,9 +26,10 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import TYPE_CHECKING
 
 import bcrypt
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from sqlalchemy import (
     Boolean,
@@ -38,14 +39,15 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    func,
     select,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-from sqlalchemy.sql import func
 
 from fastapi_admin_kit import Admin, ModelAdmin
 from fastapi_admin_kit.ai import AIAgentConfig, AIConfig, tool
+from fastapi_admin_kit.ai.tools import tool_registry
 from fastapi_admin_kit.ai.usage import AIUsageLog  # noqa: F401
 from fastapi_admin_kit.audit.models import AuditLog  # noqa: F401
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
@@ -53,7 +55,10 @@ from fastapi_admin_kit.auth.models import User  # noqa: F401
 from fastapi_admin_kit.config import ThemeConfig
 from fastapi_admin_kit.models import Base as AdminBase
 from fastapi_admin_kit.nav import NavGroupConfig
-from dotenv import load_dotenv
+
+from pydantic_ai import RunContext
+from fastapi_admin_kit.ai.deps import AdminDeps
+
 
 load_dotenv()
 
@@ -162,8 +167,8 @@ class TicketAdmin(ModelAdmin):
     category="ecommerce",
 )
 async def search_products(
-    ctx: Any, query: str, limit: int = 10
-) -> dict:
+    ctx: RunContext[AdminDeps], query: str, limit: int = 10
+) -> dict[str, object]:
     """Search products across name and description fields."""
     session = ctx.deps.session
     stmt = (
@@ -194,13 +199,71 @@ async def search_products(
 
 
 @tool(
+    name="get_product",
+    description="Get a single product by ID.",
+    category="ecommerce",
+)
+async def get_product(
+    ctx: RunContext[AdminDeps], product_id: int
+) -> dict[str, object]:
+    """Look up a product by its ID."""
+    session = ctx.deps.session
+    result = await session.execute(
+        select(Product).where(Product.id == product_id)
+    )
+    product = result.scalars().first()
+    if not product:
+        return {"error": f"Product {product_id} not found"}
+    return {
+        "id": product.id,
+        "name": product.name,
+        "description": product.description,
+        "price": product.price,
+        "stock": product.stock,
+        "is_active": product.is_active,
+    }
+
+
+@tool(
+    name="update_product_stock",
+    description="Update stock quantity for a product.",
+    category="ecommerce",
+)
+async def update_product_stock(
+    ctx: RunContext[AdminDeps], product_id: int, new_stock: int
+) -> dict[str, object]:
+    """Set the stock level of a product."""
+    if new_stock < 0:
+        return {"error": "Stock cannot be negative"}
+
+    session = ctx.deps.session
+    result = await session.execute(
+        select(Product).where(Product.id == product_id)
+    )
+    product = result.scalars().first()
+    if not product:
+        return {"error": f"Product {product_id} not found"}
+
+    old_stock = product.stock
+    product.stock = new_stock
+    await session.flush()
+
+    return {
+        "product_id": product_id,
+        "name": product.name,
+        "old_stock": old_stock,
+        "new_stock": new_stock,
+    }
+
+
+@tool(
     name="get_customer_summary",
-    description="Get customer data summary.",
+    description="Get customer data summary or stats for a specific customer.",
     category="crm",
 )
 async def get_customer_summary(
-    ctx: Any, customer_id: int | None = None
-) -> dict:
+    ctx: RunContext[AdminDeps], customer_id: int | None = None
+) -> dict[str, object]:
     """Get customer summary or aggregate stats."""
     session = ctx.deps.session
 
@@ -235,11 +298,76 @@ async def get_customer_summary(
 
 
 @tool(
+    name="update_customer_tier",
+    description="Change a customer's membership tier.",
+    category="crm",
+)
+async def update_customer_tier(
+    ctx: RunContext[AdminDeps], customer_id: int, new_tier: str
+) -> dict[str, object]:
+    """Update a customer's tier (standard, premium, vip)."""
+    valid_tiers = {"standard", "premium", "vip"}
+    if new_tier not in valid_tiers:
+        return {"error": f"Invalid tier. Must be one of: {valid_tiers}"}
+
+    session = ctx.deps.session
+    result = await session.execute(
+        select(Customer).where(Customer.id == customer_id)
+    )
+    customer = result.scalars().first()
+    if not customer:
+        return {"error": f"Customer {customer_id} not found"}
+
+    old_tier = customer.tier
+    customer.tier = new_tier
+    await session.flush()
+
+    return {
+        "customer_id": customer_id,
+        "name": customer.name,
+        "old_tier": old_tier,
+        "new_tier": new_tier,
+    }
+
+
+@tool(
+    name="get_revenue_summary",
+    description="Get revenue breakdown by customer tier.",
+    category="crm",
+)
+async def get_revenue_summary(
+    ctx: RunContext[AdminDeps],
+) -> dict[str, object]:
+    """Aggregate revenue stats across all customers."""
+    session = ctx.deps.session
+    result = await session.execute(select(Customer))
+    customers = result.scalars().all()
+
+    by_tier: dict[str, dict[str, object]] = {}
+    total_revenue = 0.0
+    for c in customers:
+        tier = c.tier
+        if tier not in by_tier:
+            by_tier[tier] = {"count": 0, "revenue": 0.0}
+        by_tier[tier]["count"] = int(by_tier[tier]["count"]) + 1
+        by_tier[tier]["revenue"] = float(by_tier[tier]["revenue"]) + c.total_spent
+        total_revenue += c.total_spent
+
+    return {
+        "total_customers": len(customers),
+        "total_revenue": total_revenue,
+        "by_tier": by_tier,
+    }
+
+
+@tool(
     name="get_support_stats",
     description="Get support ticket statistics.",
     category="support",
 )
-async def get_support_stats(ctx: Any) -> dict:
+async def get_support_stats(
+    ctx: RunContext[AdminDeps],
+) -> dict[str, object]:
     """Aggregate support ticket statistics."""
     session = ctx.deps.session
     result = await session.execute(select(Ticket))
@@ -266,13 +394,46 @@ async def get_support_stats(ctx: Any) -> dict:
 
 
 @tool(
+    name="search_tickets",
+    description="Search support tickets by subject keyword.",
+    category="support",
+)
+async def search_tickets(
+    ctx: RunContext[AdminDeps], keyword: str, limit: int = 10
+) -> dict[str, object]:
+    """Find tickets matching a keyword in the subject."""
+    session = ctx.deps.session
+    stmt = (
+        select(Ticket)
+        .where(Ticket.subject.ilike(f"%{keyword}%"))
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    tickets = result.scalars().all()
+
+    return {
+        "count": len(tickets),
+        "tickets": [
+            {
+                "id": t.id,
+                "subject": t.subject,
+                "status": t.status,
+                "priority": t.priority,
+                "customer_id": t.customer_id,
+            }
+            for t in tickets
+        ],
+    }
+
+
+@tool(
     name="update_ticket_status",
     description="Update a support ticket status.",
     category="support",
 )
 async def update_ticket_status(
-    ctx: Any, ticket_id: int, status: str
-) -> dict:
+    ctx: RunContext[AdminDeps], ticket_id: int, status: str
+) -> dict[str, object]:
     """Update a ticket's status field."""
     valid = {"open", "in_progress", "resolved"}
     if status not in valid:
@@ -297,6 +458,42 @@ async def update_ticket_status(
     }
 
 
+@tool(
+    name="create_ticket",
+    description="Create a new support ticket.",
+    category="support",
+)
+async def create_ticket(
+    ctx: RunContext[AdminDeps],
+    subject: str,
+    body: str = "",
+    priority: str = "medium",
+    customer_id: int | None = None,
+) -> dict[str, object]:
+    """Create a support ticket with subject, body, priority, and optional customer link."""
+    valid_priorities = {"low", "medium", "high", "urgent"}
+    if priority not in valid_priorities:
+        return {"error": f"Invalid priority. Must be one of: {valid_priorities}"}
+
+    session = ctx.deps.session
+    ticket = Ticket(
+        subject=subject,
+        body=body,
+        status="open",
+        priority=priority,
+        customer_id=customer_id,
+    )
+    session.add(ticket)
+    await session.flush()
+
+    return {
+        "ticket_id": ticket.id,
+        "subject": ticket.subject,
+        "status": ticket.status,
+        "priority": ticket.priority,
+    }
+
+
 # ============================================================================
 # AI Configuration
 #
@@ -314,12 +511,26 @@ ai_config = AIConfig(
             model="groq:llama-3.3-70b-versatile",
             api_key=os.environ.get("GROQ_API_KEY"),
             system_prompt=(
-                "You are a helpful admin assistant. You can query the "
-                "database, search products, manage customers, and handle "
-                "support tickets. Always be concise and accurate."
+                "You are a helpful admin assistant for an e-commerce admin panel. "
+                "You have access to tools that query and modify the database. "
+                "ALWAYS use your tools to answer questions about products, customers, "
+                "tickets, and revenue. Never make up data — call the appropriate tool. "
+                "Be concise and accurate."
             ),
             cost_per_1k_input_tokens=0.00059,
             cost_per_1k_output_tokens=0.00079,
+            tools=[
+                tool_registry.get("search_products"),  # type: ignore[list-item]
+                tool_registry.get("get_product"),  # type: ignore[list-item]
+                tool_registry.get("update_product_stock"),  # type: ignore[list-item]
+                tool_registry.get("get_customer_summary"),  # type: ignore[list-item]
+                tool_registry.get("update_customer_tier"),  # type: ignore[list-item]
+                tool_registry.get("get_revenue_summary"),  # type: ignore[list-item]
+                tool_registry.get("get_support_stats"),  # type: ignore[list-item]
+                tool_registry.get("search_tickets"),  # type: ignore[list-item]
+                tool_registry.get("update_ticket_status"),  # type: ignore[list-item]
+                tool_registry.get("create_ticket"),  # type: ignore[list-item]
+            ],
         ),
     ],
     default_agent="default",

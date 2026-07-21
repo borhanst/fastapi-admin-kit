@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import Any
+from typing import TYPE_CHECKING
 
 from fastapi_admin_kit.ai.tools import Tool, tool_registry
 
+if TYPE_CHECKING:
+    from pydantic_ai import RunContext
+
+    from fastapi_admin_kit.ai.deps import AdminDeps
+
 
 def _build_query_tool(model: type, table_name: str) -> Tool:
-    async def _query(ctx: Any, filters: dict | None = None, limit: int = 50) -> Any:
+    async def _query(
+        ctx: RunContext[AdminDeps],
+        filters: dict[str, object] | None = None,
+        limit: int = 50,
+    ) -> object:
         from fastapi_admin_kit.ai.builtin_tools import query_database
 
         return await query_database(ctx, table_name, filters, limit)
@@ -24,7 +33,7 @@ def _build_query_tool(model: type, table_name: str) -> Tool:
 
 
 def _build_create_tool(model: type, table_name: str, exclude_fields: list[str]) -> Tool:
-    async def _create(ctx: Any, data: dict) -> Any:
+    async def _create(ctx: RunContext[AdminDeps], data: dict[str, object]) -> object:
         from fastapi_admin_kit.ai.builtin_tools import create_record
 
         for f in exclude_fields:
@@ -41,7 +50,9 @@ def _build_create_tool(model: type, table_name: str, exclude_fields: list[str]) 
 
 
 def _build_update_tool(model: type, table_name: str, exclude_fields: list[str]) -> Tool:
-    async def _update(ctx: Any, record_id: int, data: dict) -> dict:
+    async def _update(
+        ctx: RunContext[AdminDeps], record_id: int, data: dict[str, object]
+    ) -> dict[str, object]:
         if not await ctx.deps.permission_checker.has_permission(table_name, "edit"):
             raise ValueError(f"Not permitted to edit {table_name}.")
 
@@ -72,7 +83,7 @@ def _build_update_tool(model: type, table_name: str, exclude_fields: list[str]) 
 
 
 def _build_delete_tool(model: type, table_name: str) -> Tool:
-    async def _delete(ctx: Any, record_id: int) -> dict:
+    async def _delete(ctx: RunContext[AdminDeps], record_id: int) -> dict[str, object]:
         if not await ctx.deps.permission_checker.has_permission(table_name, "delete"):
             raise ValueError(f"Not permitted to delete {table_name}.")
 
@@ -110,7 +121,7 @@ class ModelAIAgent(ABC):
     can_delete: bool = False
     exclude_fields: list[str] = []
 
-    def __init_subclass__(cls, **kwargs: Any) -> None:
+    def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
         cls._declared_tools = [m for m in vars(cls).values() if getattr(m, "_ai_tool", False)]
 

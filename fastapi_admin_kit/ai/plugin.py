@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fastapi import APIRouter
+
+    from fastapi_admin_kit.admin.core import Admin
+    from fastapi_admin_kit.ai.agent import AIAgent
+    from fastapi_admin_kit.ai.config import AIAgentConfig
 
 
 class AIPlugin:
@@ -10,15 +17,15 @@ class AIPlugin:
 
     name = "ai"
 
-    def __init__(self, agents: list[Any] | None = None) -> None:
+    def __init__(self, agents: list[AIAgentConfig] | None = None) -> None:
         self.agents = agents or []
 
-    def get_routes(self) -> Any:
+    def get_routes(self) -> APIRouter:
         from fastapi_admin_kit.ai.dashboard import router
 
         return router
 
-    def get_nav_items(self) -> list[dict]:
+    def get_nav_items(self) -> list[dict[str, str]]:
         return [
             {"label": "AI Dashboard", "url": "/admin/ai/dashboard", "icon": "sparkles"},
             {"label": "AI Agents", "url": "/admin/ai/agents", "icon": "smart_toy"},
@@ -26,10 +33,10 @@ class AIPlugin:
             {"label": "AI Logs", "url": "/admin/ai/logs", "icon": "receipt_long"},
         ]
 
-    def get_dashboard_widgets(self) -> list[Any]:
+    def get_dashboard_widgets(self) -> list[dict[str, str]]:
         return []
 
-    def on_startup(self, admin: Any) -> None:
+    def on_startup(self, admin: Admin) -> None:
         """Initialize AI agents and store on admin state."""
         from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
             PydanticAIAgent,
@@ -38,7 +45,7 @@ class AIPlugin:
         from fastapi_admin_kit.ai.usage import AIUsageWriter
 
         writer = AIUsageWriter()
-        ai_agents: dict[str, Any] = {}
+        ai_agents: dict[str, AIAgent] = {}
 
         for cfg in self.agents:
             agent = PydanticAIAgent(

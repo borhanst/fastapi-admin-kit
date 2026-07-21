@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -17,6 +19,11 @@ from sqlalchemy import (
 from sqlalchemy.sql import func
 
 from fastapi_admin_kit.models.base import Base
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from fastapi_admin_kit.auth.protocol import AdminUserProtocol
 
 
 class AIUsageLog(Base):
@@ -107,12 +114,12 @@ class AIUsageWriter:
         response_tokens: int,
         total_tokens: int,
         cost: float,
-        user: Any,
+        user: AdminUserProtocol,
         success: bool,
-        session: Any,
+        session: AsyncSession,
         error: str | None = None,
         latency_ms: int | None = None,
-        tool_calls: list[dict] | None = None,
+        tool_calls: list[dict[str, object]] | None = None,
     ) -> None:
         session.add(
             AIUsageLog(
@@ -136,8 +143,8 @@ class AIUsageWriter:
         self,
         agent_name: str,
         period: str,
-        session: Any,
-    ) -> dict:
+        session: AsyncSession,
+    ) -> dict[str, object]:
         from sqlalchemy import func as sqlfunc
         from sqlalchemy import select
 
@@ -174,6 +181,3 @@ class AIUsageWriter:
             "avg_latency_ms": round(row.avg_latency_ms or 0, 2),
             "success_rate": rate,
         }
-
-
-from typing import Any  # noqa: E402

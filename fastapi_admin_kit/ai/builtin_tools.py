@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
 from fastapi_admin_kit.ai.tools import tool
+
+if TYPE_CHECKING:
+    from pydantic_ai import RunContext
+
+    from fastapi_admin_kit.ai.deps import AdminDeps
 
 
 class QueryResult(BaseModel):
     """Result of a database query."""
 
     row_count: int
-    rows: list[dict]
+    rows: list[dict[str, object]]
 
 
 @tool(
@@ -22,7 +27,10 @@ class QueryResult(BaseModel):
     category="database",
 )
 async def query_database(
-    ctx: Any, table_name: str, filters: dict | None = None, limit: int = 50
+    ctx: RunContext[AdminDeps],
+    table_name: str,
+    filters: dict[str, object] | None = None,
+    limit: int = 50,
 ) -> QueryResult:
     registered = ctx.deps.registry.get(table_name)
     if not registered:
@@ -56,7 +64,9 @@ async def query_database(
     description="Create a new record on a registered model.",
     category="database",
 )
-async def create_record(ctx: Any, table_name: str, data: dict) -> dict:
+async def create_record(
+    ctx: RunContext[AdminDeps], table_name: str, data: dict[str, object]
+) -> dict[str, object]:
     registered = ctx.deps.registry.get(table_name)
     if not registered:
         raise ValueError(f"'{table_name}' is not a registered model.")
@@ -78,7 +88,7 @@ class ReportSpec(BaseModel):
     """Specification for generating a report."""
 
     report_type: str
-    filters: dict = {}
+    filters: dict[str, object] = {}
 
 
 @tool(
@@ -86,7 +96,7 @@ class ReportSpec(BaseModel):
     description="Generate an analytics report.",
     category="analytics",
 )
-async def generate_report(ctx: Any, spec: ReportSpec) -> dict:
+async def generate_report(ctx: RunContext[AdminDeps], spec: ReportSpec) -> dict[str, object]:
     return {
         "report_type": spec.report_type,
         "filters": spec.filters,
@@ -100,7 +110,9 @@ async def generate_report(ctx: Any, spec: ReportSpec) -> dict:
     description="Send a notification to a user.",
     category="notifications",
 )
-async def send_notification(ctx: Any, recipient: str, subject: str, message: str) -> dict:
+async def send_notification(
+    ctx: RunContext[AdminDeps], recipient: str, subject: str, message: str
+) -> dict[str, str]:
     return {
         "recipient": recipient,
         "subject": subject,

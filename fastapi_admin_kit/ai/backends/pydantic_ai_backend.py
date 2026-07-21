@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from typing import TYPE_CHECKING, Any
 
 from fastapi_admin_kit.ai.agent import (
     AIAgent,
@@ -13,11 +14,19 @@ from fastapi_admin_kit.ai.agent import (
 )
 from fastapi_admin_kit.ai.deps import AdminDeps
 
+if TYPE_CHECKING:
+    from pydantic_ai import Agent
+    from pydantic_ai.result import AgentRunResult, RunUsage, StreamedRunResult
 
-def _extract_tool_calls(result: Any) -> list[ToolCallRecord]:
+    from fastapi_admin_kit.ai.config import AIAgentConfig
+    from fastapi_admin_kit.ai.tools import Tool
+    from fastapi_admin_kit.ai.usage import AIUsageWriter
+
+
+def _extract_tool_calls(result: AgentRunResult[Any]) -> list[ToolCallRecord]:
     """Extract tool call records from a Pydantic AI run result."""
     records: list[ToolCallRecord] = []
-    messages = getattr(result, "all_messages", lambda: [])()
+    messages = result.all_messages()
     for msg in messages:
         parts = getattr(msg, "parts", [])
         for part in parts:
@@ -39,9 +48,9 @@ class PydanticAIAgent(AIAgent):
 
     def __init__(
         self,
-        config: Any,
-        deps_factory: Any,
-        usage_writer: Any,
+        config: AIAgentConfig,
+        deps_factory: Callable[..., Awaitable[AdminDeps]],
+        usage_writer: AIUsageWriter,
     ) -> None:
         self._config = config
         self._deps_factory = deps_factory
@@ -53,7 +62,7 @@ class PydanticAIAgent(AIAgent):
 
             model = self._build_model(config)
 
-            self._agent = Agent(
+            self._agent: Agent[AdminDeps, Any] | None = Agent(
                 model,
                 deps_type=AdminDeps,
                 output_type=config.result_type or str,
@@ -64,7 +73,7 @@ class PydanticAIAgent(AIAgent):
         except ImportError:
             self._agent = None
 
-    def _build_model(self, config: Any) -> Any:
+    def _build_model(self, config: AIAgentConfig) -> Any:
         """Build a pydantic-ai model, injecting api_key if provided."""
         model_str = config.model
 
@@ -107,7 +116,7 @@ class PydanticAIAgent(AIAgent):
 
         return model_str
 
-    def _bind_tools(self, tools: list[Any]) -> None:
+    def _bind_tools(self, tools: list[Tool]) -> None:
         if self._agent is None:
             return
         for t in tools:
@@ -184,13 +193,13 @@ class PydanticAIAgent(AIAgent):
         message: str,
         deps: AdminDeps,
         message_history: list | None = None,
-    ):
+    ) -> AsyncGenerator[StreamedRunResult[AdminDeps, Any], None]:
         if self._agent is None:
             raise RuntimeError("pydantic-ai is not installed.")
 
         return self._agent.run_stream(message, deps=deps, message_history=message_history)
 
-    async def execute_tool(self, tool_name: str, params: dict, deps: AdminDeps) -> Any:
+    async def execute_tool(self, tool_name: str, params: dict[str, Any], deps: AdminDeps) -> Any:
         tool = self._config.get_tool(tool_name)
         if tool is None:
             raise ValueError(f"Tool '{tool_name}' not found.")
@@ -202,17 +211,17 @@ class PydanticAIAgent(AIAgent):
             return await tool.handler(ctx, **params)
         return await tool.handler(**params)
 
-    def get_tools(self) -> list[dict]:
+    def get_tools(self) -> list[dict[str, Any]]:
         return [t.to_schema() for t in self._config.tools]
 
-    async def get_usage_stats(self, period: str = "day") -> dict:
+    async def get_usage_stats(self, period: str = "day") -> dict[str, Any]:
         return await self._usage_writer.aggregate(
             agent_name=self._config.name,
             period=period,
-            session=None,
+            session=None,  # type: ignore[arg-type]
         )
 
-    def _compute_cost(self, usage: Any) -> float:
+    def _compute_cost(self, usage: RunUsage) -> float:
         cfg = self._config
         req = (getattr(usage, "input_tokens", None) or 0) / 1000
         resp = (getattr(usage, "output_tokens", None) or 0) / 1000

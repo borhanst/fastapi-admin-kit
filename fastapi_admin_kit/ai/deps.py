@@ -3,20 +3,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING
 
 from fastapi import Request
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from fastapi_admin_kit.auth.permissions import PermissionChecker
+    from fastapi_admin_kit.auth.protocol import AdminUserProtocol
+    from fastapi_admin_kit.registry.core import AdminRegistry
 
 
 @dataclass
 class AdminDeps:
     """Shared dependencies injected into every tool call and agent run."""
 
-    session: Any
-    admin_user: Any
-    request: Any
-    registry: Any
-    permission_checker: Any
+    session: AsyncSession
+    admin_user: AdminUserProtocol
+    request: Request
+    registry: AdminRegistry
+    permission_checker: PermissionChecker
 
 
 async def get_admin_deps(request: Request) -> AdminDeps:
