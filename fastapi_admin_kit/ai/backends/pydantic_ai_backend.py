@@ -51,16 +51,61 @@ class PydanticAIAgent(AIAgent):
         try:
             from pydantic_ai import Agent
 
+            model = self._build_model(config)
+
             self._agent = Agent(
-                config.model,
+                model,
                 deps_type=AdminDeps,
-                result_type=config.result_type or str,
+                output_type=config.result_type or str,
                 system_prompt=config.system_prompt,
                 retries=config.retries,
             )
             self._bind_tools(config.tools)
         except ImportError:
             self._agent = None
+
+    def _build_model(self, config: Any) -> Any:
+        """Build a pydantic-ai model, injecting api_key if provided."""
+        model_str = config.model
+
+        if not config.api_key:
+            return model_str
+
+        provider_name = model_str.split(":")[0] if ":" in model_str else ""
+
+        if provider_name == "google":
+            from pydantic_ai.models.google import GoogleModel
+            from pydantic_ai.providers.google import GoogleProvider
+
+            model_name = model_str.split(":", 1)[1] if ":" in model_str else model_str
+            provider = GoogleProvider(api_key=config.api_key)
+            return GoogleModel(model_name, provider=provider)
+
+        if provider_name == "openai":
+            from pydantic_ai.models.openai import OpenAIModel
+            from pydantic_ai.providers.openai import OpenAIProvider
+
+            model_name = model_str.split(":", 1)[1] if ":" in model_str else model_str
+            provider = OpenAIProvider(api_key=config.api_key)
+            return OpenAIModel(model_name, provider=provider)
+
+        if provider_name == "anthropic":
+            from pydantic_ai.models.anthropic import AnthropicModel
+            from pydantic_ai.providers.anthropic import AnthropicProvider
+
+            model_name = model_str.split(":", 1)[1] if ":" in model_str else model_str
+            provider = AnthropicProvider(api_key=config.api_key)
+            return AnthropicModel(model_name, provider=provider)
+
+        if provider_name == "groq":
+            from pydantic_ai.models.groq import GroqModel
+            from pydantic_ai.providers.groq import GroqProvider
+
+            model_name = model_str.split(":", 1)[1] if ":" in model_str else model_str
+            provider = GroqProvider(api_key=config.api_key)
+            return GroqModel(model_name, provider=provider)
+
+        return model_str
 
     def _bind_tools(self, tools: list[Any]) -> None:
         if self._agent is None:
@@ -76,44 +121,70 @@ class PydanticAIAgent(AIAgent):
         message: str,
         deps: AdminDeps,
         message_history: list | None = None,
+        conversation_id: str | None = None,
     ) -> ChatResult:
         if self._agent is None:
             raise RuntimeError(
                 "pydantic-ai is not installed. Install with: pip install pydantic-ai"
             )
 
-        start = time.perfgit_counter()
-        result = await self._agent.run(message, deps=deps, message_history=message_history)
+        start = time.perf_counter()
+        result = await self._agent.run(
+            message,
+            deps=deps,
+            message_history=message_history,
+            conversation_id=conversation_id,
+        )
         latency_ms = int((time.perf_counter() - start) * 1000)
 
-        usage = result.usage()
+        usage = result.usage
         cost = self._compute_cost(usage)
         tool_calls = _extract_tool_calls(result)
+
+        input_tokens = getattr(usage, "input_tokens", None) or 0
+        output_tokens = getattr(usage, "output_tokens", None) or 0
+        total_tokens = input_tokens + output_tokens
 
         await self._usage_writer.write(
             agent_name=self._config.name,
             model=str(self._config.model),
-            request_tokens=getattr(usage, "request_tokens", None) or 0,
-            response_tokens=getattr(usage, "response_tokens", None) or 0,
-            total_tokens=getattr(usage, "total_tokens", None) or 0,
+            request_tokens=input_tokens,
+            response_tokens=output_tokens,
+            total_tokens=total_tokens,
             cost=cost,
             user=deps.admin_user,
             success=True,
             latency_ms=latency_ms,
             tool_calls=[
-                {"name": tc.name, "args": tc.args, "ok": tc.is_error is False} for tc in tool_calls
+                {
+                    "name": tc.name,
+                    "args": tc.args,
+                    "ok": tc.is_error is False,
+                }
+                for tc in tool_calls
             ],
             session=deps.session,
         )
 
         return ChatResult(
-            output=result.data,
-            usage=UsageInfo.from_pydantic_ai(usage, cost),
+            output=result.output,
+            usage=UsageInfo(
+                request_tokens=input_tokens,
+                response_tokens=output_tokens,
+                total_tokens=total_tokens,
+                cost=cost,
+            ),
             new_messages=result.new_messages(),
             tool_calls=tool_calls,
+            conversation_id=result.conversation_id,
         )
 
-    def chat_stream(self, message: str, deps: AdminDeps, message_history: list | None = None):
+    def chat_stream(
+        self,
+        message: str,
+        deps: AdminDeps,
+        message_history: list | None = None,
+    ):
         if self._agent is None:
             raise RuntimeError("pydantic-ai is not installed.")
 
@@ -143,8 +214,8 @@ class PydanticAIAgent(AIAgent):
 
     def _compute_cost(self, usage: Any) -> float:
         cfg = self._config
-        req = (getattr(usage, "request_tokens", None) or 0) / 1000
-        resp = (getattr(usage, "response_tokens", None) or 0) / 1000
+        req = (getattr(usage, "input_tokens", None) or 0) / 1000
+        resp = (getattr(usage, "output_tokens", None) or 0) / 1000
         in_cost = req * cfg.cost_per_1k_input_tokens
         out_cost = resp * cfg.cost_per_1k_output_tokens
         return round(in_cost + out_cost, 6)

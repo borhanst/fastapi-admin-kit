@@ -62,6 +62,7 @@ class AIAgent(ABC):
         message: str,
         deps: AdminDeps,
         message_history: list | None = None,
+        conversation_id: str | None = None,
     ) -> ChatResult: ...
 
     @abstractmethod

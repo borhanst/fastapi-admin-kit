@@ -1,0 +1,197 @@
+{# pages/ai/tools.html — AI Tools Registry #}
+{% extends "base.html" %}
+
+{% block title %}{{ title | default("AI Tools") }}{% endblock %}
+
+{% block head_extra %}
+<style>
+  .ai-tools-page { display: flex; flex-direction: column; gap: 24px; }
+
+  .ai-tools-header h1 {
+    font-family: var(--font-display);
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+    letter-spacing: -0.02em;
+  }
+  .ai-tools-header p {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    margin: 4px 0 0;
+  }
+
+  .ai-tools-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+  }
+
+  .ai-tool-card {
+    background: var(--surface-raised);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    transition: border-color var(--duration-fast) var(--easing-out),
+                box-shadow var(--duration-fast) var(--easing-out);
+  }
+  .ai-tool-card:hover {
+    border-color: var(--primary-400);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.08);
+  }
+
+  .ai-tool-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .ai-tool-card-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    background: rgba(139, 92, 246, 0.1);
+    color: #7C3AED;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .ai-tool-card-icon .material-symbols-outlined { font-size: 20px; }
+
+  .ai-tool-card-name {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: var(--text-md);
+    color: var(--text-primary);
+  }
+
+  .ai-tool-card-category {
+    font-size: var(--text-2xs);
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    background: var(--surface-inset);
+    color: var(--text-tertiary);
+    border: 1px solid var(--surface-border);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 500;
+    margin-left: auto;
+  }
+
+  .ai-tool-card-desc {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 14px;
+  }
+
+  .ai-tool-card-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ai-tool-badge {
+    font-size: var(--text-2xs);
+    padding: 3px 10px;
+    border-radius: var(--radius-sm);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .ai-tool-badge .material-symbols-outlined { font-size: 12px; }
+
+  .ai-tool-badge--ctx {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--primary-700);
+  }
+
+  .ai-logs-empty {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 60px 24px; gap: 12px;
+  }
+  .ai-logs-empty-icon {
+    width: 56px; height: 56px; border-radius: var(--radius-lg);
+    background: var(--surface-inset); display: flex;
+    align-items: center; justify-content: center;
+  }
+  .ai-logs-empty-icon .material-symbols-outlined { font-size: 28px; color: var(--text-disabled); }
+  .ai-logs-empty h3 { font-family: var(--font-display); font-size: var(--text-md); font-weight: 600; color: var(--text-secondary); margin: 0; }
+  .ai-logs-empty p { font-size: var(--text-sm); color: var(--text-disabled); margin: 0; }
+
+  @media (max-width: 768px) {
+    .ai-tools-grid { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ai-tools-page" x-data="aiTools()" x-init="init()">
+  <div class="ai-tools-header">
+    <h1>AI Tools</h1>
+    <p>Registered tools available to AI agents for executing operations.</p>
+  </div>
+
+  <div class="ai-tools-grid">
+    <template x-if="loading">
+      <template x-for="i in 4" :key="i">
+        <div class="ai-tool-card" style="opacity: 0.6;">
+          <div style="height: 12px; width: 140px; background: var(--surface-inset); border-radius: 4px; margin-bottom: 12px;"></div>
+          <div style="height: 10px; width: 220px; background: var(--surface-inset); border-radius: 4px; margin-bottom: 8px;"></div>
+          <div style="height: 10px; width: 180px; background: var(--surface-inset); border-radius: 4px;"></div>
+        </div>
+      </template>
+    </template>
+
+    <template x-if="!loading && tools.length === 0">
+      <div class="ai-logs-empty" style="grid-column: 1 / -1;">
+        <div class="ai-logs-empty-icon">
+          <span class="material-symbols-outlined">build</span>
+        </div>
+        <h3>No tools registered</h3>
+        <p>Tools will appear here once AI agents are configured with tools.</p>
+      </div>
+    </template>
+
+    <template x-for="tool in tools" :key="tool.name">
+      <div class="ai-tool-card">
+        <div class="ai-tool-card-header">
+          <div class="ai-tool-card-icon">
+            <span class="material-symbols-outlined">terminal</span>
+          </div>
+          <div class="ai-tool-card-name" x-text="tool.name"></div>
+          <span class="ai-tool-card-category" x-text="tool.category"></span>
+        </div>
+        <div class="ai-tool-card-desc" x-text="tool.description"></div>
+        <div class="ai-tool-card-footer">
+          <template x-if="tool.uses_context">
+            <span class="ai-tool-badge ai-tool-badge--ctx">
+              <span class="material-symbols-outlined">dataset</span>
+              Uses Context
+            </span>
+          </template>
+        </div>
+      </div>
+    </template>
+  </div>
+</div>
+
+<script>
+function aiTools() {
+  return {
+    tools: [],
+    loading: true,
+    async init() {
+      try {
+        const resp = await fetch(window.__ADMIN_PATH__ + '/ai/tools/api');
+        this.tools = await resp.json();
+      } catch (e) { this.tools = []; }
+      this.loading = false;
+    }
+  };
+}
+</script>
+{% endblock %}

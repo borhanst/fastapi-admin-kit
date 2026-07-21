@@ -127,6 +127,7 @@
   </template>
 
   {% include "partials/command_palette.html" %}
+  {% include "partials/ai_chat_widget.html" %}
 
   {% set _ui2 = ui_config | default({}) %}
   {% if _ui2.custom_js_url | default('') %}

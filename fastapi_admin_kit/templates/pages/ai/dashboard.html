@@ -95,7 +95,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  fetch('{{ admin_path }}/ai/tools')
+  fetch('{{ admin_path }}/ai/tools/api')
     .then(r => r.json())
     .then(tools => {
       const el = document.getElementById('ai-tools-list');

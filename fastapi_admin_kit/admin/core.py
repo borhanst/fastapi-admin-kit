@@ -299,6 +299,10 @@ class Admin:
         self._nav_groups_built: list[Any] = []
 
         # AI
+        if ai_enabled and ai is None:
+            from fastapi_admin_kit.ai.config import AIConfig
+
+            ai = AIConfig()
         self._ai_config = ai
         self._ai_enabled = ai_enabled
 
@@ -1020,28 +1024,34 @@ class Admin:
             collapsed_by_default=False,
             extra_items=[
                 NavItemConfig(
+                    label="Chat",
+                    url="/admin/ai/chat",
+                    icon="chat",
+                    order=1,
+                ),
+                NavItemConfig(
                     label="Dashboard",
                     url="/admin/ai/dashboard",
                     icon="monitoring",
-                    order=1,
+                    order=2,
                 ),
                 NavItemConfig(
                     label="Logs",
                     url="/admin/ai/logs",
                     icon="description",
-                    order=2,
+                    order=3,
                 ),
                 NavItemConfig(
                     label="Tools",
                     url="/admin/ai/tools",
                     icon="build",
-                    order=3,
+                    order=4,
                 ),
                 NavItemConfig(
                     label="Agents",
                     url="/admin/ai/agents",
                     icon="smart_toy",
-                    order=4,
+                    order=5,
                 ),
             ],
         )

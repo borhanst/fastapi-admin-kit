@@ -16,6 +16,7 @@ class AIAgentConfig:
     name: str
     model: str
     system_prompt: str = ""
+    api_key: str | None = None
     result_type: type | None = None
     tools: list[Tool] = field(default_factory=list)
     retries: int = 1
