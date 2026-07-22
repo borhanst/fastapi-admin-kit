@@ -293,9 +293,26 @@
     animation: chatMsgIn 0.2s var(--easing-out);
   }
 
+  .ai-chat-msg-wrapper--user {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    margin-left: auto;
+  }
+
   .ai-chat-msg--user {
-    align-self: flex-end;
     flex-direction: row-reverse;
+  }
+
+  .ai-chat-msg-time {
+    font-size: var(--text-2xs);
+    color: var(--text-disabled);
+    margin-top: 3px;
+    padding: 0 4px;
+  }
+
+  .ai-chat-msg-time.ai-chat-msg--user {
+    text-align: right;
   }
 
   .ai-chat-msg-avatar {
@@ -357,17 +374,6 @@
   .ai-chat-msg--user .ai-chat-msg-body code {
     background: rgba(255,255,255,0.2);
     color: white;
-  }
-
-  .ai-chat-msg-time {
-    font-size: var(--text-2xs);
-    color: var(--text-disabled);
-    margin-top: 3px;
-    padding: 0 4px;
-  }
-
-  .ai-chat-msg--user .ai-chat-msg-time {
-    text-align: right;
   }
 
   .ai-chat-typing {
@@ -652,7 +658,7 @@
       </template>
 
       <template x-for="(msg, idx) in messages" :key="idx">
-        <div>
+        <div class="ai-chat-msg-wrapper" :class="msg.role === 'user' ? 'ai-chat-msg-wrapper--user' : ''">
           <div class="ai-chat-msg" :class="msg.role === 'user' ? 'ai-chat-msg--user' : 'ai-chat-msg--ai'">
             <div class="ai-chat-msg-avatar">
               <template x-if="msg.role === 'assistant'">
