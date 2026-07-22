@@ -26,23 +26,6 @@ def _get_storage(request: Request):
     return getattr(request.app.state, "admin_storage", None)
 
 
-async def _resolve_permission_checker(request: Request) -> Any:
-    """Resolve a PermissionChecker for the current request."""
-    from fastapi_admin_kit.auth.identity import get_current_user_from_cookie
-    from fastapi_admin_kit.auth.permissions import PermissionChecker
-
-    user = await get_current_user_from_cookie(request)
-    if user is None:
-        return None
-
-    async_session = get_db_session(request)
-    if async_session is None:
-        return None
-
-    snapshot = getattr(request.state, "admin_user_snapshot", None)
-    return PermissionChecker(session=async_session, user=user, user_snapshot=snapshot)
-
-
 # ---------------------------------------------------------------------------
 # HTML Renderers (SRP: only HTML template logic)
 # ---------------------------------------------------------------------------

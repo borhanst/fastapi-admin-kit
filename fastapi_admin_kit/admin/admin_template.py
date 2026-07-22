@@ -1,9 +1,12 @@
 """Admin template management and context building."""
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     pass
+
+logger = logging.getLogger(__name__)
 
 
 class AdminTemplate:
@@ -46,11 +49,11 @@ class AdminTemplate:
         jinja_env.env.filters["slugify"] = slugify
         app.state.admin_jinja_env = jinja_env
 
-    def sidebar_template_kwargs(self, request: Any) -> dict[str, Any]:
+    async def sidebar_template_kwargs(self, request: Any) -> dict[str, Any]:
         """Thin wrapper — returns sidebar kwargs for TemplateResponse contexts."""
-        return self.build_sidebar_context(request)
+        return await self.build_sidebar_context(request)
 
-    def build_sidebar_context(
+    async def build_sidebar_context(
         self,
         request: Any,
         user: Any = None,
@@ -84,28 +87,34 @@ class AdminTemplate:
             permissions_map = {}
 
             if user and not is_superuser:
+                user_id = snapshot.get("id") if snapshot else getattr(user, "id", None)
                 role_ids = (
                     snapshot.get("role_ids", []) if snapshot else getattr(user, "role_ids", [])
                 )
-                if role_ids:
+                if role_ids or user_id is not None:
                     try:
                         from sqlalchemy import select
-                        from sqlalchemy.orm import Session
 
-                        from fastapi_admin_kit.auth.models import Permission, admin_role_permissions
+                        from fastapi_admin_kit.auth.models import (
+                            Permission,
+                            UserPermission,
+                            admin_role_permissions,
+                        )
+                        from fastapi_admin_kit.db import get_db_session
 
-                        engine = request.app.state.admin_engine
-                        with Session(engine) as s:
-                            result = s.execute(
+                        session = get_db_session(request)
+
+                        # Load permissions from all roles, merge with OR logic
+                        if role_ids:
+                            result = await session.execute(
                                 select(Permission)
                                 .join(
                                     admin_role_permissions,
                                     Permission.id == admin_role_permissions.c.permission_id,
                                 )
-                                .filter(admin_role_permissions.c.role_id.in_(role_ids))
+                                .where(admin_role_permissions.c.role_id.in_(role_ids))
                             )
-                            rows = result.scalars().all()
-                            for perm in rows:
+                            for perm in result.scalars():
                                 if perm.table_name in permissions_map:
                                     existing = permissions_map[perm.table_name]
                                     permissions_map[perm.table_name] = PermissionSet(
@@ -121,10 +130,35 @@ class AdminTemplate:
                                         can_edit=perm.can_edit,
                                         can_delete=perm.can_delete,
                                     )
-                    except Exception as exc:
-                        import logging
 
-                        logging.getLogger(__name__).debug("Permission query failed: %s", exc)
+                        # Load direct user permission overrides, merge on top
+                        if user_id is not None:
+                            result = await session.execute(
+                                select(UserPermission, Permission)
+                                .join(Permission, UserPermission.permission_id == Permission.id)
+                                .where(UserPermission.user_id == user_id)
+                            )
+                            for up, perm in result:
+                                table = perm.table_name
+                                if table in permissions_map:
+                                    existing = permissions_map[table]
+                                    permissions_map[table] = PermissionSet(
+                                        can_view=existing.can_view or perm.can_view,
+                                        can_create=existing.can_create or perm.can_create,
+                                        can_edit=existing.can_edit or perm.can_edit,
+                                        can_delete=existing.can_delete or perm.can_delete,
+                                    )
+                                else:
+                                    permissions_map[table] = PermissionSet(
+                                        can_view=perm.can_view,
+                                        can_create=perm.can_create,
+                                        can_edit=perm.can_edit,
+                                        can_delete=perm.can_delete,
+                                    )
+                    except Exception as exc:
+                        logger.warning(
+                            "Permission query failed in sidebar fallback: %s", exc, exc_info=True
+                        )
 
         def _item_visible(item: Any) -> bool:
             return (
@@ -189,7 +223,7 @@ class AdminTemplate:
             "settings_visible": settings_visible,
         }
 
-    def apply_sidebar_context(self, request: Any, user: Any, context: dict) -> dict:
+    async def apply_sidebar_context(self, request: Any, user: Any, context: dict) -> dict:
         """Inject nav_groups + permissions_map into a template context dict."""
-        context.update(self.build_sidebar_context(request, user=user))
+        context.update(await self.build_sidebar_context(request, user=user))
         return context
