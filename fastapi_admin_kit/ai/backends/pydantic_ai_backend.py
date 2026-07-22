@@ -70,6 +70,7 @@ class PydanticAIAgent(AIAgent):
                 retries=config.retries,
             )
             self._bind_tools(config.tools)
+            self._register_instructions()
         except ImportError:
             self._agent = None
 
@@ -124,6 +125,45 @@ class PydanticAIAgent(AIAgent):
                 self._agent.tool(t.handler)
             else:
                 self._agent.tool_plain(t.handler)
+
+    def _register_instructions(self) -> None:
+        if self._agent is None:
+            return
+        from pydantic_ai import RunContext
+
+        @self._agent.instructions
+        def _page_context(ctx: RunContext[AdminDeps]) -> str:
+            page_url = ctx.deps.page_url
+            if not page_url:
+                return ""
+
+            admin_path = "/"
+            try:
+                admin_path = ctx.deps.request.app.state.admin_config.get("admin_path", "/admin")
+            except Exception:
+                pass
+
+            path = page_url.rstrip("/")
+            if not path.startswith(admin_path):
+                return ""
+            relative = path[len(admin_path) :].strip("/")
+            if not relative:
+                return ""
+
+            table_name = relative.split("/")[0]
+            registered = ctx.deps.registry.get(table_name)
+            if registered is None:
+                return ""
+
+            col_names = [c.name for c in registered.columns]
+            col_types = {c.name: str(c.type) for c in registered.columns}
+            cols_desc = ", ".join(f"{name} ({col_types.get(name, '?')})" for name in col_names)
+            return (
+                f"The user is currently on the {registered.verbose_name} page "
+                f"(table: {table_name}). "
+                f"Available columns: {cols_desc}. "
+                f"Use these exact table and column names when querying."
+            )
 
     async def chat(
         self,
@@ -214,11 +254,13 @@ class PydanticAIAgent(AIAgent):
     def get_tools(self) -> list[dict[str, Any]]:
         return [t.to_schema() for t in self._config.tools]
 
-    async def get_usage_stats(self, period: str = "day") -> dict[str, Any]:
+    async def get_usage_stats(
+        self, period: str = "day", session: Any | None = None
+    ) -> dict[str, Any]:
         return await self._usage_writer.aggregate(
             agent_name=self._config.name,
             period=period,
-            session=None,  # type: ignore[arg-type]
+            session=session,  # type: ignore[arg-type]
         )
 
     def _compute_cost(self, usage: RunUsage) -> float:

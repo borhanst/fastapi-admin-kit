@@ -76,6 +76,7 @@ class ConversationRecorder:
     async def log_tool_call(self, conv: AIConversation, call: ToolCallRecord) -> None:
         from fastapi_admin_kit.ai.usage import AIMessage
 
+        start = time.perf_counter()
         self.session.add(
             AIMessage(
                 conversation_id=conv.id,
@@ -84,6 +85,8 @@ class ConversationRecorder:
                 tool_args=getattr(call, "args", None),
                 tool_result=getattr(call, "result", None),
                 content=str(getattr(call, "result", "")),
+                is_error=getattr(call, "is_error", False),
+                latency_ms=int((time.perf_counter() - start) * 1000),
             )
         )
         await self.session.flush()
@@ -122,7 +125,11 @@ class ConversationRecorder:
 def _with_conversation_logging(
     chat_fn: Callable[..., Awaitable[ChatResult]],
 ) -> Callable[..., Awaitable[ChatResult]]:
-    """Wrap a chat() method to automatically log conversations and messages."""
+    """Wrap a chat() method to log tool calls to an existing conversation.
+
+    Conversation creation and user/assistant message logging are handled
+    by the endpoint (dashboard.py ai_chat) to avoid duplicate conversations.
+    """
 
     @wraps(chat_fn)
     async def wrapper(
@@ -133,47 +140,25 @@ def _with_conversation_logging(
         conversation_id: str | None = None,
         **kwargs: Any,
     ) -> ChatResult:
-        recorder = ConversationRecorder(deps.session)
-        conv = await recorder.get_or_create(
-            conversation_id,
-            agent_name=getattr(self, "name", "default"),
-            user=deps.admin_user,
-        )
-
-        await recorder.log_message(conv, role="user", content=message)
-
-        start = time.perf_counter()
         try:
             result = await chat_fn(self, message, deps, message_history=message_history, **kwargs)
-        except Exception as exc:
-            await recorder.log_error(conv, error=str(exc))
+        except Exception:
             raise
 
-        latency_ms = int((time.perf_counter() - start) * 1000)
-        cost = getattr(self, "_compute_cost", lambda u: 0.0)(getattr(result, "usage", None))
-
-        await recorder.log_message(
-            conv,
-            role="assistant",
-            content=str(getattr(result, "output", "")),
-            tokens=getattr(result, "usage", None) and getattr(result.usage, "total_tokens", None),
-            latency_ms=latency_ms,
-        )
-
         for call in getattr(result, "tool_calls", []):
-            await recorder.log_tool_call(conv, call)
+            if conversation_id:
+                from sqlalchemy import select
 
-        tokens_delta = 0
-        usage_obj = getattr(result, "usage", None)
-        if usage_obj:
-            tokens_delta = getattr(usage_obj, "total_tokens", 0) or 0
+                from fastapi_admin_kit.ai.usage import AIConversation
 
-        await recorder.touch(
-            conv,
-            tokens_delta=tokens_delta,
-            cost_delta=cost,
-        )
-        result.conversation_id = conv.id
+                recorder = ConversationRecorder(deps.session)
+                conv_result = await deps.session.execute(
+                    select(AIConversation).where(AIConversation.id == conversation_id)
+                )
+                conv = conv_result.scalar_one_or_none()
+                if conv:
+                    await recorder.log_tool_call(conv, call)
+
         return result
 
     return wrapper
@@ -204,10 +189,12 @@ def _with_conversation_logging_stream(
 
         start = time.perf_counter()
         accumulated: list[str] = []
+        stream_result = None
         try:
             async for chunk in chat_stream_fn(
                 self, message, deps, message_history=message_history, **kwargs
             ):
+                stream_result = chunk
                 accumulated.append(str(chunk))
                 yield chunk
         except Exception as exc:
@@ -223,6 +210,18 @@ def _with_conversation_logging_stream(
             content=full_content,
             latency_ms=latency_ms,
         )
+
+        if stream_result is not None:
+            try:
+                from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
+                    _extract_tool_calls,
+                )
+
+                tool_calls = _extract_tool_calls(stream_result)
+                for tc in tool_calls:
+                    await recorder.log_tool_call(conv, tc)
+            except Exception:
+                pass
 
         await recorder.touch(conv)
 

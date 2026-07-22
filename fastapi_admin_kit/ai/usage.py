@@ -99,6 +99,7 @@ class AIMessage(Base):
     tokens = Column(Integer)
     latency_ms = Column(Integer)
     error = Column(Text)
+    is_error = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -137,7 +138,7 @@ class AIUsageWriter:
                 latency_ms=latency_ms,
             )
         )
-        await session.commit()
+        await session.flush()
 
     async def aggregate(
         self,
@@ -145,14 +146,17 @@ class AIUsageWriter:
         period: str,
         session: AsyncSession,
     ) -> dict[str, object]:
+        from datetime import UTC, datetime, timedelta
+
+        from sqlalchemy import case as sqlcase
         from sqlalchemy import func as sqlfunc
         from sqlalchemy import select
 
         from fastapi_admin_kit.ai.usage import AIUsageLog
 
-        interval_map = {"day": "1 day", "week": "7 days", "month": "30 days"}
-        interval = interval_map.get(period, "1 day")
-        days = int(interval.split()[0])
+        days_map = {"day": 1, "week": 7, "month": 30}
+        days = days_map.get(period, 1)
+        cutoff = datetime.now(UTC) - timedelta(days=days)
 
         result = await session.execute(
             select(
@@ -161,14 +165,14 @@ class AIUsageWriter:
                 sqlfunc.count(AIUsageLog.id).label("total_runs"),
                 sqlfunc.avg(AIUsageLog.latency_ms).label("avg_latency_ms"),
                 sqlfunc.sum(
-                    sqlfunc.case(
+                    sqlcase(
                         (AIUsageLog.success == True, 1),  # noqa: E712
                         else_=0,
                     )
                 ).label("success_count"),
             )
             .where(AIUsageLog.agent_name == agent_name)
-            .where(AIUsageLog.timestamp >= func.now() - func.make_interval(*[0, 0, 0, 0, days]))
+            .where(AIUsageLog.timestamp >= cutoff)
         )
         row = result.one()
         total_runs = row.total_runs or 0

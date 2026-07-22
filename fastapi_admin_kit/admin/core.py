@@ -882,6 +882,7 @@ class Admin:
             "primary_color_dark": self.config.ui.primary_color_dark,
             "dark_mode_default": self.config.ui.dark_mode_default,
             "admin_path": self.router.admin_path,
+            "ai_enabled": self._ai_enabled,
         }
         self._jinja_env.env.globals["admin_config"] = admin_cfg
 

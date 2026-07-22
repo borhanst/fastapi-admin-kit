@@ -1,6 +1,6 @@
 {# partials/ai_chat_widget.html — Floating AI Chat Widget (bottom-right on all pages) #}
 {% if admin_config.ai_enabled | default(false) %}
-<div x-data="aiChatWidget()" x-init="init()" x-cloak>
+<div x-data="aiChatWidget()" x-init="init()" x-cloak x-show="!isHidden">
 
   {# ── Floating toggle button ──────────────────────────────────────────── #}
   <button
@@ -432,6 +432,11 @@ function aiChatWidget() {
     isTyping: false,
     conversationId: null,
 
+    get isHidden() {
+      const path = window.location.pathname;
+      return path.includes('/ai/chat') || path.endsWith('/login');
+    },
+
     init() {
       this.$nextTick(() => {
         if (this.$refs.panelInput) {
@@ -476,7 +481,8 @@ function aiChatWidget() {
           body: JSON.stringify({
             message: text,
             agent: 'default',
-            conversation_id: this.conversationId
+            conversation_id: this.conversationId,
+            page_url: window.location.pathname
           })
         });
         const data = await resp.json();

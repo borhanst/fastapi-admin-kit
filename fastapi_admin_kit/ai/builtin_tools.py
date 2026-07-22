@@ -42,12 +42,27 @@ async def query_database(
     model = registered.model
     session = ctx.deps.session
 
-    from sqlalchemy import select
+    from sqlalchemy import Boolean, Float, Integer, String, select
 
     stmt = select(model)
     for field_name, value in (filters or {}).items():
-        if hasattr(model, field_name):
-            stmt = stmt.where(getattr(model, field_name) == value)
+        if not hasattr(model, field_name):
+            continue
+        if isinstance(value, dict | list):
+            continue
+        col = getattr(model, field_name)
+        col_type = type(col.property.columns[0].type)
+        if isinstance(value, bool) and col_type not in (Boolean,):
+            continue
+        if isinstance(value, int | float) and not isinstance(value, bool):
+            if col_type not in (Integer, Float):
+                continue
+        if isinstance(value, str) and col_type not in (String,):
+            continue
+        if value is None:
+            stmt = stmt.where(col.is_(None))
+        else:
+            stmt = stmt.where(col == value)
     stmt = stmt.limit(limit)
 
     result = await session.execute(stmt)

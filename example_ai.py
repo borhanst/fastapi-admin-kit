@@ -26,11 +26,11 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING
 
 import bcrypt
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from pydantic_ai import RunContext
 from sqlalchemy import (
     Boolean,
     Column,
@@ -47,7 +47,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from fastapi_admin_kit import Admin, ModelAdmin
 from fastapi_admin_kit.ai import AIAgentConfig, AIConfig, tool
-from fastapi_admin_kit.ai.tools import tool_registry
+from fastapi_admin_kit.ai.deps import AdminDeps
 from fastapi_admin_kit.ai.usage import AIUsageLog  # noqa: F401
 from fastapi_admin_kit.audit.models import AuditLog  # noqa: F401
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
@@ -55,10 +55,6 @@ from fastapi_admin_kit.auth.models import User  # noqa: F401
 from fastapi_admin_kit.config import ThemeConfig
 from fastapi_admin_kit.models import Base as AdminBase
 from fastapi_admin_kit.nav import NavGroupConfig
-
-from pydantic_ai import RunContext
-from fastapi_admin_kit.ai.deps import AdminDeps
-
 
 load_dotenv()
 
@@ -170,32 +166,35 @@ async def search_products(
     ctx: RunContext[AdminDeps], query: str, limit: int = 10
 ) -> dict[str, object]:
     """Search products across name and description fields."""
-    session = ctx.deps.session
-    stmt = (
-        select(Product)
-        .where(
-            Product.name.ilike(f"%{query}%")
-            | Product.description.ilike(f"%{query}%")
+    try:
+        session = ctx.deps.session
+        stmt = (
+            select(Product)
+            .where(
+                Product.name.ilike(f"%{query}%")
+                | Product.description.ilike(f"%{query}%")
+            )
+            .limit(limit)
         )
-        .limit(limit)
-    )
 
-    result = await session.execute(stmt)
-    products = result.scalars().all()
+        result = await session.execute(stmt)
+        products = result.scalars().all()
 
-    return {
-        "count": len(products),
-        "products": [
-            {
-                "id": p.id,
-                "name": p.name,
-                "price": p.price,
-                "stock": p.stock,
-                "is_active": p.is_active,
-            }
-            for p in products
-        ],
-    }
+        return {
+            "count": len(products),
+            "products": [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "price": p.price,
+                    "stock": p.stock,
+                    "is_active": p.is_active,
+                }
+                for p in products
+            ],
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @tool(
@@ -207,21 +206,24 @@ async def get_product(
     ctx: RunContext[AdminDeps], product_id: int
 ) -> dict[str, object]:
     """Look up a product by its ID."""
-    session = ctx.deps.session
-    result = await session.execute(
-        select(Product).where(Product.id == product_id)
-    )
-    product = result.scalars().first()
-    if not product:
-        return {"error": f"Product {product_id} not found"}
-    return {
-        "id": product.id,
-        "name": product.name,
-        "description": product.description,
-        "price": product.price,
-        "stock": product.stock,
-        "is_active": product.is_active,
-    }
+    try:
+        session = ctx.deps.session
+        result = await session.execute(
+            select(Product).where(Product.id == product_id)
+        )
+        product = result.scalars().first()
+        if not product:
+            return {"error": f"Product {product_id} not found"}
+        return {
+            "id": product.id,
+            "name": product.name,
+            "description": product.description,
+            "price": product.price,
+            "stock": product.stock,
+            "is_active": product.is_active,
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @tool(
@@ -233,27 +235,30 @@ async def update_product_stock(
     ctx: RunContext[AdminDeps], product_id: int, new_stock: int
 ) -> dict[str, object]:
     """Set the stock level of a product."""
-    if new_stock < 0:
-        return {"error": "Stock cannot be negative"}
+    try:
+        if new_stock < 0:
+            return {"error": "Stock cannot be negative"}
 
-    session = ctx.deps.session
-    result = await session.execute(
-        select(Product).where(Product.id == product_id)
-    )
-    product = result.scalars().first()
-    if not product:
-        return {"error": f"Product {product_id} not found"}
+        session = ctx.deps.session
+        result = await session.execute(
+            select(Product).where(Product.id == product_id)
+        )
+        product = result.scalars().first()
+        if not product:
+            return {"error": f"Product {product_id} not found"}
 
-    old_stock = product.stock
-    product.stock = new_stock
-    await session.flush()
+        old_stock = product.stock
+        product.stock = new_stock
+        await session.flush()
 
-    return {
-        "product_id": product_id,
-        "name": product.name,
-        "old_stock": old_stock,
-        "new_stock": new_stock,
-    }
+        return {
+            "product_id": product_id,
+            "name": product.name,
+            "old_stock": old_stock,
+            "new_stock": new_stock,
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @tool(
@@ -265,36 +270,39 @@ async def get_customer_summary(
     ctx: RunContext[AdminDeps], customer_id: int | None = None
 ) -> dict[str, object]:
     """Get customer summary or aggregate stats."""
-    session = ctx.deps.session
+    try:
+        session = ctx.deps.session
 
-    if customer_id:
-        result = await session.execute(
-            select(Customer).where(Customer.id == customer_id)
-        )
-        customer = result.scalars().first()
-        if not customer:
-            return {"error": f"Customer {customer_id} not found"}
+        if customer_id:
+            result = await session.execute(
+                select(Customer).where(Customer.id == customer_id)
+            )
+            customer = result.scalars().first()
+            if not customer:
+                return {"error": f"Customer {customer_id} not found"}
+            return {
+                "id": customer.id,
+                "name": customer.name,
+                "email": customer.email,
+                "tier": customer.tier,
+                "total_spent": customer.total_spent,
+            }
+
+        result = await session.execute(select(Customer))
+        customers = result.scalars().all()
+
+        tiers: dict[str, int] = {}
+        for c in customers:
+            tiers.setdefault(c.tier, 0)
+            tiers[c.tier] += 1
+
         return {
-            "id": customer.id,
-            "name": customer.name,
-            "email": customer.email,
-            "tier": customer.tier,
-            "total_spent": customer.total_spent,
+            "total_customers": len(customers),
+            "by_tier": tiers,
+            "total_revenue": sum(c.total_spent for c in customers),
         }
-
-    result = await session.execute(select(Customer))
-    customers = result.scalars().all()
-
-    tiers: dict[str, int] = {}
-    for c in customers:
-        tiers.setdefault(c.tier, 0)
-        tiers[c.tier] += 1
-
-    return {
-        "total_customers": len(customers),
-        "by_tier": tiers,
-        "total_revenue": sum(c.total_spent for c in customers),
-    }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @tool(
@@ -306,28 +314,31 @@ async def update_customer_tier(
     ctx: RunContext[AdminDeps], customer_id: int, new_tier: str
 ) -> dict[str, object]:
     """Update a customer's tier (standard, premium, vip)."""
-    valid_tiers = {"standard", "premium", "vip"}
-    if new_tier not in valid_tiers:
-        return {"error": f"Invalid tier. Must be one of: {valid_tiers}"}
+    try:
+        valid_tiers = {"standard", "premium", "vip"}
+        if new_tier not in valid_tiers:
+            return {"error": f"Invalid tier. Must be one of: {valid_tiers}"}
 
-    session = ctx.deps.session
-    result = await session.execute(
-        select(Customer).where(Customer.id == customer_id)
-    )
-    customer = result.scalars().first()
-    if not customer:
-        return {"error": f"Customer {customer_id} not found"}
+        session = ctx.deps.session
+        result = await session.execute(
+            select(Customer).where(Customer.id == customer_id)
+        )
+        customer = result.scalars().first()
+        if not customer:
+            return {"error": f"Customer {customer_id} not found"}
 
-    old_tier = customer.tier
-    customer.tier = new_tier
-    await session.flush()
+        old_tier = customer.tier
+        customer.tier = new_tier
+        await session.flush()
 
-    return {
-        "customer_id": customer_id,
-        "name": customer.name,
-        "old_tier": old_tier,
-        "new_tier": new_tier,
-    }
+        return {
+            "customer_id": customer_id,
+            "name": customer.name,
+            "old_tier": old_tier,
+            "new_tier": new_tier,
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @tool(
@@ -339,25 +350,28 @@ async def get_revenue_summary(
     ctx: RunContext[AdminDeps],
 ) -> dict[str, object]:
     """Aggregate revenue stats across all customers."""
-    session = ctx.deps.session
-    result = await session.execute(select(Customer))
-    customers = result.scalars().all()
+    try:
+        session = ctx.deps.session
+        result = await session.execute(select(Customer))
+        customers = result.scalars().all()
 
-    by_tier: dict[str, dict[str, object]] = {}
-    total_revenue = 0.0
-    for c in customers:
-        tier = c.tier
-        if tier not in by_tier:
-            by_tier[tier] = {"count": 0, "revenue": 0.0}
-        by_tier[tier]["count"] = int(by_tier[tier]["count"]) + 1
-        by_tier[tier]["revenue"] = float(by_tier[tier]["revenue"]) + c.total_spent
-        total_revenue += c.total_spent
+        by_tier: dict[str, dict[str, object]] = {}
+        total_revenue = 0.0
+        for c in customers:
+            tier = c.tier
+            if tier not in by_tier:
+                by_tier[tier] = {"count": 0, "revenue": 0.0}
+            by_tier[tier]["count"] = int(by_tier[tier]["count"]) + 1
+            by_tier[tier]["revenue"] = float(by_tier[tier]["revenue"]) + c.total_spent
+            total_revenue += c.total_spent
 
-    return {
-        "total_customers": len(customers),
-        "total_revenue": total_revenue,
-        "by_tier": by_tier,
-    }
+        return {
+            "total_customers": len(customers),
+            "total_revenue": total_revenue,
+            "by_tier": by_tier,
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @tool(
@@ -369,28 +383,31 @@ async def get_support_stats(
     ctx: RunContext[AdminDeps],
 ) -> dict[str, object]:
     """Aggregate support ticket statistics."""
-    session = ctx.deps.session
-    result = await session.execute(select(Ticket))
-    tickets = result.scalars().all()
+    try:
+        session = ctx.deps.session
+        result = await session.execute(select(Ticket))
+        tickets = result.scalars().all()
 
-    by_status: dict[str, int] = {}
-    by_priority: dict[str, int] = {}
-    for t in tickets:
-        by_status.setdefault(t.status, 0)
-        by_status[t.status] += 1
-        by_priority.setdefault(t.priority, 0)
-        by_priority[t.priority] += 1
+        by_status: dict[str, int] = {}
+        by_priority: dict[str, int] = {}
+        for t in tickets:
+            by_status.setdefault(t.status, 0)
+            by_status[t.status] += 1
+            by_priority.setdefault(t.priority, 0)
+            by_priority[t.priority] += 1
 
-    total = len(tickets)
-    resolved = by_status.get("resolved", 0)
-    rate = f"{(resolved / total * 100):.1f}%" if total else "N/A"
+        total = len(tickets)
+        resolved = by_status.get("resolved", 0)
+        rate = f"{(resolved / total * 100):.1f}%" if total else "N/A"
 
-    return {
-        "total_tickets": total,
-        "by_status": by_status,
-        "by_priority": by_priority,
-        "resolution_rate": rate,
-    }
+        return {
+            "total_tickets": total,
+            "by_status": by_status,
+            "by_priority": by_priority,
+            "resolution_rate": rate,
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @tool(
@@ -402,28 +419,31 @@ async def search_tickets(
     ctx: RunContext[AdminDeps], keyword: str, limit: int = 10
 ) -> dict[str, object]:
     """Find tickets matching a keyword in the subject."""
-    session = ctx.deps.session
-    stmt = (
-        select(Ticket)
-        .where(Ticket.subject.ilike(f"%{keyword}%"))
-        .limit(limit)
-    )
-    result = await session.execute(stmt)
-    tickets = result.scalars().all()
+    try:
+        session = ctx.deps.session
+        stmt = (
+            select(Ticket)
+            .where(Ticket.subject.ilike(f"%{keyword}%"))
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        tickets = result.scalars().all()
 
-    return {
-        "count": len(tickets),
-        "tickets": [
-            {
-                "id": t.id,
-                "subject": t.subject,
-                "status": t.status,
-                "priority": t.priority,
-                "customer_id": t.customer_id,
-            }
-            for t in tickets
-        ],
-    }
+        return {
+            "count": len(tickets),
+            "tickets": [
+                {
+                    "id": t.id,
+                    "subject": t.subject,
+                    "status": t.status,
+                    "priority": t.priority,
+                    "customer_id": t.customer_id,
+                }
+                for t in tickets
+            ],
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @tool(
@@ -435,27 +455,30 @@ async def update_ticket_status(
     ctx: RunContext[AdminDeps], ticket_id: int, status: str
 ) -> dict[str, object]:
     """Update a ticket's status field."""
-    valid = {"open", "in_progress", "resolved"}
-    if status not in valid:
-        return {"error": f"Invalid status. Must be one of: {valid}"}
+    try:
+        valid = {"open", "in_progress", "resolved"}
+        if status not in valid:
+            return {"error": f"Invalid status. Must be one of: {valid}"}
 
-    session = ctx.deps.session
-    result = await session.execute(
-        select(Ticket).where(Ticket.id == ticket_id)
-    )
-    ticket = result.scalars().first()
-    if not ticket:
-        return {"error": f"Ticket {ticket_id} not found"}
+        session = ctx.deps.session
+        result = await session.execute(
+            select(Ticket).where(Ticket.id == ticket_id)
+        )
+        ticket = result.scalars().first()
+        if not ticket:
+            return {"error": f"Ticket {ticket_id} not found"}
 
-    old_status = ticket.status
-    ticket.status = status
-    await session.flush()
+        old_status = ticket.status
+        ticket.status = status
+        await session.flush()
 
-    return {
-        "ticket_id": ticket_id,
-        "old_status": old_status,
-        "new_status": status,
-    }
+        return {
+            "ticket_id": ticket_id,
+            "old_status": old_status,
+            "new_status": status,
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @tool(
@@ -471,27 +494,30 @@ async def create_ticket(
     customer_id: int | None = None,
 ) -> dict[str, object]:
     """Create a support ticket with subject, body, priority, and optional customer link."""
-    valid_priorities = {"low", "medium", "high", "urgent"}
-    if priority not in valid_priorities:
-        return {"error": f"Invalid priority. Must be one of: {valid_priorities}"}
+    try:
+        valid_priorities = {"low", "medium", "high", "urgent"}
+        if priority not in valid_priorities:
+            return {"error": f"Invalid priority. Must be one of: {valid_priorities}"}
 
-    session = ctx.deps.session
-    ticket = Ticket(
-        subject=subject,
-        body=body,
-        status="open",
-        priority=priority,
-        customer_id=customer_id,
-    )
-    session.add(ticket)
-    await session.flush()
+        session = ctx.deps.session
+        ticket = Ticket(
+            subject=subject,
+            body=body,
+            status="open",
+            priority=priority,
+            customer_id=customer_id,
+        )
+        session.add(ticket)
+        await session.flush()
 
-    return {
-        "ticket_id": ticket.id,
-        "subject": ticket.subject,
-        "status": ticket.status,
-        "priority": ticket.priority,
-    }
+        return {
+            "ticket_id": ticket.id,
+            "subject": ticket.subject,
+            "status": ticket.status,
+            "priority": ticket.priority,
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ============================================================================
@@ -520,16 +546,16 @@ ai_config = AIConfig(
             cost_per_1k_input_tokens=0.00059,
             cost_per_1k_output_tokens=0.00079,
             tools=[
-                tool_registry.get("search_products"),  # type: ignore[list-item]
-                tool_registry.get("get_product"),  # type: ignore[list-item]
-                tool_registry.get("update_product_stock"),  # type: ignore[list-item]
-                tool_registry.get("get_customer_summary"),  # type: ignore[list-item]
-                tool_registry.get("update_customer_tier"),  # type: ignore[list-item]
-                tool_registry.get("get_revenue_summary"),  # type: ignore[list-item]
-                tool_registry.get("get_support_stats"),  # type: ignore[list-item]
-                tool_registry.get("search_tickets"),  # type: ignore[list-item]
-                tool_registry.get("update_ticket_status"),  # type: ignore[list-item]
-                tool_registry.get("create_ticket"),  # type: ignore[list-item]
+                "search_products",
+                "get_product",
+                "update_product_stock",
+                "get_customer_summary",
+                "update_customer_tier",
+                "get_revenue_summary",
+                "get_support_stats",
+                "search_tickets",
+                "update_ticket_status",
+                "create_ticket",
             ],
         ),
     ],

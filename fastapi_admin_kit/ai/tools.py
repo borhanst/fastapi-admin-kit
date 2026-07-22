@@ -65,6 +65,18 @@ class ToolRegistry:
     def by_category(self, category: str) -> list[Tool]:
         return [t for t in self._tools.values() if t.category == category]
 
+    def resolve(self, names: list[str]) -> list[Tool]:
+        """Resolve a list of tool names to Tool objects, raising if any are unknown."""
+        tools: list[Tool] = []
+        for name in names:
+            tool = self._tools.get(name)
+            if tool is None:
+                raise KeyError(
+                    f"Tool '{name}' not found in registry. Available: {list(self._tools.keys())}"
+                )
+            tools.append(tool)
+        return tools
+
 
 tool_registry = ToolRegistry()
 

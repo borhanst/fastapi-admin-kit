@@ -24,6 +24,7 @@ class AdminDeps:
     request: Request
     registry: AdminRegistry
     permission_checker: PermissionChecker
+    page_url: str | None = None
 
 
 async def get_admin_deps(request: Request) -> AdminDeps:

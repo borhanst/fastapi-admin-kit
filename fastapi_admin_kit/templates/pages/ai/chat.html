@@ -1,23 +1,156 @@
-{# pages/ai/chat.html — Full-page AI Chat Interface #}
+{# pages/ai/chat.html — Full-page AI Chat Interface with Conversation History #}
 {% extends "base.html" %}
 
 {% block title %}AI Chat{% endblock %}
 
 {% block head_extra %}
 <style>
-  .ai-chat-page {
+  .ai-chat-layout {
     display: flex;
-    flex-direction: column;
     height: calc(100vh - var(--topbar-height) - 2px);
     margin: 0 calc(-1 * var(--content-padding));
     margin-top: calc(-1 * var(--content-padding));
+  }
+
+  .ai-chat-sidebar {
+    width: 280px;
+    border-right: 1px solid var(--surface-border);
+    background: var(--surface-raised);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
+  .ai-chat-sidebar-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--surface-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .ai-chat-sidebar-header h3 {
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+  }
+
+  .ai-chat-new-btn {
+    padding: 6px 12px;
+    border: 1px solid var(--primary-500);
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--primary-600);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all var(--duration-fast) var(--easing-out);
+    font-family: var(--font-body);
+  }
+
+  .ai-chat-new-btn:hover {
+    background: var(--primary-50);
+  }
+
+  .ai-chat-new-btn .material-symbols-outlined {
+    font-size: 14px;
+  }
+
+  .ai-chat-sidebar-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .ai-chat-conv-item {
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--easing-out);
+    margin-bottom: 2px;
+    position: relative;
+  }
+
+  .ai-chat-conv-item:hover {
+    background: var(--surface-inset);
+  }
+
+  .ai-chat-conv-item.active {
+    background: var(--primary-50);
+    border: 1px solid var(--primary-200);
+  }
+
+  .ai-chat-conv-title {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 20px;
+  }
+
+  .ai-chat-conv-meta {
+    font-size: var(--text-2xs);
+    color: var(--text-disabled);
+    margin-top: 2px;
+  }
+
+  .ai-chat-conv-delete {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    color: var(--text-disabled);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: all var(--duration-fast) var(--easing-out);
+  }
+
+  .ai-chat-conv-item:hover .ai-chat-conv-delete {
+    opacity: 1;
+  }
+
+  .ai-chat-conv-delete:hover {
+    background: var(--error-50);
+    color: var(--error-500);
+  }
+
+  .ai-chat-conv-delete .material-symbols-outlined {
+    font-size: 14px;
+  }
+
+  .ai-chat-sidebar-empty {
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--text-disabled);
+    font-size: var(--text-xs);
+  }
+
+  .ai-chat-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
   }
 
   .ai-chat-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px var(--content-padding);
+    padding: 12px var(--content-padding);
     background: var(--surface-raised);
     border-bottom: 1px solid var(--surface-border);
     flex-shrink: 0;
@@ -30,8 +163,8 @@
   }
 
   .ai-chat-avatar {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     border-radius: var(--radius-lg);
     background: linear-gradient(135deg, var(--primary-500), var(--primary-700));
     display: flex;
@@ -41,9 +174,13 @@
     flex-shrink: 0;
   }
 
+  .ai-chat-avatar .material-symbols-outlined {
+    font-size: 18px;
+  }
+
   .ai-chat-header-info h1 {
     font-family: var(--font-display);
-    font-size: var(--text-md);
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--text-primary);
     margin: 0;
@@ -57,21 +194,19 @@
   }
 
   .ai-chat-agent-select {
-    padding: 6px 12px;
+    padding: 5px 10px;
     border: 1px solid var(--surface-border);
     border-radius: var(--radius-md);
     background: var(--surface-base);
     color: var(--text-primary);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     font-family: var(--font-body);
     cursor: pointer;
     outline: none;
-    transition: border-color var(--duration-fast) var(--easing-out);
   }
 
   .ai-chat-agent-select:focus {
     border-color: var(--primary-500);
-    box-shadow: var(--shadow-focus);
   }
 
   .ai-chat-messages {
@@ -80,7 +215,7 @@
     padding: 24px var(--content-padding);
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
   }
 
   .ai-chat-empty {
@@ -89,13 +224,13 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 16px;
+    gap: 12px;
     color: var(--text-disabled);
   }
 
   .ai-chat-empty-icon {
-    width: 72px;
-    height: 72px;
+    width: 64px;
+    height: 64px;
     border-radius: var(--radius-xl);
     background: var(--surface-inset);
     display: flex;
@@ -104,13 +239,13 @@
   }
 
   .ai-chat-empty-icon .material-symbols-outlined {
-    font-size: 36px;
+    font-size: 32px;
     color: var(--text-disabled);
   }
 
   .ai-chat-empty h3 {
     font-family: var(--font-display);
-    font-size: var(--text-lg);
+    font-size: var(--text-md);
     font-weight: 600;
     color: var(--text-secondary);
     margin: 0;
@@ -128,18 +263,18 @@
   .ai-chat-suggestions {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
     justify-content: center;
-    margin-top: 8px;
+    margin-top: 4px;
   }
 
   .ai-chat-suggestion {
-    padding: 8px 16px;
+    padding: 6px 14px;
     border: 1px solid var(--surface-border);
     border-radius: var(--radius-full);
     background: var(--surface-raised);
     color: var(--text-secondary);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     cursor: pointer;
     transition: all var(--duration-fast) var(--easing-out);
     font-family: var(--font-body);
@@ -153,7 +288,7 @@
 
   .ai-chat-msg {
     display: flex;
-    gap: 12px;
+    gap: 10px;
     max-width: 720px;
     animation: chatMsgIn 0.2s var(--easing-out);
   }
@@ -164,8 +299,8 @@
   }
 
   .ai-chat-msg-avatar {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border-radius: var(--radius-md);
     display: flex;
     align-items: center;
@@ -186,7 +321,7 @@
   }
 
   .ai-chat-msg-body {
-    padding: 12px 16px;
+    padding: 10px 14px;
     border-radius: var(--radius-lg);
     font-size: var(--text-sm);
     line-height: 1.7;
@@ -205,12 +340,12 @@
     border-top-right-radius: var(--radius-sm);
   }
 
-  .ai-chat-msg-body p { margin: 0 0 8px 0; }
+  .ai-chat-msg-body p { margin: 0 0 6px 0; }
   .ai-chat-msg-body p:last-child { margin-bottom: 0; }
   .ai-chat-msg-body code {
     font-family: var(--font-mono);
     font-size: var(--text-xs);
-    padding: 2px 6px;
+    padding: 2px 5px;
     border-radius: var(--radius-sm);
     background: rgba(0,0,0,0.06);
   }
@@ -227,7 +362,7 @@
   .ai-chat-msg-time {
     font-size: var(--text-2xs);
     color: var(--text-disabled);
-    margin-top: 4px;
+    margin-top: 3px;
     padding: 0 4px;
   }
 
@@ -243,8 +378,8 @@
   }
 
   .ai-chat-typing-dot {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     background: var(--text-disabled);
     animation: typingBounce 1.2s infinite;
@@ -254,7 +389,7 @@
   .ai-chat-typing-dot:nth-child(3) { animation-delay: 0.4s; }
 
   .ai-chat-input-bar {
-    padding: 16px var(--content-padding);
+    padding: 12px var(--content-padding);
     background: var(--surface-raised);
     border-top: 1px solid var(--surface-border);
     flex-shrink: 0;
@@ -263,14 +398,14 @@
   .ai-chat-input-wrapper {
     display: flex;
     align-items: flex-end;
-    gap: 12px;
+    gap: 10px;
     max-width: 720px;
     margin: 0 auto;
   }
 
   .ai-chat-input-field {
     flex: 1;
-    padding: 12px 16px;
+    padding: 10px 14px;
     border: 1px solid var(--surface-border);
     border-radius: var(--radius-lg);
     background: var(--surface-base);
@@ -279,8 +414,8 @@
     font-family: var(--font-body);
     resize: none;
     outline: none;
-    min-height: 44px;
-    max-height: 160px;
+    min-height: 40px;
+    max-height: 140px;
     line-height: 1.5;
     transition: border-color var(--duration-fast) var(--easing-out);
   }
@@ -295,8 +430,8 @@
   }
 
   .ai-chat-send-btn {
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
     border-radius: var(--radius-lg);
     border: none;
     background: var(--primary-600);
@@ -325,115 +460,146 @@
   }
 
   .ai-chat-send-btn .material-symbols-outlined {
-    font-size: 20px;
+    font-size: 18px;
     pointer-events: none;
   }
 
   @keyframes chatMsgIn {
-    from { opacity: 0; transform: translateY(8px); }
+    from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: translateY(0); }
   }
 
   @keyframes typingBounce {
     0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-    30% { transform: translateY(-4px); opacity: 1; }
+    30% { transform: translateY(-3px); opacity: 1; }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="ai-chat-page" x-data="aiChat()" x-init="init()">
-  <div class="ai-chat-header">
-    <div class="ai-chat-header-left">
-      <div class="ai-chat-avatar">
-        <span class="material-symbols-outlined">smart_toy</span>
-      </div>
-      <div class="ai-chat-header-info">
-        <h1>AI Assistant</h1>
-        <p>Ask anything about your data</p>
-      </div>
-    </div>
-    <div style="display: flex; align-items: center; gap: 12px;">
-      <select class="ai-chat-agent-select" x-model="selectedAgent" @change="loadAgents()">
-        <template x-for="agent in agents" :key="agent.name">
-          <option :value="agent.name" x-text="agent.name"></option>
-        </template>
-      </select>
-      <button @click="clearChat()" class="btn btn-secondary btn-sm" title="Clear chat">
-        <span class="material-symbols-outlined">delete_sweep</span>
-        Clear
+<div class="ai-chat-layout" x-data="aiChat()" x-init="init()">
+  <div class="ai-chat-sidebar">
+    <div class="ai-chat-sidebar-header">
+      <h3>Conversations</h3>
+      <button class="ai-chat-new-btn" @click="newChat()">
+        <span class="material-symbols-outlined">add</span>
+        New
       </button>
+    </div>
+    <div class="ai-chat-sidebar-list">
+      <template x-if="conversations.length === 0">
+        <div class="ai-chat-sidebar-empty">No conversations yet</div>
+      </template>
+      <template x-for="conv in conversations" :key="conv.id">
+        <div
+          class="ai-chat-conv-item"
+          :class="conversationId === conv.id ? 'active' : ''"
+          @click="loadConversation(conv.id)"
+        >
+          <div class="ai-chat-conv-title" x-text="conv.title"></div>
+          <div class="ai-chat-conv-meta">
+            <span x-text="conv.turn_count + ' turns'"></span>
+            <template x-if="conv.last_message_at">
+              <span x-text="' · ' + timeAgo(conv.last_message_at)"></span>
+            </template>
+          </div>
+          <button class="ai-chat-conv-delete" @click.stop="deleteConversation(conv.id)" title="Delete">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+      </template>
     </div>
   </div>
 
-  <div class="ai-chat-messages" x-ref="messagesContainer">
-    <template x-if="messages.length === 0">
-      <div class="ai-chat-empty">
-        <div class="ai-chat-empty-icon">
-          <span class="material-symbols-outlined">auto_awesome</span>
+  <div class="ai-chat-main">
+    <div class="ai-chat-header">
+      <div class="ai-chat-header-left">
+        <div class="ai-chat-avatar">
+          <span class="material-symbols-outlined">smart_toy</span>
         </div>
-        <h3>How can I help?</h3>
-        <p>Ask questions about your data, generate reports, or manage records using natural language.</p>
-        <div class="ai-chat-suggestions">
-          <button class="ai-chat-suggestion" @click="sendSuggestion('Show me a summary of all users')">Show users summary</button>
-          <button class="ai-chat-suggestion" @click="sendSuggestion('Generate a report of recent activity')">Recent activity report</button>
-          <button class="ai-chat-suggestion" @click="sendSuggestion('What tools are available?')">Available tools</button>
+        <div class="ai-chat-header-info">
+          <h1>AI Assistant</h1>
+          <p x-text="conversationId ? 'Resuming conversation' : 'Ask anything about your data'"></p>
         </div>
       </div>
-    </template>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <select class="ai-chat-agent-select" x-model="selectedAgent">
+          <template x-for="agent in agents" :key="agent.name">
+            <option :value="agent.name" x-text="agent.name"></option>
+          </template>
+        </select>
+      </div>
+    </div>
 
-    <template x-for="(msg, idx) in messages" :key="idx">
-      <div>
-        <div class="ai-chat-msg" :class="msg.role === 'user' ? 'ai-chat-msg--user' : 'ai-chat-msg--ai'">
-          <div class="ai-chat-msg-avatar">
-            <template x-if="msg.role === 'ai'">
-              <span class="material-symbols-outlined" style="font-size: 16px;">smart_toy</span>
-            </template>
-            <template x-if="msg.role === 'user'">
-              <span class="material-symbols-outlined" style="font-size: 16px;">person</span>
-            </template>
+    <div class="ai-chat-messages" x-ref="messagesContainer">
+      <template x-if="messages.length === 0">
+        <div class="ai-chat-empty">
+          <div class="ai-chat-empty-icon">
+            <span class="material-symbols-outlined">auto_awesome</span>
           </div>
-          <div class="ai-chat-msg-body" x-html="formatMessage(msg.text)"></div>
-        </div>
-        <div class="ai-chat-msg-time" :class="msg.role === 'user' ? 'ai-chat-msg--user' : ''" x-text="msg.time"></div>
-      </div>
-    </template>
-
-    <template x-if="isTyping">
-      <div class="ai-chat-msg ai-chat-msg--ai">
-        <div class="ai-chat-msg-avatar" style="background: linear-gradient(135deg, var(--primary-500), var(--primary-700)); color: white;">
-          <span class="material-symbols-outlined" style="font-size: 16px;">smart_toy</span>
-        </div>
-        <div class="ai-chat-msg-body">
-          <div class="ai-chat-typing">
-            <div class="ai-chat-typing-dot"></div>
-            <div class="ai-chat-typing-dot"></div>
-            <div class="ai-chat-typing-dot"></div>
+          <h3>How can I help?</h3>
+          <p>Ask questions about your data, generate reports, or manage records using natural language.</p>
+          <div class="ai-chat-suggestions">
+            <button class="ai-chat-suggestion" @click="sendSuggestion('Show me a summary of all users')">Show users summary</button>
+            <button class="ai-chat-suggestion" @click="sendSuggestion('Generate a report of recent activity')">Recent activity report</button>
+            <button class="ai-chat-suggestion" @click="sendSuggestion('What tools are available?')">Available tools</button>
           </div>
         </div>
-      </div>
-    </template>
-  </div>
+      </template>
 
-  <div class="ai-chat-input-bar">
-    <div class="ai-chat-input-wrapper">
-      <textarea
-        class="ai-chat-input-field"
-        x-model="userInput"
-        @keydown.enter.prevent="sendMessage()"
-        placeholder="Type your message..."
-        rows="1"
-        x-ref="chatInput"
-        :disabled="isTyping"
-      ></textarea>
-      <button
-        class="ai-chat-send-btn"
-        @click="sendMessage()"
-        :disabled="!userInput.trim() || isTyping"
-        title="Send message"
-      >
-        <span class="material-symbols-outlined">arrow_upward</span>
-      </button>
+      <template x-for="(msg, idx) in messages" :key="idx">
+        <div>
+          <div class="ai-chat-msg" :class="msg.role === 'user' ? 'ai-chat-msg--user' : 'ai-chat-msg--ai'">
+            <div class="ai-chat-msg-avatar">
+              <template x-if="msg.role === 'assistant'">
+                <span class="material-symbols-outlined" style="font-size: 14px;">smart_toy</span>
+              </template>
+              <template x-if="msg.role === 'user'">
+                <span class="material-symbols-outlined" style="font-size: 14px;">person</span>
+              </template>
+            </div>
+            <div class="ai-chat-msg-body" x-html="formatMessage(msg.content)"></div>
+          </div>
+          <div class="ai-chat-msg-time" :class="msg.role === 'user' ? 'ai-chat-msg--user' : ''" x-text="msg.time"></div>
+        </div>
+      </template>
+
+      <template x-if="isTyping">
+        <div class="ai-chat-msg ai-chat-msg--ai">
+          <div class="ai-chat-msg-avatar" style="background: linear-gradient(135deg, var(--primary-500), var(--primary-700)); color: white;">
+            <span class="material-symbols-outlined" style="font-size: 14px;">smart_toy</span>
+          </div>
+          <div class="ai-chat-msg-body">
+            <div class="ai-chat-typing">
+              <div class="ai-chat-typing-dot"></div>
+              <div class="ai-chat-typing-dot"></div>
+              <div class="ai-chat-typing-dot"></div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <div class="ai-chat-input-bar">
+      <div class="ai-chat-input-wrapper">
+        <textarea
+          class="ai-chat-input-field"
+          x-model="userInput"
+          @keydown.enter.prevent="sendMessage()"
+          placeholder="Type your message..."
+          rows="1"
+          x-ref="chatInput"
+          :disabled="isTyping"
+        ></textarea>
+        <button
+          class="ai-chat-send-btn"
+          @click="sendMessage()"
+          :disabled="!userInput.trim() || isTyping"
+          title="Send message"
+        >
+          <span class="material-symbols-outlined">arrow_upward</span>
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -447,9 +613,11 @@ function aiChat() {
     selectedAgent: 'default',
     agents: [],
     conversationId: null,
+    conversations: [],
 
     async init() {
       await this.loadAgents();
+      await this.loadConversations();
       this.$nextTick(() => {
         this.autoResize(this.$refs.chatInput);
         this.$refs.chatInput?.focus();
@@ -468,6 +636,48 @@ function aiChat() {
       }
     },
 
+    async loadConversations() {
+      try {
+        const resp = await fetch(window.__ADMIN_PATH__ + '/ai/conversations');
+        this.conversations = await resp.json();
+      } catch (e) {
+        this.conversations = [];
+      }
+    },
+
+    async loadConversation(id) {
+      this.conversationId = id;
+      this.messages = [];
+      try {
+        const resp = await fetch(window.__ADMIN_PATH__ + '/ai/conversations/' + id);
+        const msgs = await resp.json();
+        this.messages = msgs.map(m => ({
+          role: m.role,
+          content: m.content,
+          time: m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+        }));
+        this.scrollToBottom();
+      } catch (e) {
+        this.messages = [];
+      }
+    },
+
+    async deleteConversation(id) {
+      try {
+        await fetch(window.__ADMIN_PATH__ + '/ai/conversations/' + id, { method: 'DELETE' });
+        this.conversations = this.conversations.filter(c => c.id !== id);
+        if (this.conversationId === id) {
+          this.newChat();
+        }
+      } catch (e) {}
+    },
+
+    newChat() {
+      this.messages = [];
+      this.conversationId = null;
+      this.$refs.chatInput?.focus();
+    },
+
     async sendMessage() {
       const text = this.userInput.trim();
       if (!text || this.isTyping) return;
@@ -484,21 +694,23 @@ function aiChat() {
           body: JSON.stringify({
             message: text,
             agent: this.selectedAgent,
-            conversation_id: this.conversationId
+            conversation_id: this.conversationId,
+            page_url: window.location.pathname
           })
         });
         const data = await resp.json();
         this.isTyping = false;
 
         if (data.error) {
-          this.addMessage('ai', 'Error: ' + data.error);
+          this.addMessage('assistant', 'Error: ' + data.error);
         } else {
           this.conversationId = data.conversation_id || this.conversationId;
-          this.addMessage('ai', data.output);
+          this.addMessage('assistant', data.output);
+          await this.loadConversations();
         }
       } catch (e) {
         this.isTyping = false;
-        this.addMessage('ai', 'Request failed: ' + e.message);
+        this.addMessage('assistant', 'Request failed: ' + e.message);
       }
 
       this.scrollToBottom();
@@ -509,15 +721,10 @@ function aiChat() {
       this.sendMessage();
     },
 
-    addMessage(role, text) {
+    addMessage(role, content) {
       const now = new Date();
       const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      this.messages.push({ role, text, time });
-    },
-
-    clearChat() {
-      this.messages = [];
-      this.conversationId = null;
+      this.messages.push({ role, content, time });
     },
 
     formatMessage(text) {
@@ -532,6 +739,20 @@ function aiChat() {
       return html;
     },
 
+    timeAgo(dateStr) {
+      if (!dateStr) return '';
+      const now = new Date();
+      const then = new Date(dateStr);
+      const diffMs = now - then;
+      const mins = Math.floor(diffMs / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return mins + 'm ago';
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return hrs + 'h ago';
+      const days = Math.floor(hrs / 24);
+      return days + 'd ago';
+    },
+
     scrollToBottom() {
       this.$nextTick(() => {
         const el = this.$refs.messagesContainer;
@@ -543,7 +764,7 @@ function aiChat() {
       if (!el) return;
       el.addEventListener('input', () => {
         el.style.height = 'auto';
-        el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+        el.style.height = Math.min(el.scrollHeight, 140) + 'px';
       });
     }
   };
