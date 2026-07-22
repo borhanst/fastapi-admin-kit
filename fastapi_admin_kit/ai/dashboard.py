@@ -231,7 +231,8 @@ async def get_tool_calls(
     if tool:
         stmt = stmt.where(AIMessage.tool_name == tool)
     if success is not None:
-        stmt = stmt.where(AIMessage.is_error == (not success))
+        is_error = not bool(success)
+        stmt = stmt.where(AIMessage.is_error == is_error)
 
     stmt = stmt.offset(offset).limit(limit)
     result = await session.execute(stmt)
@@ -500,9 +501,9 @@ async def ai_chat(request: Request) -> JSONResponse:
                 conv.turn_count = (conv.turn_count or 0) + 1
                 conv.total_tokens = (conv.total_tokens or 0) + result.usage.total_tokens
                 conv.total_cost = float(conv.total_cost or 0) + result.usage.cost
-                from sqlalchemy.sql import func as sqlfunc
+                from datetime import UTC, datetime
 
-                conv.last_message_at = sqlfunc.now()
+                conv.last_message_at = datetime.now(UTC)
             else:
                 conversation_id = str(uuid4())
                 conv = AIConversation(
@@ -548,19 +549,33 @@ async def ai_chat(request: Request) -> JSONResponse:
                 latency_ms=None,
             )
         )
-        for tc in getattr(result, "tool_calls", []):
-            session.add(
-                AIMessage(
-                    conversation_id=conversation_id,
-                    role="tool",
-                    tool_name=getattr(tc, "name", None),
-                    tool_args=getattr(tc, "args", None),
-                    tool_result=getattr(tc, "result", None),
-                    content=str(getattr(tc, "result", "")),
-                    is_error=getattr(tc, "is_error", False),
+        try:
+            for tc in getattr(result, "tool_calls", []):
+                session.add(
+                    AIMessage(
+                        conversation_id=conversation_id,
+                        role="tool",
+                        tool_name=getattr(tc, "name", None),
+                        tool_args=getattr(tc, "args", None),
+                        tool_result=getattr(tc, "result", None),
+                        content=str(getattr(tc, "result", "")),
+                        is_error=getattr(tc, "is_error", False),
+                    )
                 )
-            )
+        except Exception:
+            pass
         await session.flush()
+
+        tool_calls_data = []
+        for tc in getattr(result, "tool_calls", []):
+            tool_calls_data.append(
+                {
+                    "name": getattr(tc, "name", ""),
+                    "args": getattr(tc, "args", {}),
+                    "result": getattr(tc, "result", None),
+                    "is_error": getattr(tc, "is_error", False),
+                }
+            )
 
         return JSONResponse(
             {
@@ -572,6 +587,7 @@ async def ai_chat(request: Request) -> JSONResponse:
                     "cost": result.usage.cost,
                 },
                 "conversation_id": conversation_id,
+                "tool_calls": tool_calls_data,
             }
         )
     except Exception as e:
@@ -646,6 +662,10 @@ async def load_conversation(conversation_id: str, request: Request) -> JSONRespo
                 "role": m.role,
                 "content": m.content,
                 "created_at": str(m.created_at) if m.created_at else None,
+                "tool_name": m.tool_name,
+                "tool_args": m.tool_args,
+                "tool_result": m.tool_result,
+                "is_error": m.is_error,
             }
             for m in msgs
         ]

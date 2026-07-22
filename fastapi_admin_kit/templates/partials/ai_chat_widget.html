@@ -508,13 +508,38 @@ function aiChatWidget() {
 
     formatMessage(text) {
       if (!text) return '';
-      let html = text
+
+      const placeholders = [];
+      let html = text.replace(/<function=(\w+)\s*(\{[^}]*\})?\s*>\s*<\/function>/g, (match, toolName, argsJson) => {
+        let argsHtml = '';
+        if (argsJson) {
+          try {
+            const args = JSON.parse(argsJson);
+            const argsStr = Object.entries(args)
+              .map(([k, v]) => `<span class="ai-tool-arg-key">${k}</span>: <span class="ai-tool-arg-val">${JSON.stringify(v)}</span>`)
+              .join(', ');
+            argsHtml = `<div class="ai-tool-args">${argsStr}</div>`;
+          } catch (e) {
+            argsHtml = `<div class="ai-tool-args"><code>${argsJson}</code></div>`;
+          }
+        }
+        const ph = `__TOOL_PH_${placeholders.length}__`;
+        placeholders.push(`<div class="ai-tool-call"><span class="ai-tool-icon">⚡</span><span class="ai-tool-name">${toolName}</span>${argsHtml}</div>`);
+        return ph;
+      });
+
+      html = html
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/`([^`]+)`/g, '<code>$1</code>')
         .replace(/\n/g, '<br>');
+
+      placeholders.forEach((tc, i) => {
+        html = html.replace(`__TOOL_PH_${i}__`, tc);
+      });
+
       return html;
     },
 

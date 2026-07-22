@@ -61,18 +61,32 @@ class PydanticAIAgent(AIAgent):
             from pydantic_ai import Agent
 
             model = self._build_model(config)
+            system_prompt = self._build_system_prompt(config)
 
             self._agent: Agent[AdminDeps, Any] | None = Agent(
                 model,
                 deps_type=AdminDeps,
                 output_type=config.result_type or str,
-                system_prompt=config.system_prompt,
+                system_prompt=system_prompt,
                 retries=config.retries,
             )
             self._bind_tools(config.tools)
             self._register_instructions()
         except ImportError:
             self._agent = None
+
+    def _build_system_prompt(self, config: AIAgentConfig) -> str:
+        """Build system prompt with tools list appended."""
+        base = config.system_prompt or ""
+        if not config.tools:
+            return base
+
+        tools_section = "\n\n## Available Tools\n\n"
+        tools_section += "You have access to the following tools:\n\n"
+        for t in config.tools:
+            tools_section += f"- **{t.name}**: {t.description}\n"
+
+        return base + tools_section
 
     def _build_model(self, config: AIAgentConfig) -> Any:
         """Build a pydantic-ai model, injecting api_key if provided."""

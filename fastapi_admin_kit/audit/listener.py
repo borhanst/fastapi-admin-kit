@@ -77,8 +77,12 @@ def _compute_diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, An
     for key in all_keys:
         old_val = before.get(key)
         new_val = after.get(key)
-        if old_val != new_val:
-            diff[key] = {"old": old_val, "new": new_val}
+        try:
+            if old_val != new_val:
+                diff[key] = {"old": old_val, "new": new_val}
+        except TypeError:
+            if str(old_val) != str(new_val):
+                diff[key] = {"old": old_val, "new": new_val}
     return diff
 
 

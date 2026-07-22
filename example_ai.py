@@ -447,6 +447,36 @@ async def search_tickets(
 
 
 @tool(
+    name="get_ticket",
+    description="Get a single ticket by ID.",
+    category="support",
+)
+async def get_ticket(
+    ctx: RunContext[AdminDeps], ticket_id: int
+) -> dict[str, object]:
+    """Get a single ticket by ID."""
+    try:
+        session = ctx.deps.session
+        result = await session.execute(
+            select(Ticket).where(Ticket.id == ticket_id)
+        )
+        ticket = result.scalars().first()
+        if not ticket:
+            return {"error": f"Ticket {ticket_id} not found"}
+        return {
+            "id": ticket.id,
+            "subject": ticket.subject,
+            "body": ticket.body,
+            "status": ticket.status,
+            "priority": ticket.priority,
+            "customer_id": ticket.customer_id,
+            "created_at": str(ticket.created_at) if ticket.created_at else None,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@tool(
     name="update_ticket_status",
     description="Update a support ticket status.",
     category="support",
@@ -538,10 +568,11 @@ ai_config = AIConfig(
             api_key=os.environ.get("GROQ_API_KEY"),
             system_prompt=(
                 "You are a helpful admin assistant for an e-commerce admin panel. "
-                "You have access to tools that query and modify the database. "
-                "ALWAYS use your tools to answer questions about products, customers, "
-                "tickets, and revenue. Never make up data — call the appropriate tool. "
-                "Be concise and accurate."
+                "You MUST use your tools to answer questions. "
+                "NEVER output tool calls as text like <function=...>. "
+                "Instead, use the actual tool calling mechanism. "
+                "Never make up data — call the appropriate tool. "
+                "Be concise and accurate.\n\n"
             ),
             cost_per_1k_input_tokens=0.00059,
             cost_per_1k_output_tokens=0.00079,
@@ -554,6 +585,7 @@ ai_config = AIConfig(
                 "get_revenue_summary",
                 "get_support_stats",
                 "search_tickets",
+                "get_ticket",
                 "update_ticket_status",
                 "create_ticket",
             ],
