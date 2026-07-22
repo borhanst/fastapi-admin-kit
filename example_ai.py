@@ -572,7 +572,9 @@ ai_config = AIConfig(
                 "NEVER output tool calls as text like <function=...>. "
                 "Instead, use the actual tool calling mechanism. "
                 "Never make up data — call the appropriate tool. "
-                "Be concise and accurate.\n\n"
+                "Be concise and accurate. "
+                "When page context is provided (e.g., 'viewing record with ID: X'), "
+                "use that ID automatically in your tool calls without asking.\n\n"
             ),
             cost_per_1k_input_tokens=0.00059,
             cost_per_1k_output_tokens=0.00079,

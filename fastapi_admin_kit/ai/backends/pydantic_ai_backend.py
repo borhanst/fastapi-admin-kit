@@ -164,7 +164,8 @@ class PydanticAIAgent(AIAgent):
             if not relative:
                 return ""
 
-            table_name = relative.split("/")[0]
+            parts = relative.split("/")
+            table_name = parts[0]
             registered = ctx.deps.registry.get(table_name)
             if registered is None:
                 return ""
@@ -172,12 +173,19 @@ class PydanticAIAgent(AIAgent):
             col_names = [c.name for c in registered.columns]
             col_types = {c.name: str(c.type) for c in registered.columns}
             cols_desc = ", ".join(f"{name} ({col_types.get(name, '?')})" for name in col_names)
-            return (
+
+            context = (
                 f"The user is currently on the {registered.verbose_name} page "
                 f"(table: {table_name}). "
                 f"Available columns: {cols_desc}. "
                 f"Use these exact table and column names when querying."
             )
+
+            if len(parts) > 1 and parts[1]:
+                record_id = parts[1]
+                context += f" The user is viewing record with ID: {record_id}."
+
+            return context
 
     async def chat(
         self,
