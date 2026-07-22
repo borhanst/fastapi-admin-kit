@@ -12,6 +12,9 @@ from fastapi import Request
 from fastapi.responses import Response
 from starlette.datastructures import UploadFile
 
+from fastapi_admin_kit.auth.dependencies import (
+    resolve_permission_checker as _resolve_permission_checker,  # noqa: F401
+)
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.registry import RegisteredModel
 from fastapi_admin_kit.types import FieldMeta
