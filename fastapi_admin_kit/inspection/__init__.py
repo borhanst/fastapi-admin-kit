@@ -95,6 +95,35 @@ def cast_pk_value(model: type, value: Any) -> Any:
     return value
 
 
+def cast_value(col_meta: Any, value: Any) -> Any:
+    """Cast a string form value to the correct Python type based on column type.
+
+    Supports Integer, Float, Boolean, and String types.
+    Returns the original value if type cannot be determined.
+    """
+    if value is None:
+        return None
+    from sqlalchemy import Boolean, Float, Integer
+
+    col_type = type(col_meta.type) if hasattr(col_meta, "type") else None
+    if col_type is None:
+        return value
+
+    if col_type in (Integer,):
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return value
+    if col_type in (Float,):
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return value
+    if col_type in (Boolean,):
+        return value in ("1", "on", "true", "True", "yes")
+    return value
+
+
 def auto_label(name: str) -> str:
     """Auto-generate a human-readable label from a field name.
 

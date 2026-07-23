@@ -51,6 +51,9 @@ class ModelAdmin:
     fieldsets: list[Any] = []  # FieldsetSpec accepted but not strictly enforced here
     field_placeholders: dict[str, str] = {}  # {field_name: placeholder_text}
 
+    # Inline admin config
+    inlines: list[Any] = []  # list of InlineModelAdmin subclasses
+
     # Conditional fields
     conditional_fields: dict[str, dict[str, Any]] = {}
 

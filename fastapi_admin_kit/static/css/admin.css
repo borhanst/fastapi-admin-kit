@@ -4797,3 +4797,25 @@ img { max-width: 100%; display: block; }
   font-size: var(--text-sm);
   padding: var(--space-2);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   INLINE FORMSET
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.inline-formset {
+  position: relative;
+}
+
+.inline-formset table {
+  position: static !important;
+}
+
+.inline-formset tbody,
+.inline-formset tr {
+  position: static !important;
+}
+
+.inline-formset td {
+  position: static !important;
+  overflow: visible !important;
+}
