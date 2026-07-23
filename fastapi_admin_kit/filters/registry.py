@@ -98,6 +98,11 @@ class FilterRegistry:
             else:
                 filters[field_name] = TextFilter(field_name)
 
+        for rel_name in rel_names:
+            if rel_name not in filters:
+                resolved_col = self._resolve_fk_column(model, rel_name, introspection)
+                filters[rel_name] = RelationFilter(rel_name, resolved_column=resolved_col)
+
         return filters
 
     # ------------------------------------------------------------------

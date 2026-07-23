@@ -25,17 +25,17 @@ class Filter(ABC):
 
     @abstractmethod
     def apply(self, query_adapter: Any, query: Any, model: Any, value: Any) -> Any:
-        """Apply the filter to a query via QueryBackend.
+        """Build a WHERE clause for this filter.
 
         Args:
             query_adapter: A QueryBackend adapter instance.
-            query: The current query statement.
+            query: The current query statement (may be None when collecting clauses).
             model: The ORM model the query selects.
             value: The filter value — a plain string for equality
                    filters, or a dict for range filters.
 
         Returns:
-            The updated query with the filter applied.
+            A SQLAlchemy BinaryExpression condition, or None to skip.
         """
         ...
 
@@ -58,9 +58,9 @@ class TextFilter(Filter):
         if isinstance(value, dict):
             value = value.get("eq", "")
         if not value or not hasattr(model, self.field_name):
-            return query
+            return None
         col = getattr(model, self.field_name)
-        return query_adapter.where(query, col == value)
+        return col == value
 
 
 class BooleanFilter(Filter):
@@ -72,9 +72,9 @@ class BooleanFilter(Filter):
         if isinstance(value, dict):
             value = value.get("eq", "")
         if not value or not hasattr(model, self.field_name):
-            return query
+            return None
         col = getattr(model, self.field_name)
-        return query_adapter.where(query, col == (value == "1"))
+        return col == (value == "1")
 
     def get_choices(self, session: Any = None) -> list[tuple[str, str]]:
         return [("", "All"), ("1", "Yes"), ("0", "No")]
@@ -102,12 +102,12 @@ class RelationFilter(Filter):
         if isinstance(value, dict):
             value = value.get("eq", "")
         if not value:
-            return query
+            return None
         col_name = self.resolved_column or self.field_name
         if not hasattr(model, col_name):
-            return query
+            return None
         col = getattr(model, col_name)
-        return query_adapter.where(query, col == value)
+        return col == value
 
 
 class EnumFilter(Filter):
@@ -128,9 +128,9 @@ class EnumFilter(Filter):
         if isinstance(value, dict):
             value = value.get("eq", "")
         if not value or not hasattr(model, self.field_name):
-            return query
+            return None
         col = getattr(model, self.field_name)
-        return query_adapter.where(query, col == value)
+        return col == value
 
     def get_choices(self, session: Any = None) -> list[tuple[str, str]]:
         choices: list[tuple[str, str]] = [("", "All")]
@@ -157,16 +157,16 @@ class IntegerFilter(Filter):
         if isinstance(value, dict):
             value = value.get("eq", "")
         if not value:
-            return query
+            return None
         col_name = self.resolved_column or self.field_name
         if not hasattr(model, col_name):
-            return query
+            return None
         try:
             int_value = int(value)
         except (ValueError, TypeError):
-            return query
+            return None
         col = getattr(model, col_name)
-        return query_adapter.where(query, col == int_value)
+        return col == int_value
 
 
 class NumericFilter(Filter):
@@ -180,28 +180,34 @@ class NumericFilter(Filter):
 
     def apply(self, query_adapter: Any, query: Any, model: Any, value: Any) -> Any:
         if not hasattr(model, self.field_name):
-            return query
+            return None
         col = getattr(model, self.field_name)
+        conditions: list = []
         if isinstance(value, dict):
             gte = value.get("gte", "")
             lte = value.get("lte", "")
             if gte:
                 try:
-                    query = query_adapter.where(query, col >= type(col.type)().coerce(gte))
+                    conditions.append(col >= type(col.type)().coerce(gte))
                 except Exception:
                     pass
             if lte:
                 try:
-                    query = query_adapter.where(query, col <= type(col.type)().coerce(lte))
+                    conditions.append(col <= type(col.type)().coerce(lte))
                 except Exception:
                     pass
-            return query
-        if value:
+        elif value:
             try:
-                query = query_adapter.where(query, col == type(col.type)().coerce(value))
+                conditions.append(col == type(col.type)().coerce(value))
             except Exception:
                 pass
-        return query
+        if not conditions:
+            return None
+        if len(conditions) == 1:
+            return conditions[0]
+        from sqlalchemy import and_
+
+        return and_(*conditions)
 
 
 class DateRangeFilter(Filter):
@@ -217,29 +223,32 @@ class DateRangeFilter(Filter):
         from datetime import date
 
         if not hasattr(model, self.field_name):
-            return query
+            return None
         col = getattr(model, self.field_name)
+        conditions: list = []
         if isinstance(value, dict):
             if value.get("from"):
                 try:
-                    d = date.fromisoformat(value["from"])
-                    query = query_adapter.where(query, col >= d)
+                    conditions.append(col >= date.fromisoformat(value["from"]))
                 except (ValueError, TypeError):
                     pass
             if value.get("to"):
                 try:
-                    d = date.fromisoformat(value["to"])
-                    query = query_adapter.where(query, col <= d)
+                    conditions.append(col <= date.fromisoformat(value["to"]))
                 except (ValueError, TypeError):
                     pass
-            return query
-        if value:
+        elif value:
             try:
-                d = date.fromisoformat(value)
-                query = query_adapter.where(query, col == d)
+                conditions.append(col == date.fromisoformat(value))
             except (ValueError, TypeError):
                 pass
-        return query
+        if not conditions:
+            return None
+        if len(conditions) == 1:
+            return conditions[0]
+        from sqlalchemy import and_
+
+        return and_(*conditions)
 
 
 class DatetimeRangeFilter(Filter):
@@ -255,29 +264,32 @@ class DatetimeRangeFilter(Filter):
         from datetime import datetime
 
         if not hasattr(model, self.field_name):
-            return query
+            return None
         col = getattr(model, self.field_name)
+        conditions: list = []
         if isinstance(value, dict):
             if value.get("from"):
                 try:
-                    dt = datetime.fromisoformat(value["from"])
-                    query = query_adapter.where(query, col >= dt)
+                    conditions.append(col >= datetime.fromisoformat(value["from"]))
                 except (ValueError, TypeError):
                     pass
             if value.get("to"):
                 try:
-                    dt = datetime.fromisoformat(value["to"])
-                    query = query_adapter.where(query, col <= dt)
+                    conditions.append(col <= datetime.fromisoformat(value["to"]))
                 except (ValueError, TypeError):
                     pass
-            return query
-        if value:
+        elif value:
             try:
-                dt = datetime.fromisoformat(value)
-                query = query_adapter.where(query, col == dt)
+                conditions.append(col == datetime.fromisoformat(value))
             except (ValueError, TypeError):
                 pass
-        return query
+        if not conditions:
+            return None
+        if len(conditions) == 1:
+            return conditions[0]
+        from sqlalchemy import and_
+
+        return and_(*conditions)
 
 
 class TimeFilter(Filter):
@@ -291,13 +303,13 @@ class TimeFilter(Filter):
         if isinstance(value, dict):
             value = value.get("eq", "")
         if not value or not hasattr(model, self.field_name):
-            return query
+            return None
         col = getattr(model, self.field_name)
         try:
             t = time.fromisoformat(value)
         except (ValueError, TypeError):
-            return query
-        return query_adapter.where(query, col == t)
+            return None
+        return col == t
 
 
 class AutocompleteFilter(Filter):
@@ -318,6 +330,6 @@ class AutocompleteFilter(Filter):
         if isinstance(value, dict):
             value = value.get("eq", "")
         if not value or not hasattr(model, self.field_name):
-            return query
+            return None
         col = getattr(model, self.field_name)
-        return query_adapter.where(query, col == value)
+        return col == value
