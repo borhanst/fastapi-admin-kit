@@ -692,6 +692,7 @@ class DefaultQueryProvider:
             before=request.query_params.get("before"),
             pk_col=pk_col,
             model=model,
+            query_adapter=query_adapter,
         )
 
         return (

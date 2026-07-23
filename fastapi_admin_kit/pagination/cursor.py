@@ -6,8 +6,6 @@ import base64
 import json
 from typing import Any
 
-from sqlalchemy import func, select
-
 from fastapi_admin_kit.pagination.base import BasePagination, PaginationResult
 
 
@@ -39,6 +37,7 @@ class CursorPagination(BasePagination):
         before: str | None = None,
         pk_col: Any = None,
         model: Any = None,
+        query_adapter: Any = None,
     ) -> PaginationResult:
         # Determine cursor column
         if self.cursor_column and model is not None:
@@ -54,22 +53,37 @@ class CursorPagination(BasePagination):
         # Apply cursor filter
         if after:
             cursor_val = self._decode_cursor(after)
-            stmt = stmt.where(col > cursor_val)
+            if query_adapter is not None:
+                stmt = query_adapter.where(stmt, col > cursor_val)
+            else:
+                stmt = stmt.where(col > cursor_val)
         elif before:
             cursor_val = self._decode_cursor(before)
-            stmt = stmt.where(col < cursor_val)
-            # For backward pagination, we need to reverse order then flip results
-            from sqlalchemy import desc as sa_desc
+            if query_adapter is not None:
+                stmt = query_adapter.where(stmt, col < cursor_val)
+                stmt = query_adapter.order_by(stmt, f"-{col.key}")
+            else:
+                stmt = stmt.where(col < cursor_val)
+                from sqlalchemy import desc as sa_desc
 
-            # Check current ordering and reverse it
-            stmt = stmt.order_by(sa_desc(col))
+                stmt = stmt.order_by(sa_desc(col))
 
         # Count filtered total
-        count_q = select(func.count()).select_from(stmt.subquery())
-        total = (await session.execute(count_q)).scalar() or 0
+        if query_adapter is not None:
+            count_q = query_adapter.count(stmt)
+            total = (await session.execute(count_q)).scalar() or 0
+        else:
+            from sqlalchemy import func, select
+
+            count_q = select(func.count()).select_from(stmt.subquery())
+            total = (await session.execute(count_q)).scalar() or 0
 
         # Fetch per_page + 1 to detect has_next
-        stmt = stmt.limit(per_page + 1)
+        if query_adapter is not None:
+            stmt = query_adapter.limit(stmt, per_page + 1)
+        else:
+            stmt = stmt.limit(per_page + 1)
+
         result = await session.execute(stmt)
         items = list(result.unique().scalars().all())
 
