@@ -4,6 +4,7 @@ Contains:
 - ``SqlAlchemyIntrospectionAdapter`` — model introspection (#23)
 - ``SqlAlchemySessionAdapter`` — per-request session lifecycle (#24)
 - ``SqlAlchemyQueryAdapter`` — chainable query building (#25)
+- ``SqlAlchemyAuditBackend`` — change tracking: listeners, snapshot, diff (#29)
 - ``SqlAlchemyDatabaseBackend`` — connection lifecycle & DDL (#30)
 """
 
@@ -381,6 +382,50 @@ class SqlAlchemyQueryAdapter:
         from sqlalchemy import or_
 
         return or_(*clauses)
+
+
+# ---------------------------------------------------------------------------
+# #29 — Audit Backend
+# ---------------------------------------------------------------------------
+
+
+class SqlAlchemyAuditBackend:
+    """Implements :class:`AuditBackend` via structural subtyping.
+
+    Wraps the SQLAlchemy-specific audit listener, snapshot, and diff logic
+    so the rest of the codebase can use the protocol interface.
+    """
+
+    def attach_listeners(self, session_factory: Any, registry: Any) -> None:
+        """Wire up SQLAlchemy ``before_flush`` and ``after_flush_postexec`` listeners."""
+        from fastapi_admin_kit.audit.listener import attach_audit_listener
+
+        attach_audit_listener(session_factory, registry)
+
+    def snapshot(self, obj: Any) -> dict[str, Any]:
+        """Snapshot all mapped columns of a SQLAlchemy model instance."""
+        from sqlalchemy.inspection import inspect as sa_inspect
+
+        from fastapi_admin_kit.audit.diff import serialize_value
+
+        if not hasattr(obj, "__table__"):
+            raise ValueError("Object is not a SQLAlchemy model instance")
+        mapper = sa_inspect(obj.__class__)
+        data: dict[str, Any] = {}
+        for column in mapper.columns:
+            data[column.key] = serialize_value(getattr(obj, column.key))
+        return data
+
+    def compute_diff(self, before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+        """Compute changed fields between two snapshots."""
+        diff: dict[str, Any] = {}
+        all_keys = set(before.keys()) | set(after.keys())
+        for key in all_keys:
+            old_val = before.get(key)
+            new_val = after.get(key)
+            if old_val != new_val:
+                diff[key] = {"old": old_val, "new": new_val}
+        return diff
 
 
 # ---------------------------------------------------------------------------

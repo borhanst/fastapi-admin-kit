@@ -55,31 +55,29 @@ def _snapshot_from_committed(obj: Any) -> dict[str, Any]:
 
 
 def _snapshot_current(obj: Any) -> dict[str, Any]:
-    """Snapshot all mapped columns of a SQLAlchemy model instance."""
-    if not hasattr(obj, "__table__"):
-        return {}
-    from sqlalchemy.inspection import inspect as sa_inspect
+    """Snapshot all mapped columns of a SQLAlchemy model instance.
 
-    mapper = sa_inspect(obj.__class__)
-    data: dict[str, Any] = {}
-    for column in mapper.columns:
-        data[column.key] = serialize_value(getattr(obj, column.key))
-    return data
+    Delegates to the SqlAlchemyAuditBackend. Returns {} for non-model objects.
+    """
+    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyAuditBackend
+
+    backend = SqlAlchemyAuditBackend()
+    try:
+        return backend.snapshot(obj)
+    except ValueError:
+        return {}
 
 
 def _compute_diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
     """Compute changed fields between two snapshots.
 
     Returns ``{"field": {"old": ..., "new": ...}}`` for each difference.
+    Delegates to the SqlAlchemyAuditBackend.
     """
-    diff: dict[str, Any] = {}
-    all_keys = set(before.keys()) | set(after.keys())
-    for key in all_keys:
-        old_val = before.get(key)
-        new_val = after.get(key)
-        if old_val != new_val:
-            diff[key] = {"old": old_val, "new": new_val}
-    return diff
+    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyAuditBackend
+
+    backend = SqlAlchemyAuditBackend()
+    return backend.compute_diff(before, after)
 
 
 def _build_audit_row(

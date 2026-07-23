@@ -535,8 +535,6 @@ class Admin:
                 registered.admin.skip_auto_routes = True
 
         # 8.3 Attach audit event listeners (after registry is populated)
-        from fastapi_admin_kit.audit.listener import attach_audit_listener
-
         engine = self.database.engine
         if engine is not None:
             from sqlalchemy.ext.asyncio import AsyncEngine
@@ -545,7 +543,10 @@ class Admin:
                 from fastapi_admin_kit.db import create_session_factory
 
                 session_factory = create_session_factory(engine)
-                attach_audit_listener(session_factory, self.registry)
+                from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyAuditBackend
+
+                audit_backend = SqlAlchemyAuditBackend()
+                audit_backend.attach_listeners(session_factory, self.registry)
 
         # 9. Validate require_tags
         if self.config.nav.require_tags:
@@ -731,6 +732,10 @@ class Admin:
         app.state.admin_session_backend_class = SqlAlchemySessionAdapter
         app.state.admin_query_adapter = SqlAlchemyQueryAdapter()
         app.state.admin_introspection_adapter = SqlAlchemyIntrospectionAdapter()
+
+        from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyAuditBackend
+
+        app.state.admin_audit_backend = SqlAlchemyAuditBackend()
 
         # Wire the password hasher to the User model
         from fastapi_admin_kit.auth.models import User

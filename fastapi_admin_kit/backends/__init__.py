@@ -16,6 +16,7 @@ SQLAlchemy adapters::
         SqlAlchemyIntrospectionAdapter,
         SqlAlchemySessionAdapter,
         SqlAlchemyQueryAdapter,
+        SqlAlchemyAuditBackend,
         SqlAlchemyDatabaseBackend,
     )
 """
@@ -32,6 +33,7 @@ from fastapi_admin_kit.backends.protocols import (
     SessionType,
 )
 from fastapi_admin_kit.backends.sqlalchemy import (
+    SqlAlchemyAuditBackend,
     SqlAlchemyDatabaseBackend,
     SqlAlchemyIntrospectionAdapter,
     SqlAlchemyQueryAdapter,
@@ -50,6 +52,7 @@ __all__ = [
     "SessionBackend",
     "SessionType",
     # SQLAlchemy adapters
+    "SqlAlchemyAuditBackend",
     "SqlAlchemyDatabaseBackend",
     "SqlAlchemyIntrospectionAdapter",
     "SqlAlchemyQueryAdapter",
