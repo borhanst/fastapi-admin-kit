@@ -12,6 +12,9 @@ from fastapi import Request
 from fastapi.responses import Response
 from starlette.datastructures import UploadFile
 
+from fastapi_admin_kit.auth.dependencies import (
+    resolve_permission_checker as _resolve_permission_checker,  # noqa: F401
+)
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.registry import RegisteredModel
 from fastapi_admin_kit.types import FieldMeta
@@ -24,23 +27,6 @@ _FILE_WIDGET_TYPES = (FileUploadWidget, ImageUploadWidget)
 def _get_storage(request: Request):
     """Get the storage backend from app.state, or None."""
     return getattr(request.app.state, "admin_storage", None)
-
-
-async def _resolve_permission_checker(request: Request) -> Any:
-    """Resolve a PermissionChecker for the current request."""
-    from fastapi_admin_kit.auth.identity import get_current_user_from_cookie
-    from fastapi_admin_kit.auth.permissions import PermissionChecker
-
-    user = await get_current_user_from_cookie(request)
-    if user is None:
-        return None
-
-    async_session = get_db_session(request)
-    if async_session is None:
-        return None
-
-    snapshot = getattr(request.state, "admin_user_snapshot", None)
-    return PermissionChecker(session=async_session, user=user, user_snapshot=snapshot)
 
 
 # ---------------------------------------------------------------------------
