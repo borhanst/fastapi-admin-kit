@@ -114,6 +114,40 @@ class SqlAlchemyIntrospectionAdapter:
         """Return True if the model is abstract and should be skipped."""
         return getattr(model, "__abstract__", False)
 
+    def get_relationship_names(self, model: type) -> set[str]:
+        """Return the set of relationship key names on a model."""
+        mapper = sa_inspect(model)
+        return {r.key for r in mapper.relationships}
+
+    def get_relationship(self, model: type, name: str) -> Any:
+        """Return a single relationship descriptor by name, or None."""
+        mapper = sa_inspect(model)
+        return mapper.relationships.get(name)
+
+    def get_column_type_name(self, model: type, field_name: str) -> str | None:
+        """Return the SQLAlchemy type class name for a column, or None."""
+        mapper = sa_inspect(model)
+        for prop in mapper.column_attrs:
+            if prop.key == field_name:
+                col = prop.columns[0] if prop.columns else None
+                if col is not None:
+                    return col.type.__class__.__name__
+        return None
+
+    def get_column_attr(self, model: type, field_name: str) -> Any:
+        """Return the column attribute for a field name, or None."""
+        mapper = sa_inspect(model)
+        for prop in mapper.column_attrs:
+            if prop.key == field_name:
+                col = prop.columns[0] if prop.columns else None
+                return col
+        return None
+
+    def get_pk_columns(self, model: type) -> list[Any]:
+        """Return the primary key column(s) for a model."""
+        mapper = sa_inspect(model)
+        return list(mapper.primary_key)
+
     # -- internal helpers ---------------------------------------------------
 
     def _is_sqlmodel(self, model: type) -> bool:
@@ -337,6 +371,16 @@ class SqlAlchemyQueryAdapter:
     def options(self, query: Any, *opts: Any) -> Any:
         """Add eager-load options (joinedload, selectinload, etc.)."""
         return query.options(*opts)
+
+    def ilike(self, column: Any, pattern: str) -> Any:
+        """Apply case-insensitive LIKE to a column, returning a boolean clause."""
+        return column.ilike(pattern)
+
+    def or_(self, *clauses: Any) -> Any:
+        """Compose multiple boolean clauses with OR."""
+        from sqlalchemy import or_
+
+        return or_(*clauses)
 
 
 # ---------------------------------------------------------------------------

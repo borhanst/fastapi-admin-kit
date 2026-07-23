@@ -722,9 +722,15 @@ class Admin:
         # Unified signing-key source for sessions, CSRF, and JWT (see AdminState).
         app.state.admin_secret_key = state.secret_key
         # Multi-ORM backend: store adapter class for views to access
-        from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
+        from fastapi_admin_kit.backends.sqlalchemy import (
+            SqlAlchemyIntrospectionAdapter,
+            SqlAlchemyQueryAdapter,
+            SqlAlchemySessionAdapter,
+        )
 
         app.state.admin_session_backend_class = SqlAlchemySessionAdapter
+        app.state.admin_query_adapter = SqlAlchemyQueryAdapter()
+        app.state.admin_introspection_adapter = SqlAlchemyIntrospectionAdapter()
 
         # Wire the password hasher to the User model
         from fastapi_admin_kit.auth.models import User

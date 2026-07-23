@@ -46,6 +46,26 @@ class IntrospectionBackend(Protocol):
         """Return True if the model is abstract and should be skipped."""
         ...
 
+    def get_relationship_names(self, model: type) -> set[str]:
+        """Return the set of relationship key names on a model."""
+        ...
+
+    def get_relationship(self, model: type, name: str) -> Any:
+        """Return a single relationship descriptor by name, or None."""
+        ...
+
+    def get_column_type_name(self, model: type, field_name: str) -> str | None:
+        """Return the SQLAlchemy type class name for a column, or None."""
+        ...
+
+    def get_column_attr(self, model: type, field_name: str) -> Any:
+        """Return the column attribute for a field name, or None."""
+        ...
+
+    def get_pk_columns(self, model: type) -> list[Any]:
+        """Return the primary key column(s) for a model."""
+        ...
+
 
 @runtime_checkable
 class SessionBackend(Protocol):
@@ -118,6 +138,18 @@ class QueryBackend(Protocol):
 
     def count(self, query: QueryType) -> int:
         """Execute the query and return the total row count."""
+        ...
+
+    def options(self, query: QueryType, *opts: Any) -> QueryType:
+        """Add eager-load options (joinedload, selectinload, etc.)."""
+        ...
+
+    def ilike(self, column: Any, pattern: str) -> Any:
+        """Apply case-insensitive LIKE to a column, returning a boolean clause."""
+        ...
+
+    def or_(self, *clauses: Any) -> Any:
+        """Compose multiple boolean clauses with OR."""
         ...
 
 

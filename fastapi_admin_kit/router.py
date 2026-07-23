@@ -482,7 +482,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
 
         from fastapi_admin_kit.search_utils import apply_search_filter
 
-        query = apply_search_filter(select(model), model, search_fields, q).limit(20)
+        query = apply_search_filter(request, select(model), model, search_fields, q).limit(20)
         result = await session.execute(query)
         for obj in result.scalars():
             label = str(

@@ -11,15 +11,20 @@ from typing import Any
 
 
 def apply_search_filter(
+    request: Any,
     query: Any,
     model: Any,
     search_fields: list[str] | None,
     q: str,
 ) -> Any:
-    """Apply case-insensitive ``ilike`` search clauses to a SQLAlchemy query.
+    """Apply case-insensitive ``ilike`` search clauses to a query.
+
+    Uses ``QueryBackend`` and ``IntrospectionBackend`` from ``app.state``
+    when available, falling back to direct SQLAlchemy imports.
 
     Args:
-        query: A SQLAlchemy ``select`` statement (or query object).
+        request: The FastAPI Request (used to access ``app.state`` backends).
+        query: A query statement (SQLAlchemy ``select`` or backend query type).
         model: The root ORM model the query selects.
         search_fields: Field names to search. Plain names match direct columns;
             names containing ``__`` (e.g. ``roles__name``) match an attribute on
@@ -34,17 +39,32 @@ def apply_search_filter(
     if not q or not search_fields:
         return query
 
-    from sqlalchemy import inspect as sa_inspect
-    from sqlalchemy import or_
+    query_adapter = getattr(request.app.state, "admin_query_adapter", None)
+    introspection = getattr(request.app.state, "admin_introspection_adapter", None)
 
-    mapper = sa_inspect(model)
+    if introspection is not None:
+        rel_names = introspection.get_relationship_names(model)
+    else:
+        from sqlalchemy import inspect as sa_inspect
+
+        mapper = sa_inspect(model)
+        rel_names = {r.key for r in mapper.relationships}
+
     clauses: list[Any] = []
     joined_rels: set[str] = set()
 
     for sf in search_fields:
         if "__" in sf:
             rel_name, attr = sf.split("__", 1)
-            rel = mapper.relationships.get(rel_name)
+            if rel_name not in rel_names:
+                continue
+            if introspection is not None:
+                rel = introspection.get_relationship(model, rel_name)
+            else:
+                from sqlalchemy import inspect as sa_inspect
+
+                mapper = sa_inspect(model)
+                rel = mapper.relationships.get(rel_name)
             if rel is None:
                 continue
             target = rel.mapper.class_
@@ -54,18 +74,35 @@ def apply_search_filter(
             if not hasattr(col, "ilike"):
                 continue
             if rel_name not in joined_rels:
-                query = query.join(getattr(model, rel_name))
+                if query_adapter is not None:
+                    query = query_adapter.join(query, getattr(model, rel_name))
+                else:
+                    query = query.join(getattr(model, rel_name))
                 joined_rels.add(rel_name)
-            clauses.append(col.ilike(f"%{q}%"))
+            if query_adapter is not None:
+                clauses.append(query_adapter.ilike(col, f"%{q}%"))
+            else:
+                clauses.append(col.ilike(f"%{q}%"))
         else:
             if hasattr(model, sf):
                 col = getattr(model, sf)
                 if hasattr(col, "ilike"):
-                    clauses.append(col.ilike(f"%{q}%"))
+                    if query_adapter is not None:
+                        clauses.append(query_adapter.ilike(col, f"%{q}%"))
+                    else:
+                        clauses.append(col.ilike(f"%{q}%"))
 
     if clauses:
-        query = query.where(or_(*clauses))
+        if query_adapter is not None:
+            query = query_adapter.where(query, query_adapter.or_(*clauses))
+        else:
+            from sqlalchemy import or_
+
+            query = query.where(or_(*clauses))
         if joined_rels:
-            query = query.distinct()
+            if query_adapter is not None:
+                query = query_adapter.distinct(query)
+            else:
+                query = query.distinct()
 
     return query
