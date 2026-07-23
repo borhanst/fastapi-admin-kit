@@ -1,0 +1,2897 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Drop-in admin panel for FastAPI + SQLAlchemy apps">
+      
+      
+      
+        <link rel="canonical" href="https://borhanst.github.io/fastapi-admin-kit/guide/features/">
+      
+      
+        <link rel="prev" href="../../getting-started/configuration/">
+      
+      
+        <link rel="next" href="../model-registration/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>All Features - FastAPI Admin Kit</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#features" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="FastAPI Admin Kit" class="md-header__button md-logo" aria-label="FastAPI Admin Kit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            FastAPI Admin Kit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              All Features
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/borhanst/fastapi-admin-kit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fastapi-admin-kit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../api/admin/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../upcoming-features/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Upcoming Features
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="FastAPI Admin Kit" class="md-nav__button md-logo" aria-label="FastAPI Admin Kit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    FastAPI Admin Kit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/borhanst/fastapi-admin-kit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    fastapi-admin-kit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    All Features
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    All Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication-security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication &amp; Security
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#user-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User Management
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ui-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UI &amp; Design
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#crud-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CRUD Operations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#widgets-17-built-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Widgets (17 built-in)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#form-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Form Features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#list-view-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List View Features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audit-logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audit Logging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dashboard
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#navigation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Navigation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-tools-fak-admin-fak" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Tools (fak-admin / fak)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#json-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JSON API
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pagination" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pagination
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage-file-uploads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage &amp; File Uploads
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#customization-extensibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Customization &amp; Extensibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#code-quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Code Quality
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../model-registration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Registration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auth-rbac/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication & RBAC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../widgets-forms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Widgets & Forms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../themes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Themes & UI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../inline-editing-actions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inline Editing & Actions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../filters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Filters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../navigation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Navigation & Sidebar
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../audit-logging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audit Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage & File Uploads
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../json-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JSON API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../command-palette/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command Palette
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pagination/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pagination
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../alembic-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Alembic Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/widgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Widgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/auth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Auth
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../upcoming-features/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upcoming Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication-security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication &amp; Security
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#user-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User Management
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ui-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UI &amp; Design
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#crud-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CRUD Operations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#widgets-17-built-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Widgets (17 built-in)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#form-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Form Features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#list-view-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List View Features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audit-logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audit Logging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dashboard
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#navigation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Navigation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-tools-fak-admin-fak" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Tools (fak-admin / fak)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#json-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JSON API
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pagination" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pagination
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage-file-uploads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage &amp; File Uploads
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#customization-extensibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Customization &amp; Extensibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#code-quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Code Quality
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="features">Features<a class="headerlink" href="#features" title="Permanent link">&para;</a></h1>
+<p>Everything FastAPI Admin Kit offers, in one place.</p>
+<p><img alt="Dashboard" src="../../assets/images/admin-dashboard.png" /></p>
+<hr />
+<h2 id="core">Core<a class="headerlink" href="#core" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Zero-Config Auto-Discovery</td>
+<td>Register a model, get full CRUD UI automatically</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+<tr>
+<td>SQLAlchemy &amp; SQLModel</td>
+<td>Works with both ORMs out of the box</td>
+<td><a href="../../getting-started/quickstart/">Quick Start</a></td>
+</tr>
+<tr>
+<td>Async-First</td>
+<td>Built for async FastAPI with <code>AsyncSession</code> support</td>
+<td><a href="../../getting-started/quickstart/">Quick Start</a></td>
+</tr>
+<tr>
+<td>Database Support</td>
+<td>PostgreSQL, MySQL, and SQLite with auto URL normalization</td>
+<td><a href="../../getting-started/configuration/">Configuration</a></td>
+</tr>
+<tr>
+<td>Auto-Migration</td>
+<td>Automatically adds missing columns to existing tables</td>
+<td><a href="../cli/">CLI Tools</a></td>
+</tr>
+<tr>
+<td>Plugin System</td>
+<td>Extend every layer (widgets, auth, routes, audit, storage) via plugins</td>
+<td><a href="plugins.md">Plugins</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="authentication-security">Authentication &amp; Security<a class="headerlink" href="#authentication-security" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Built-in Auth</td>
+<td>Session-based authentication with login page at <code>/admin/login/</code></td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>Custom Auth Backend</td>
+<td>Bring your own user model and authentication logic</td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>RBAC</td>
+<td>Role-based access control with per-model permissions (view, create, edit, delete)</td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>Direct User Permissions</td>
+<td>Per-user permission overrides, OR'd with role permissions</td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>Field-Level Permissions</td>
+<td>Restrict access to specific fields per role</td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>Superuser Bypass</td>
+<td><code>is_superuser=True</code> bypasses all permission checks</td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>TOTP Two-Factor Auth</td>
+<td>QR code setup, enable/disable, backup codes via <code>/admin/profile/2fa</code></td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>CSRF Protection</td>
+<td>Signed CSRF tokens on all state-changing requests</td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>Rate Limiting</td>
+<td>Sliding-window rate limiter on authentication endpoints</td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>Password Hashing</td>
+<td>bcrypt with configurable rounds</td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>Session Security</td>
+<td>Signed cookies with <code>SameSite=Strict</code>, <code>Secure</code>, and configurable TTL</td>
+<td><a href="../../getting-started/configuration/">Configuration</a></td>
+</tr>
+<tr>
+<td>Secret Key Validation</td>
+<td>Enforces minimum 32-character secret key at startup</td>
+<td><a href="../../getting-started/configuration/">Configuration</a></td>
+</tr>
+<tr>
+<td>SQL Injection Prevention</td>
+<td>Identifier validation on all raw SQL in CLI and auto-migrate</td>
+<td><a href="../../getting-started/configuration/">Security</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="user-management">User Management<a class="headerlink" href="#user-management" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Default Roles</td>
+<td>SuperAdmin, Admin, Editor, Viewer seeded automatically</td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>Custom Seed Roles</td>
+<td>Define your own roles and permissions at startup</td>
+<td><a href="../../getting-started/configuration/">Configuration</a></td>
+</tr>
+<tr>
+<td>Permission Matrix UI</td>
+<td>Visual checkbox grid for managing role permissions</td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>User Management UI</td>
+<td>Create, edit, list, and delete admin users from the panel</td>
+<td><a href="../cli/">CLI Tools</a></td>
+</tr>
+<tr>
+<td>Profile Page</td>
+<td>Users can view and edit their own profile at <code>/admin/profile</code></td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>Password Change</td>
+<td>Users can change their own password from the profile page</td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="ui-design">UI &amp; Design<a class="headerlink" href="#ui-design" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Modern UI</td>
+<td>Tailwind CSS, HTMX, and Alpine.js for a fast, responsive experience</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Dark Mode</td>
+<td>Toggle between light and dark mode, configurable default</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Theme Presets</td>
+<td>editorial, modern, midnight, paper, forest, minimal</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Theme Settings Page</td>
+<td>Visual theme builder at <code>/admin/settings/theme</code></td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Custom Themes</td>
+<td>Override primary colors, CSS variables, and layout settings</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Responsive Design</td>
+<td>Mobile-friendly with collapsible sidebar</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Shell Layout</td>
+<td>Topbar, sidebar, content area with loading bar</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Sidebar Customization</td>
+<td>Position (left/right), style, collapse, nav groups</td>
+<td><a href="../navigation/">Navigation</a></td>
+</tr>
+<tr>
+<td>Table Styling</td>
+<td>Row height (compact/normal/relaxed), custom styles</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Form Layout</td>
+<td>Single-column or two-column, configurable spacing</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Content Width</td>
+<td>Narrow, default, or wide layout</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Environment Badge</td>
+<td>Show "Production", "Staging", etc. with color coding</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Flash Messages</td>
+<td>Success/error messages after operations via signed session cookie</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Custom CSS/JS</td>
+<td>Inject inline or external CSS and JavaScript globally</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Custom Templates</td>
+<td>Override any Jinja2 template</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Custom Icons</td>
+<td>Material Symbols icon support throughout</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="crud-operations">CRUD Operations<a class="headerlink" href="#crud-operations" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>List View</td>
+<td>Paginated table with search, filters, and bulk actions</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+<tr>
+<td>Create Form</td>
+<td>Auto-generated from model columns with validation</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td>Edit Form</td>
+<td>Pre-populated form with field-level validation</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td>Delete</td>
+<td>Confirmation dialog before deletion</td>
+<td><a href="../inline-editing-actions/">Inline Editing &amp; Actions</a></td>
+</tr>
+<tr>
+<td>Inline Editing</td>
+<td>Edit records directly from list view with 3-dot action menu</td>
+<td><a href="../inline-editing-actions/">Inline Editing &amp; Actions</a></td>
+</tr>
+<tr>
+<td>Bulk Actions</td>
+<td>Select multiple rows and apply actions (delete, custom)</td>
+<td><a href="../inline-editing-actions/">Inline Editing &amp; Actions</a></td>
+</tr>
+<tr>
+<td>Row Actions</td>
+<td>Per-row action menu with custom actions</td>
+<td><a href="../inline-editing-actions/">Inline Editing &amp; Actions</a></td>
+</tr>
+<tr>
+<td>Detail Actions</td>
+<td>Actions on detail/edit pages</td>
+<td><a href="../inline-editing-actions/">Inline Editing &amp; Actions</a></td>
+</tr>
+<tr>
+<td>Submit-Line Actions</td>
+<td>Actions on form submit buttons</td>
+<td><a href="../inline-editing-actions/">Inline Editing &amp; Actions</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="widgets-17-built-in">Widgets (17 built-in)<a class="headerlink" href="#widgets-17-built-in" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Widget</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TextInputWidget</code></td>
+<td>String/VARCHAR fields</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td><code>TextareaWidget</code></td>
+<td>Text fields with configurable rows</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td><code>NumberInputWidget</code></td>
+<td>Integer/Float with step and min/max</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td><code>ToggleWidget</code></td>
+<td>Boolean toggle switch</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td><code>SelectWidget</code></td>
+<td>Enum dropdown with choices</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td><code>DatePickerWidget</code></td>
+<td>Date-only picker</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td><code>DateTimePickerWidget</code></td>
+<td>DateTime picker</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td><code>JsonEditorWidget</code></td>
+<td>JSON editor</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td><code>AutocompleteWidget</code></td>
+<td>Datalist autocomplete with static/dynamic suggestions</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td><code>PasswordWidget</code></td>
+<td>Masked input, never pre-fills</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td><code>ReadOnlyWidget</code></td>
+<td>Display-only value</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td><code>HiddenWidget</code></td>
+<td>Hidden input field</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td><code>FileUploadWidget</code></td>
+<td>File upload with size limits and type filtering</td>
+<td><a href="../storage/">Storage &amp; Uploads</a></td>
+</tr>
+<tr>
+<td><code>ImageUploadWidget</code></td>
+<td>Image-specific upload with preview</td>
+<td><a href="../storage/">Storage &amp; Uploads</a></td>
+</tr>
+<tr>
+<td><code>WysiwygWidget</code></td>
+<td>Rich text editor for HTML content</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td><code>ArrayWidget</code></td>
+<td>Dynamic list input for JSON arrays</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td><code>RelationPickerWidget</code></td>
+<td>Searchable FK dropdown</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td><code>MultiRelationWidget</code></td>
+<td>Multi-select with search and removable tags</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="form-features">Form Features<a class="headerlink" href="#form-features" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Auto-Generated Forms</td>
+<td>Columns mapped to widgets automatically</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td>Fieldsets</td>
+<td>Group form fields into titled sections</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+<tr>
+<td>Conditional Fields</td>
+<td>Show/hide fields based on other field values</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+<tr>
+<td>Field Overrides</td>
+<td>Replace widget for any field via <code>formfield_overrides</code></td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td>Extra Fields</td>
+<td>Add non-model fields to forms</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+<tr>
+<td>Readonly Fields</td>
+<td>Show fields without allowing edits</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+<tr>
+<td>Placeholders</td>
+<td>Custom placeholder text per field</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+<tr>
+<td>Unsaved Changes Warning</td>
+<td>Browser warning when leaving with unsaved edits</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td>HTMX Partial Validation</td>
+<td>Field-level validation on blur without page reload</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td>Object-Level Validation</td>
+<td>Cross-field validation after all fields are parsed</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td>Global Validator</td>
+<td>Validate across all models</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="list-view-features">List View Features<a class="headerlink" href="#list-view-features" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Search</td>
+<td>Full-text search across specified fields</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+<tr>
+<td>Relation Search</td>
+<td>Search across FK and M2M relations (<code>user__email</code>, <code>tags__name</code>)</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+<tr>
+<td>Filters</td>
+<td>Sidebar filters (text, boolean, relation, enum)</td>
+<td><a href="../filters/">Filters</a></td>
+</tr>
+<tr>
+<td>Filter Registry</td>
+<td>Register custom filter types</td>
+<td><a href="../filters/">Filters</a></td>
+</tr>
+<tr>
+<td>Ordering</td>
+<td>Default sort order with clickable column headers</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+<tr>
+<td>Pagination</td>
+<td>Offset, cursor, or dynamic strategies per model</td>
+<td><a href="../pagination/">Pagination</a></td>
+</tr>
+<tr>
+<td>Custom Columns</td>
+<td><code>@column</code> decorator for computed columns with formatting, icons, width</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+<tr>
+<td>Column Export</td>
+<td>CSV export support per column</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="audit-logging">Audit Logging<a class="headerlink" href="#audit-logging" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Automatic Tracking</td>
+<td>Every create, update, and delete is recorded</td>
+<td><a href="../audit-logging/">Audit Logging</a></td>
+</tr>
+<tr>
+<td>Change Diffs</td>
+<td>Before/after comparison for updates</td>
+<td><a href="../audit-logging/">Audit Logging</a></td>
+</tr>
+<tr>
+<td>Full Snapshots</td>
+<td>Complete object state at time of change</td>
+<td><a href="../audit-logging/">Audit Logging</a></td>
+</tr>
+<tr>
+<td>User Attribution</td>
+<td>Records who performed each action</td>
+<td><a href="../audit-logging/">Audit Logging</a></td>
+</tr>
+<tr>
+<td>IP &amp; User-Agent</td>
+<td>Captures request metadata</td>
+<td><a href="../audit-logging/">Audit Logging</a></td>
+</tr>
+<tr>
+<td>Audit Log UI</td>
+<td>Timeline view with filters by model, user, action, date</td>
+<td><a href="../audit-logging/">Audit Logging</a></td>
+</tr>
+<tr>
+<td>Per-Object History</td>
+<td>Edit forms show audit history for that record</td>
+<td><a href="../audit-logging/">Audit Logging</a></td>
+</tr>
+<tr>
+<td>Retention Policy</td>
+<td>Configurable retention period with automatic purge</td>
+<td><a href="../audit-logging/">Audit Logging</a></td>
+</tr>
+<tr>
+<td>External Sinks</td>
+<td>Send audit logs to Elasticsearch, webhooks, etc.</td>
+<td><a href="../audit-logging/">Audit Logging</a></td>
+</tr>
+<tr>
+<td>Custom Audit Writer</td>
+<td>Override the default audit recording logic</td>
+<td><a href="../audit-logging/">Audit Logging</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="dashboard">Dashboard<a class="headerlink" href="#dashboard" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Stat Cards</td>
+<td>Display key metrics with values and descriptions</td>
+<td><a href="../dashboard/">Dashboard</a></td>
+</tr>
+<tr>
+<td>Charts</td>
+<td>Line, bar, pie, and doughnut chart placeholders</td>
+<td><a href="../dashboard/">Dashboard</a></td>
+</tr>
+<tr>
+<td>Tables</td>
+<td>Dashboard table components</td>
+<td><a href="../dashboard/">Dashboard</a></td>
+</tr>
+<tr>
+<td>Progress Bars</td>
+<td>Visual progress indicators</td>
+<td><a href="../dashboard/">Dashboard</a></td>
+</tr>
+<tr>
+<td>Link Buttons</td>
+<td>Quick-action buttons</td>
+<td><a href="../dashboard/">Dashboard</a></td>
+</tr>
+<tr>
+<td>Configurable Grid</td>
+<td>Auto or custom grid layout</td>
+<td><a href="../dashboard/">Dashboard</a></td>
+</tr>
+<tr>
+<td>Permission Gating</td>
+<td>Restrict dashboard access by permission</td>
+<td><a href="../dashboard/">Dashboard</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="navigation">Navigation<a class="headerlink" href="#navigation" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Auto-Generated Sidebar</td>
+<td>Models grouped by tags automatically</td>
+<td><a href="../navigation/">Navigation</a></td>
+</tr>
+<tr>
+<td>Custom Nav Groups</td>
+<td>Define your own navigation structure</td>
+<td><a href="../navigation/">Navigation</a></td>
+</tr>
+<tr>
+<td>Sidebar Builder</td>
+<td>Custom sidebar builder protocol</td>
+<td><a href="../navigation/">Navigation</a></td>
+</tr>
+<tr>
+<td>Nav Ordering</td>
+<td>Control sidebar item order with <code>nav_order</code></td>
+<td><a href="../navigation/">Navigation</a></td>
+</tr>
+<tr>
+<td>Nested Nav Items</td>
+<td>Create sub-menu items with <code>nav_children</code></td>
+<td><a href="../navigation/">Navigation</a></td>
+</tr>
+<tr>
+<td>Active State</td>
+<td>Current page highlighted in sidebar</td>
+<td><a href="../navigation/">Navigation</a></td>
+</tr>
+<tr>
+<td>Collapsible Sidebar</td>
+<td>Sidebar collapses to icons on toggle</td>
+<td><a href="../navigation/">Navigation</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="cli-tools-fak-admin-fak">CLI Tools (<code>fak-admin</code> / <code>fak</code>)<a class="headerlink" href="#cli-tools-fak-admin-fak" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>createsuperuser</code></td>
+<td>Create admin users with email and password</td>
+<td><a href="../cli/">CLI Tools</a></td>
+</tr>
+<tr>
+<td><code>users</code></td>
+<td>List all admin users</td>
+<td><a href="../cli/">CLI Tools</a></td>
+</tr>
+<tr>
+<td><code>changepassword</code></td>
+<td>Change a user's password</td>
+<td><a href="../cli/">CLI Tools</a></td>
+</tr>
+<tr>
+<td><code>createpermissions</code></td>
+<td>Create permissions for tables</td>
+<td><a href="../cli/">CLI Tools</a></td>
+</tr>
+<tr>
+<td><code>createadminpermissions</code></td>
+<td>Create permissions for all admin-registered models</td>
+<td><a href="../cli/">CLI Tools</a></td>
+</tr>
+<tr>
+<td><code>deletepermissions</code></td>
+<td>Delete permissions for tables</td>
+<td><a href="../cli/">CLI Tools</a></td>
+</tr>
+<tr>
+<td><code>migrate</code></td>
+<td>Add missing columns or drop obsolete columns</td>
+<td><a href="../cli/">CLI Tools</a></td>
+</tr>
+<tr>
+<td><code>migrate-permissions</code></td>
+<td>Convert old shared permissions to per-role format</td>
+<td><a href="../cli/">CLI Tools</a></td>
+</tr>
+<tr>
+<td><code>init</code></td>
+<td>Scaffold a new FastAPI project with uv</td>
+<td><a href="../cli/">CLI Tools</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="json-api">JSON API<a class="headerlink" href="#json-api" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>REST Endpoints</td>
+<td>Full CRUD API for all registered models</td>
+<td><a href="../json-api/">JSON API</a></td>
+</tr>
+<tr>
+<td>Token Authentication</td>
+<td>JWT-based auth for external frontends</td>
+<td><a href="../json-api/">JSON API</a></td>
+</tr>
+<tr>
+<td>Token Refresh</td>
+<td>Refresh token rotation</td>
+<td><a href="../json-api/">JSON API</a></td>
+</tr>
+<tr>
+<td>Role Management API</td>
+<td>CRUD for roles via API</td>
+<td><a href="../json-api/">JSON API</a></td>
+</tr>
+<tr>
+<td>Search API</td>
+<td>Programmatic search endpoint</td>
+<td><a href="../json-api/">JSON API</a></td>
+</tr>
+<tr>
+<td>Schema Generation</td>
+<td>Auto-generated JSON schemas for models</td>
+<td><a href="../json-api/">JSON API</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="pagination">Pagination<a class="headerlink" href="#pagination" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Offset Pagination</td>
+<td>Traditional page numbers (default)</td>
+<td><a href="../pagination/">Pagination</a></td>
+</tr>
+<tr>
+<td>Cursor Pagination</td>
+<td>Keyset pagination with opaque cursors for large datasets</td>
+<td><a href="../pagination/">Pagination</a></td>
+</tr>
+<tr>
+<td>Dynamic Pagination</td>
+<td>Auto-switches between offset and cursor based on record count</td>
+<td><a href="../pagination/">Pagination</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="storage-file-uploads">Storage &amp; File Uploads<a class="headerlink" href="#storage-file-uploads" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LocalStorageBackend</td>
+<td>File uploads to local filesystem</td>
+<td><a href="../storage/">Storage &amp; Uploads</a></td>
+</tr>
+<tr>
+<td>Storage Backend Protocol</td>
+<td>Implement custom backends (S3, GCS, etc.)</td>
+<td><a href="../storage/">Storage &amp; Uploads</a></td>
+</tr>
+<tr>
+<td>Upload Widgets</td>
+<td>File and image upload with size limits and type filtering</td>
+<td><a href="../storage/">Storage &amp; Uploads</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="search">Search<a class="headerlink" href="#search" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Command Palette</td>
+<td><code>Cmd+K</code> / <code>Ctrl+K</code> to search models and fields</td>
+<td><a href="../command-palette/">Command Palette</a></td>
+</tr>
+<tr>
+<td>List View Search</td>
+<td>Per-model search across configured fields</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+<tr>
+<td>Relation Search</td>
+<td>Search across foreign key and many-to-many relationships</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+<tr>
+<td>Search API</td>
+<td>JSON endpoint for programmatic search</td>
+<td><a href="../json-api/">JSON API</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="filters">Filters<a class="headerlink" href="#filters" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TextFilter</td>
+<td>Text/substring matching</td>
+<td><a href="../filters/">Filters</a></td>
+</tr>
+<tr>
+<td>BooleanFilter</td>
+<td>True/false toggle</td>
+<td><a href="../filters/">Filters</a></td>
+</tr>
+<tr>
+<td>RelationFilter</td>
+<td>Filter by related model</td>
+<td><a href="../filters/">Filters</a></td>
+</tr>
+<tr>
+<td>EnumFilter</td>
+<td>Filter by enum choices</td>
+<td><a href="../filters/">Filters</a></td>
+</tr>
+<tr>
+<td>Filter Registry</td>
+<td>Register custom filter types</td>
+<td><a href="../filters/">Filters</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="customization-extensibility">Customization &amp; Extensibility<a class="headerlink" href="#customization-extensibility" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ModelAdmin</td>
+<td>Full control over list, form, and behavior per model</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+<tr>
+<td>Lifecycle Hooks</td>
+<td><code>on_create</code>, <code>after_create</code>, <code>on_update</code>, <code>after_update</code>, <code>on_delete</code>, <code>after_delete</code></td>
+<td><a href="../inline-editing-actions/">Inline Editing &amp; Actions</a></td>
+</tr>
+<tr>
+<td>Custom Actions</td>
+<td>Decorator-based action system for list, row, detail, and submit-line</td>
+<td><a href="../inline-editing-actions/">Inline Editing &amp; Actions</a></td>
+</tr>
+<tr>
+<td>Custom Widgets</td>
+<td>Extend the <code>Widget</code> base class with custom parse, validate, render</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td>Widget Registry</td>
+<td>Override widgets by type or field name pattern</td>
+<td><a href="../widgets-forms/">Widgets &amp; Forms</a></td>
+</tr>
+<tr>
+<td>Custom Auth Backend</td>
+<td>Implement <code>AuthBackend</code> protocol</td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>Custom Session Backend</td>
+<td>Swap session storage</td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>Custom Permission Checker</td>
+<td>Override RBAC logic</td>
+<td><a href="../auth-rbac/">Auth &amp; RBAC</a></td>
+</tr>
+<tr>
+<td>Custom Audit Writer</td>
+<td>Override audit recording</td>
+<td><a href="../audit-logging/">Audit Logging</a></td>
+</tr>
+<tr>
+<td>Custom Sidebar Builder</td>
+<td>Override sidebar generation</td>
+<td><a href="../navigation/">Navigation</a></td>
+</tr>
+<tr>
+<td>Hook/Event Bus</td>
+<td>Register before/after hooks for any lifecycle event</td>
+<td><a href="plugins.md">Plugins</a></td>
+</tr>
+<tr>
+<td>Template Overrides</td>
+<td>Override any Jinja2 template</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Custom Template Dirs</td>
+<td>Add your own template directories</td>
+<td><a href="../themes/">Themes &amp; UI</a></td>
+</tr>
+<tr>
+<td>Jinja2 Globals &amp; Filters</td>
+<td>Inject custom functions into templates</td>
+<td><a href="plugins.md">Plugins</a></td>
+</tr>
+<tr>
+<td>Column Decorator</td>
+<td><code>@column()</code> with header, format, icon, width, exportable options</td>
+<td><a href="../model-registration/">Model Registration</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="code-quality">Code Quality<a class="headerlink" href="#code-quality" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Type Hints</td>
+<td>Ships with <code>py.typed</code> marker</td>
+</tr>
+<tr>
+<td>Ruff Linting</td>
+<td>Enforced in CI</td>
+</tr>
+<tr>
+<td>Ruff Formatting</td>
+<td>Enforced in CI</td>
+</tr>
+<tr>
+<td>Test Coverage</td>
+<td>580+ tests with coverage reporting</td>
+</tr>
+<tr>
+<td>CI/CD</td>
+<td>GitHub Actions for tests, lint, and PyPI publishing</td>
+</tr>
+<tr>
+<td>Pre-commit Hooks</td>
+<td>Ruff lint and format on commit</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "content.code.copy", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
