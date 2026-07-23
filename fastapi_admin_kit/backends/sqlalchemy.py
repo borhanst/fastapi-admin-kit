@@ -578,6 +578,11 @@ class SqlAlchemyDatabaseBackend:
         }
 
         columns: list[Column] = []
+        existing_cols: dict[str, Any] = {}
+        if base is not None and hasattr(base, "metadata"):
+            existing_table = base.metadata.tables.get(schema.table_name)
+            if existing_table is not None:
+                existing_cols = {c.name: c for c in existing_table.columns}
         for f in schema.fields:
             sa_type = type_map.get(f.type, String)
 
@@ -602,7 +607,9 @@ class SqlAlchemyDatabaseBackend:
                 else:
                     kwargs["server_default"] = f.server_default
             if f.index and not f.primary_key:
-                kwargs["index"] = True
+                existing_col = existing_cols.get(f.name)
+                if existing_col is None or not existing_col.index:
+                    kwargs["index"] = True
 
             columns.append(Column(f.name, sa_type, **kwargs))
 
