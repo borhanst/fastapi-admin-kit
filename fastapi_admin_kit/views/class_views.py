@@ -17,6 +17,7 @@ from fastapi_admin_kit.admin.builtin_models import flush_pending_perm_ops
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.flash import add_flash
 from fastapi_admin_kit.registry import RegisteredModel
+from fastapi_admin_kit.types import FieldError
 from fastapi_admin_kit.views.context import DisplayColumn
 from fastapi_admin_kit.views.renderers import (
     DefaultQueryProvider,
@@ -401,7 +402,7 @@ class CreateView(BaseView):
         template_context.update(self._get_extra_context(request))
         await inject_sidebar_context(request, template_context)
 
-        template_context = self.admin.get_form_context(template_context, obj, request)
+        template_context = await self.admin.get_form_context(template_context, obj, request)
 
         return template_context
 
@@ -578,6 +579,24 @@ class CreateView(BaseView):
 
         # POST
         parsed, errors = await self.form_parser.parse(request)
+
+        # Extract perm_data for User model direct permissions
+        if self.registered.table_name == "admin_users":
+            import json
+
+            form = await request.form()
+            perm_data_raw = form.get("perm_data")
+            if perm_data_raw:
+                try:
+                    perm_data = (
+                        json.loads(perm_data_raw)
+                        if isinstance(perm_data_raw, str)
+                        else perm_data_raw
+                    )
+                    request.state._admin_perm_data = perm_data
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
         if errors:
             session = get_db_session(request)
             await session.rollback()
@@ -594,7 +613,18 @@ class CreateView(BaseView):
             return await self.html_renderer.render(request, ctx)
 
         try:
-            parsed = self.admin.validate_create(parsed, request)
+            result = self.admin.validate_create(parsed, request)
+        except FieldError as e:
+            session = get_db_session(request)
+            await session.rollback()
+            ctx = await self._build_form_context(
+                request,
+                values=parsed,
+                errors=e.field_errors,
+                is_create=True,
+                checker=checker,
+            )
+            return await self.html_renderer.render(request, ctx)
         except ValueError as e:
             session = get_db_session(request)
             await session.rollback()
@@ -606,6 +636,8 @@ class CreateView(BaseView):
                 checker=checker,
             )
             return await self.html_renderer.render(request, ctx)
+
+        parsed = result
 
         parsed = self.admin.process_form_data(parsed, request)
 
@@ -734,7 +766,7 @@ class EditView(BaseView):
         template_context.update(self._get_extra_context(request))
         await inject_sidebar_context(request, template_context)
 
-        template_context = self.admin.get_form_context(template_context, obj, request)
+        template_context = await self.admin.get_form_context(template_context, obj, request)
 
         return template_context
 
@@ -996,6 +1028,24 @@ class EditView(BaseView):
 
         # POST
         parsed, errors = await self.form_parser.parse(request, obj=obj)
+
+        # Extract perm_data for User model direct permissions
+        if self.registered.table_name == "admin_users":
+            import json
+
+            form = await request.form()
+            perm_data_raw = form.get("perm_data")
+            if perm_data_raw:
+                try:
+                    perm_data = (
+                        json.loads(perm_data_raw)
+                        if isinstance(perm_data_raw, str)
+                        else perm_data_raw
+                    )
+                    request.state._admin_perm_data = perm_data
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
         if errors:
             session = get_db_session(request)
             await session.rollback()
@@ -1015,7 +1065,21 @@ class EditView(BaseView):
             return await self.html_renderer.render(request, ctx)
 
         try:
-            parsed = self.admin.validate_update(obj, parsed, request)
+            result = self.admin.validate_update(obj, parsed, request)
+        except FieldError as e:
+            session = get_db_session(request)
+            await session.rollback()
+            await session.refresh(obj)
+            rel_labels = await self._resolve_rel_labels(obj, request)
+            ctx = await self._build_form_context(
+                request,
+                obj=obj,
+                values=parsed,
+                errors=e.field_errors,
+                checker=checker,
+                rel_labels=rel_labels,
+            )
+            return await self.html_renderer.render(request, ctx)
         except ValueError as e:
             session = get_db_session(request)
             await session.rollback()
@@ -1030,6 +1094,8 @@ class EditView(BaseView):
                 rel_labels=rel_labels,
             )
             return await self.html_renderer.render(request, ctx)
+
+        parsed = result
 
         parsed = self.admin.process_form_data(parsed, request)
 

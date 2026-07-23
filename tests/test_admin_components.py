@@ -226,52 +226,74 @@ class TestAdminTemplate:
 
     def test_sidebar_template_kwargs(self):
         """Test sidebar_template_kwargs method."""
+        from tests.conftest import run_async
+
         mock_request = MagicMock()
         template = AdminTemplate()
 
-        with patch.object(template, "build_sidebar_context", return_value={"nav_groups": []}):
-            result = template.sidebar_template_kwargs(mock_request)
-            assert result == {"nav_groups": []}
+        async def _test():
+            with patch.object(template, "build_sidebar_context", return_value={"nav_groups": []}):
+                result = await template.sidebar_template_kwargs(mock_request)
+                assert result == {"nav_groups": []}
+
+        run_async(_test())
 
     def test_build_sidebar_context_without_user(self):
         """Test build_sidebar_context without user."""
+        from tests.conftest import run_async
+
         mock_request = MagicMock()
         mock_request.state.admin_user = None
+        mock_request.state.admin_user_snapshot = None
         template = AdminTemplate()
 
-        with patch(
-            "fastapi_admin_kit.auth.permissions.PermissionChecker",
-            return_value=None,
-            create=True,
-        ):
-            result = template.build_sidebar_context(mock_request)
-            assert result["current_user"] is None
-            assert "nav_groups" in result
+        async def _test():
+            with patch(
+                "fastapi_admin_kit.auth.permissions.PermissionChecker",
+                return_value=None,
+                create=True,
+            ):
+                result = await template.build_sidebar_context(mock_request)
+                assert result["current_user"] is None
+                assert "nav_groups" in result
+
+        run_async(_test())
 
     def test_build_sidebar_context_with_user(self):
         """Test build_sidebar_context with user."""
+        from tests.conftest import run_async
+
         mock_request = MagicMock()
         mock_user = MagicMock()
         mock_request.state.admin_user = mock_user
+        mock_request.state.admin_user_snapshot = None
 
         template = AdminTemplate()
 
-        with patch("fastapi_admin_kit.auth.permissions.PermissionChecker") as mock_checker:
-            mock_checker.return_value.permission_set.return_value = {"view": True}
-            result = template.build_sidebar_context(mock_request, user=mock_user)
+        async def _test():
+            with patch("fastapi_admin_kit.auth.permissions.PermissionChecker") as mock_checker:
+                mock_checker.return_value.permission_set.return_value = {"view": True}
+                result = await template.build_sidebar_context(mock_request, user=mock_user)
 
-            assert result["current_user"] is mock_user
-            assert "nav_groups" in result
+                assert result["current_user"] is mock_user
+                assert "nav_groups" in result
+
+        run_async(_test())
 
     def test_apply_sidebar_context(self):
         """Test apply_sidebar_context method."""
+        from tests.conftest import run_async
+
         mock_request = MagicMock()
         mock_user = MagicMock()
         context = {"existing_key": "existing_value"}
 
         template = AdminTemplate()
 
-        with patch.object(template, "build_sidebar_context", return_value={"nav_groups": []}):
-            result = template.apply_sidebar_context(mock_request, mock_user, context)
-            assert result["existing_key"] == "existing_value"
-            assert result["nav_groups"] == []
+        async def _test():
+            with patch.object(template, "build_sidebar_context", return_value={"nav_groups": []}):
+                result = await template.apply_sidebar_context(mock_request, mock_user, context)
+                assert result["existing_key"] == "existing_value"
+                assert result["nav_groups"] == []
+
+        run_async(_test())

@@ -10,7 +10,7 @@ from sqlalchemy import delete, func, insert, select
 from sqlalchemy.orm import selectinload
 
 from fastapi_admin_kit.auth.csrf import require_csrf_token
-from fastapi_admin_kit.auth.dependencies import get_current_admin_user
+from fastapi_admin_kit.auth.dependencies import require_superuser
 from fastapi_admin_kit.auth.models import (
     Permission,
     Role,
@@ -24,19 +24,11 @@ from fastapi_admin_kit.views.sidebar import inject_sidebar_context
 router = APIRouter()
 
 
-async def _require_superuser(
-    user: AdminUserProtocol = Depends(get_current_admin_user),
-) -> AdminUserProtocol:
-    if not getattr(user, "is_superuser", False):
-        raise HTTPException(status_code=403, detail="Superuser access required.")
-    return user
-
-
 @router.get("/tables/search")
 async def tables_search(
     request: Request,
     q: str = Query("", description="Search query"),
-    _: AdminUserProtocol = Depends(_require_superuser),
+    _: AdminUserProtocol = Depends(require_superuser),
 ):
     """Search registered models for permission table picker."""
     registry = request.app.state.admin_registry
@@ -58,7 +50,7 @@ async def permissions_search(
     request: Request,
     q: str = Query("", description="Search query"),
     ids: str = Query("", description="Comma-separated permission IDs to load"),
-    _: AdminUserProtocol = Depends(_require_superuser),
+    _: AdminUserProtocol = Depends(require_superuser),
 ):
     """Search existing permissions for the multi-select picker."""
     session = get_db_session(request)
@@ -69,7 +61,7 @@ async def permissions_search(
             result = await session.execute(select(Permission).where(Permission.id.in_(id_list)))
             perms = result.scalars().all()
             return JSONResponse(
-                content=[{"id": p.id, "label": p.name, "table_name": p.table_name} for p in perms]
+                content=[{"id": p.id, "name": p.name, "table_name": p.table_name} for p in perms]
             )
 
     query = select(Permission)
@@ -81,14 +73,14 @@ async def permissions_search(
     perms = result.scalars().all()
 
     return JSONResponse(
-        content=[{"id": p.id, "label": p.name, "table_name": p.table_name} for p in perms]
+        content=[{"id": p.id, "name": p.name, "table_name": p.table_name} for p in perms]
     )
 
 
 @router.get("/roles", response_class=HTMLResponse)
 async def role_list_view(
     request: Request,
-    _: AdminUserProtocol = Depends(_require_superuser),
+    _: AdminUserProtocol = Depends(require_superuser),
 ):
     """List roles with user counts."""
     templates = request.app.state.admin_jinja_env
@@ -122,7 +114,7 @@ async def role_list_view(
 @router.get("/roles/create", response_class=HTMLResponse)
 async def role_create_view(
     request: Request,
-    _: AdminUserProtocol = Depends(_require_superuser),
+    _: AdminUserProtocol = Depends(require_superuser),
 ):
     """Show empty role create form."""
     templates = request.app.state.admin_jinja_env
@@ -136,7 +128,7 @@ async def role_create_view(
                 "role": None,
                 "perm_ids": [],
                 "perm_search_url": (
-                    f"{request.app.state.admin_config['admin_path']}" "/permissions/search"
+                    f"{request.app.state.admin_config['admin_path']}/permissions/search"
                 ),
             },
         ),
@@ -146,7 +138,7 @@ async def role_create_view(
 @router.post("/roles", response_class=RedirectResponse)
 async def role_create_save_view(
     request: Request,
-    _: AdminUserProtocol = Depends(_require_superuser),
+    _: AdminUserProtocol = Depends(require_superuser),
     _csrf: bool = Depends(require_csrf_token),
 ):
     """Create a new role with permissions from form submission."""
@@ -196,7 +188,7 @@ async def role_create_save_view(
 async def role_edit_view(
     request: Request,
     role_id: int,
-    _: AdminUserProtocol = Depends(_require_superuser),
+    _: AdminUserProtocol = Depends(require_superuser),
 ):
     """Show edit form with permission matrix."""
     templates = request.app.state.admin_jinja_env
@@ -220,7 +212,7 @@ async def role_edit_view(
                 "role": role,
                 "perm_ids": perm_ids,
                 "perm_search_url": (
-                    f"{request.app.state.admin_config['admin_path']}" "/permissions/search"
+                    f"{request.app.state.admin_config['admin_path']}/permissions/search"
                 ),
             },
         ),
@@ -231,7 +223,7 @@ async def role_edit_view(
 async def role_save_view(
     request: Request,
     role_id: int,
-    _: AdminUserProtocol = Depends(_require_superuser),
+    _: AdminUserProtocol = Depends(require_superuser),
     _csrf: bool = Depends(require_csrf_token),
 ):
     """Save role permissions from form submission."""
@@ -276,7 +268,7 @@ async def role_save_view(
 async def role_delete_view(
     request: Request,
     role_id: int,
-    _: AdminUserProtocol = Depends(_require_superuser),
+    _: AdminUserProtocol = Depends(require_superuser),
     _csrf: bool = Depends(require_csrf_token),
 ):
     """Delete role (refuse if users assigned)."""

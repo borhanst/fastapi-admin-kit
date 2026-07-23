@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, ClassVar
 from sqlalchemy import Boolean, Column, String
 
 if TYPE_CHECKING:
-    pass
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class AuthModelMixin:
@@ -42,6 +42,7 @@ class AuthModelMixin:
     - ``verify_password(password)`` → bool
     - ``hash_password(password)`` → str (classmethod)
     - ``set_hasher(hasher)`` classmethod
+    - ``has_perm(perm_name, session)`` → bool (check permission by name)
     """
 
     _hasher: ClassVar[type | None] = None
@@ -82,6 +83,71 @@ class AuthModelMixin:
     def set_hasher(cls, hasher: type) -> None:
         """Set the password hasher class for this model."""
         cls._hasher = hasher
+
+    async def has_perm(self, perm_name: str, session: AsyncSession) -> bool:
+        """Check if this user has a permission by name.
+
+        Supports two formats:
+        - New format: ``"table_name:action"`` (e.g. ``"products:view"``)
+        - Legacy format: ``"table_name_action"`` (e.g. ``"products_view"``)
+
+        Returns True if any assigned role grants this permission,
+        or if a direct user permission grants it. Superusers always return True.
+        """
+        if self.is_superuser:
+            return True
+
+        from sqlalchemy import select
+
+        from fastapi_admin_kit.auth.models import (
+            Permission,
+            UserPermission,
+            admin_role_permissions,
+        )
+
+        # Parse perm_name -> (table_name, action)
+        # Prefer ":" separator (unambiguous), fall back to "_" for legacy
+        if ":" in perm_name:
+            table_name, action = perm_name.rsplit(":", 1)
+        else:
+            parts = perm_name.rsplit("_", 1)
+            if len(parts) != 2:
+                return False
+            table_name, action = parts
+
+        attr = f"can_{action}"
+        if attr not in ("can_view", "can_create", "can_edit", "can_delete"):
+            return False
+
+        role_ids = self.role_ids
+        if not role_ids and not self.id:
+            return False
+
+        # Check role-based permissions (use pre-computed role_ids, not redundant join)
+        if role_ids:
+            result = await session.execute(
+                select(Permission)
+                .join(
+                    admin_role_permissions,
+                    Permission.id == admin_role_permissions.c.permission_id,
+                )
+                .where(admin_role_permissions.c.role_id.in_(role_ids))
+            )
+            for perm in result.scalars():
+                if perm.table_name == table_name and getattr(perm, attr, False):
+                    return True
+
+        # Check direct user permissions
+        result = await session.execute(
+            select(Permission)
+            .join(UserPermission, UserPermission.permission_id == Permission.id)
+            .where(UserPermission.user_id == self.id)
+        )
+        for perm in result.scalars():
+            if perm.table_name == table_name and getattr(perm, attr, False):
+                return True
+
+        return False
 
 
 # Backward-compatible alias

@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import Request
+
+logger = logging.getLogger(__name__)
 
 
 async def inject_sidebar_context(request: Request, context: dict[str, Any]) -> dict[str, Any]:
     """Inject nav_groups + permissions_map into a template context dict."""
     admin_instance: Any = request.app.state.admin
+    user = getattr(request.state, "admin_user", None)
+    if "current_user" not in context:
+        snapshot = getattr(request.state, "admin_user_snapshot", None)
+        context["current_user"] = snapshot or user
     if hasattr(admin_instance, "build_sidebar_context"):
-        user = getattr(request.state, "admin_user", None)
-
         snapshot = getattr(request.state, "admin_user_snapshot", None)
         is_superuser = (
             (
@@ -75,29 +80,32 @@ async def inject_sidebar_context(request: Request, context: dict[str, Any]) -> d
                 # Load direct user permission overrides, merge on top
                 if user_id is not None:
                     result = await session.execute(
-                        select(UserPermission).where(UserPermission.user_id == user_id)
+                        select(UserPermission, Permission)
+                        .join(Permission, UserPermission.permission_id == Permission.id)
+                        .where(UserPermission.user_id == user_id)
                     )
-                    for perm in result.scalars():
-                        if perm.table_name in permissions_map:
-                            existing = permissions_map[perm.table_name]
-                            permissions_map[perm.table_name] = PermissionSet(
+                    for up, perm in result:
+                        table = perm.table_name
+                        if table in permissions_map:
+                            existing = permissions_map[table]
+                            permissions_map[table] = PermissionSet(
                                 can_view=existing.can_view or perm.can_view,
                                 can_create=existing.can_create or perm.can_create,
                                 can_edit=existing.can_edit or perm.can_edit,
                                 can_delete=existing.can_delete or perm.can_delete,
                             )
                         else:
-                            permissions_map[perm.table_name] = PermissionSet(
+                            permissions_map[table] = PermissionSet(
                                 can_view=perm.can_view,
                                 can_create=perm.can_create,
                                 can_edit=perm.can_edit,
                                 can_delete=perm.can_delete,
                             )
             except Exception:
-                pass
+                logger.warning("Failed to load permissions for sidebar context", exc_info=True)
 
         context.update(
-            admin_instance.build_sidebar_context(
+            await admin_instance.build_sidebar_context(
                 request, user=user, permissions_map=permissions_map
             )
         )

@@ -94,9 +94,11 @@ async def _build_user_permissions(user: Any, db_session: Any) -> dict[str, list[
     user_id = getattr(user, "id", None)
     if user_id is not None:
         result = await db_session.execute(
-            select(UserPermission).where(UserPermission.user_id == user_id)
+            select(UserPermission, Permission)
+            .join(Permission, UserPermission.permission_id == Permission.id)
+            .where(UserPermission.user_id == user_id)
         )
-        for perm in result.scalars():
+        for up, perm in result:
             actions = []
             if perm.can_view:
                 actions.append("view")

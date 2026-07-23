@@ -179,7 +179,7 @@ class ModelAdmin:
 
     # ── Form context hooks ──────────────────────────────────────────
 
-    def get_form_context(
+    async def get_form_context(
         self, context: dict[str, Any], obj: Any = None, request: Any = None
     ) -> dict[str, Any]:
         """Customize form template context. Return modified context.

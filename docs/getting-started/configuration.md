@@ -179,7 +179,7 @@ admin = Admin(
 |--------|------|---------|-------------|
 | `secret_key` | `str` | `""` | Secret key for session signing (min 32 chars) |
 | `session_cookie_name` | `str` | `"admin_session"` | Session cookie name |
-| `session_secure` | `bool` | `False` | Require HTTPS for cookies |
+| `session_secure` | `bool` | `True` | Require HTTPS for cookies |
 | `session_samesite` | `str` | `"strict"` | SameSite cookie policy |
 | `superuser_emails` | `list[str]` | `None` | Emails that get superuser access |
 
