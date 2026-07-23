@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from fastapi_admin_kit.types import ColumnMeta, RelationMeta
+from fastapi_admin_kit.inspection.types import ColumnMeta, RelationMeta
 
 
 class ModelInspector:

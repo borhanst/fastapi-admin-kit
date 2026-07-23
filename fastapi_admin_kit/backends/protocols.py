@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
-from fastapi_admin_kit.types import ColumnMeta, RelationMeta
+from fastapi_admin_kit.inspection.types import ColumnMeta, RelationMeta
 
 ModelT = TypeVar("ModelT")
 ObjT = TypeVar("ObjT")
@@ -52,6 +52,15 @@ class IntrospectionBackend(Protocol):
 
     def get_relationship(self, model: type, name: str) -> Any:
         """Return a single relationship descriptor by name, or None."""
+        ...
+
+    def get_relationship_local_columns(self, model: type, name: str) -> list[str]:
+        """Return the local column key(s) for a relationship.
+
+        For MANYTOONE relationships, these are the foreign key columns.
+        For ONETOMANY/MANYTOMANY, returns the local columns that participate
+        in the relationship (may be empty for purely reverse relationships).
+        """
         ...
 
     def get_column_type_name(self, model: type, field_name: str) -> str | None:

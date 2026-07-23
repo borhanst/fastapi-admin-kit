@@ -125,7 +125,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             if err:
                 errors = [err]
 
-        from fastapi_admin_kit.types import FieldRenderContext
+        from fastapi_admin_kit.form.types import FieldRenderContext
 
         field_ctx = FieldRenderContext(
             meta=field_meta,
@@ -352,7 +352,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         from fastapi.responses import HTMLResponse
 
         from fastapi_admin_kit.views.class_views import ListView as _ListView
-        from fastapi_admin_kit.views.factory import _resolve_permission_checker
+        from fastapi_admin_kit.views.renderers import _resolve_permission_checker
 
         list_v = _ListView(registered)
         checker = await _resolve_permission_checker(request)

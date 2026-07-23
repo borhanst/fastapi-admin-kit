@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi_admin_kit.types import ColumnMeta
+from fastapi_admin_kit.inspection.types import ColumnMeta
 
 if TYPE_CHECKING:
     from fastapi_admin_kit.widgets.base import Widget

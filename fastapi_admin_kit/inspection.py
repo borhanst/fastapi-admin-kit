@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy import inspect
 
-from fastapi_admin_kit.types import ColumnMeta, RelationMeta
+from fastapi_admin_kit.inspection.types import ColumnMeta, RelationMeta
 
 
 def inspect_model(model: type) -> tuple[list[ColumnMeta], list[RelationMeta]]:

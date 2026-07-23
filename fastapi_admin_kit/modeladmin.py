@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from fastapi_admin_kit.admin.decorators import column
-from fastapi_admin_kit.types import ExtraField, FieldMeta
+from fastapi_admin_kit.form.types import ExtraField, FieldMeta
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -22,7 +22,7 @@ class ModelAdmin:
 
     # List view config
     list_display: list[str] | None = None
-    list_filter: list[str] | None = None
+    list_filter: list[str | Any] | None = None
     search_fields: list[str] | None = None
     ordering: list[str] | None = None
     per_page: int = 20

@@ -10,7 +10,6 @@ from typing import Any
 
 from fastapi import Request
 from fastapi.responses import Response
-from starlette.datastructures import UploadFile
 
 from fastapi_admin_kit.auth.dependencies import (
     resolve_permission_checker as _resolve_permission_checker,  # noqa: F401
@@ -19,15 +18,12 @@ from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.registry import RegisteredModel
 from fastapi_admin_kit.types import FieldMeta
 from fastapi_admin_kit.validation import FormValidator
-from fastapi_admin_kit.widgets.inputs import FileUploadWidget, ImageUploadWidget
-
-_FILE_WIDGET_TYPES = (FileUploadWidget, ImageUploadWidget)
-
-
-def _get_storage(request: Request):
-    """Get the storage backend from app.state, or None."""
-    return getattr(request.app.state, "admin_storage", None)
-
+from fastapi_admin_kit.views.file_handler import (
+    FILE_WIDGET_TYPES as _FILE_WIDGET_TYPES,
+)
+from fastapi_admin_kit.views.file_handler import (
+    handle_file_field as _handle_file_field,
+)
 
 # ---------------------------------------------------------------------------
 # HTML Renderers (SRP: only HTML template logic)
@@ -95,71 +91,6 @@ class DeleteAPIRenderer:
 
     async def render(self, request: Request, data: Any = None) -> Response:
         return Response(status_code=204)
-
-
-# ---------------------------------------------------------------------------
-# Form Parsers (SRP: only form data parsing + validation)
-# ---------------------------------------------------------------------------
-
-
-async def _handle_file_field(
-    request: Request,
-    widget: Any,
-    field_meta: Any,
-    form_data: Any,
-    obj: Any | None,
-    action: str | None,
-    parsed: dict[str, Any],
-    errors: dict[str, list[str]],
-) -> None:
-    """Handle a file upload field during form submission."""
-    storage = _get_storage(request)
-    field_name = field_meta.name
-    raw = form_data.get(field_name)
-
-    if isinstance(raw, UploadFile) and raw.filename:
-        if widget.max_size_mb is not None:
-            content = await raw.read()
-            max_bytes = int(widget.max_size_mb * 1024 * 1024)
-            if len(content) > max_bytes:
-                errors[field_name] = [
-                    f"File size exceeds maximum allowed size ({widget.max_size_mb} MB)."
-                ]
-                await raw.seek(0)
-                return
-            await raw.seek(0)
-
-        if storage is None:
-            errors[field_name] = ["No storage backend configured."]
-            return
-
-        try:
-            path = await storage.save(raw, directory=field_meta.name)
-        except ValueError as exc:
-            errors[field_name] = [str(exc)]
-            return
-
-        if action == "replace" and obj is not None:
-            old_path = getattr(obj, field_name, None)
-            if old_path:
-                await storage.delete(old_path)
-
-        parsed[field_name] = path
-
-    elif action == "clear":
-        if storage is not None and obj is not None:
-            old_path = getattr(obj, field_name, None)
-            if old_path:
-                await storage.delete(old_path)
-        parsed[field_name] = None
-
-    elif action == "keep" or action is None:
-        if obj is not None:
-            parsed[field_name] = getattr(obj, field_name, None)
-
-    else:
-        if obj is not None:
-            parsed[field_name] = getattr(obj, field_name, None)
 
 
 class HTMLFormParser:
@@ -257,21 +188,21 @@ class JSONBodyParser:
 
 
 class DefaultQueryProvider:
-    """SRP: Build and execute queries with filtering, search, pagination."""
+    """SRP: Build and execute queries with filtering, search, pagination.
+
+    Filter logic is delegated to the Filter system — this class orchestrates.
+    """
 
     def __init__(self, registered: RegisteredModel):
         self.registered = registered
 
     def _get_query_adapter(self, request: Request) -> Any:
-        """Get the QueryBackend from app.state."""
         return getattr(request.app.state, "admin_query_adapter", None)
 
     def _get_introspection(self, request: Request) -> Any:
-        """Get the IntrospectionBackend from app.state."""
         return getattr(request.app.state, "admin_introspection_adapter", None)
 
     def _get_eager_loads(self, request: Request, model: Any, list_display: list[str]) -> list:
-        """Build eager load options for relationship columns."""
         from sqlalchemy.orm import joinedload
 
         introspection = self._get_introspection(request)
@@ -282,235 +213,62 @@ class DefaultQueryProvider:
 
             mapper = sa_inspect(model)
             rel_names = {r.key for r in mapper.relationships}
-        options = []
-        for col_name in list_display:
-            if col_name in rel_names:
-                options.append(joinedload(getattr(model, col_name)))
-        return options
+        return [joinedload(getattr(model, c)) for c in list_display if c in rel_names]
 
-    def _get_field_type(self, request: Request, model: Any, field_name: str) -> str:
-        """Detect the abstract field type for a model field."""
+    def _build_filter_clauses(
+        self,
+        request: Request,
+        model: Any,
+        registered: RegisteredModel,
+    ) -> list:
+        """Build filter clauses via Filter.apply()."""
+        from fastapi_admin_kit.filters import Filter, FilterRegistry
+
+        query_adapter = self._get_query_adapter(request)
         introspection = self._get_introspection(request)
-        if introspection is not None:
-            rel_names = introspection.get_relationship_names(model)
-        else:
-            from sqlalchemy import inspect as sa_inspect
+        registry = FilterRegistry()
+        auto = registry.auto_generate(model, registered.columns, introspection)
 
-            mapper = sa_inspect(model)
-            rel_names = {r.key for r in mapper.relationships}
+        filters: dict[str, Any] = {}
+        for item in registered.admin.list_filter or []:
+            if isinstance(item, str) and item in auto:
+                filters[item] = auto[item]
+            elif isinstance(item, Filter):
+                filters[item.field_name] = item
 
-        if field_name in rel_names:
-            return "relation"
+        clauses: list = []
+        for field_name, filter_obj in filters.items():
+            eq = request.query_params.get(f"filter_{field_name}", "")
+            gte = request.query_params.get(f"filter_{field_name}__gte", "")
+            lte = request.query_params.get(f"filter_{field_name}__lte", "")
+            from_ = request.query_params.get(f"filter_{field_name}__from", "")
+            to_ = request.query_params.get(f"filter_{field_name}__to", "")
 
-        if introspection is not None:
-            type_name = introspection.get_column_type_name(model, field_name)
-        else:
-            from sqlalchemy import inspect as sa_inspect
-
-            mapper = sa_inspect(model)
-            type_name = None
-            for prop in mapper.column_attrs:
-                if prop.key == field_name:
-                    col = prop.columns[0] if prop.columns else None
-                    if col is not None:
-                        type_name = col.type.__class__.__name__
-                    break
-
-        if type_name == "Boolean":
-            return "boolean"
-        if type_name == "DateTime":
-            return "datetime"
-        if type_name == "Date":
-            return "date"
-        if type_name == "Time":
-            return "time"
-
-        if introspection is not None:
-            col = introspection.get_column_attr(model, field_name)
-            if col is not None and hasattr(col.type, "enums") and col.type.enums:
-                return "enum"
-            if col is not None and col.foreign_keys:
-                return "relation"
-        else:
-            from sqlalchemy import inspect as sa_inspect
-
-            mapper = sa_inspect(model)
-            for prop in mapper.column_attrs:
-                if prop.key == field_name:
-                    col = prop.columns[0] if prop.columns else None
-                    if col is not None:
-                        if hasattr(col.type, "enums") and col.type.enums:
-                            return "enum"
-                        if col.foreign_keys:
-                            return "relation"
-                    break
-
-        return "text"
-
-    async def _get_filter_choices(
-        self, request: Request, model: Any, field_name: str, session: Any = None
-    ) -> dict[str, Any]:
-        """Get filter field type and available choices for a field."""
-        introspection = self._get_introspection(request)
-        field_type = self._get_field_type(request, model, field_name)
-
-        if field_type == "relation":
-            if introspection is not None:
-                rel = introspection.get_relationship(model, field_name)
+            has_range = bool(gte or lte or from_ or to_)
+            if has_range:
+                value: Any = {}
+                if gte:
+                    value["gte"] = gte
+                if lte:
+                    value["lte"] = lte
+                if from_:
+                    value["from"] = from_
+                if to_:
+                    value["to"] = to_
             else:
-                from sqlalchemy import inspect as sa_inspect
+                value = eq
 
-                mapper = sa_inspect(model)
-                rel = mapper.relationships.get(field_name)
+            has_value = (isinstance(value, dict) and any(value.values())) or (
+                isinstance(value, str) and value
+            )
+            if not has_value:
+                continue
 
-            target_model = None
-            if rel is not None:
-                target_model = rel.mapper.class_
-            elif introspection is not None:
-                mapper_rel_names = introspection.get_relationship_names(model)
-                for rname in mapper_rel_names:
-                    r = introspection.get_relationship(model, rname)
-                    if r is not None and r.direction.name == "MANYTOONE":
-                        col = introspection.get_column_attr(model, field_name)
-                        if col is not None:
-                            for fk in col.foreign_keys:
-                                if fk.column.table == r.mapper.persist_selectable:
-                                    target_model = r.mapper.class_
-                                    break
-                        if target_model is not None:
-                            break
-            else:
-                from sqlalchemy import inspect as sa_inspect
+            clause = filter_obj.apply(query_adapter, None, model, value)
+            if clause is not None:
+                clauses.append(clause)
 
-                mapper = sa_inspect(model)
-                for rel in mapper.relationships:
-                    if rel.direction.name == "MANYTOONE":
-                        for prop in mapper.column_attrs:
-                            if prop.key == field_name:
-                                col = prop.columns[0] if prop.columns else None
-                                if col is not None:
-                                    for fk in col.foreign_keys:
-                                        if fk.column.table == rel.mapper.persist_selectable:
-                                            target_model = rel.mapper.class_
-                                            break
-                        if target_model is not None:
-                            break
-
-            choices: list[tuple[str, str]] = [("", "All")]
-            if target_model is not None and session is not None:
-                try:
-                    order_col = getattr(target_model, "name", None) or getattr(
-                        target_model, "title", None
-                    )
-                    if introspection is not None:
-                        query_adapter = self._get_query_adapter(request)
-                    else:
-                        query_adapter = None
-
-                    if query_adapter is not None:
-                        q = query_adapter.select(target_model)
-                        if order_col is not None:
-                            q = query_adapter.order_by(q, order_col)
-                        else:
-                            if introspection is not None:
-                                pk_cols = introspection.get_pk_columns(target_model)
-                                q = query_adapter.order_by(q, pk_cols[0])
-                            else:
-                                from sqlalchemy import inspect as sa_inspect
-
-                                pk = sa_inspect(target_model).primary_key[0]
-                                q = query_adapter.order_by(q, pk)
-                        q = query_adapter.limit(q, 100)
-                    else:
-                        from sqlalchemy import inspect as sa_inspect
-                        from sqlalchemy import select
-
-                        if order_col is not None:
-                            q = select(target_model).order_by(order_col).limit(100)
-                        else:
-                            pk = sa_inspect(target_model).primary_key[0]
-                            q = select(target_model).order_by(pk).limit(100)
-
-                    result = await session.execute(q)
-                    for obj in result.scalars():
-                        label = str(
-                            getattr(obj, "name", None)
-                            or getattr(obj, "title", None)
-                            or f"#{getattr(obj, 'id', '?')}"
-                        )
-                        choices.append((str(obj.id), label))
-                except Exception:
-                    pass
-            return {"field_type": field_type, "choices": choices}
-
-        if field_type == "boolean":
-            return {
-                "field_type": "boolean",
-                "choices": [("", "All"), ("1", "Yes"), ("0", "No")],
-            }
-
-        if field_type == "enum":
-            if introspection is not None:
-                col = introspection.get_column_attr(model, field_name)
-                if col is not None and hasattr(col.type, "enums"):
-                    choices = [("", "All")]
-                    for val in col.type.enums:
-                        choices.append((val, val.replace("_", " ").title()))
-                    return {"field_type": field_type, "choices": choices}
-            else:
-                from sqlalchemy import inspect as sa_inspect
-
-                mapper = sa_inspect(model)
-                for prop in mapper.column_attrs:
-                    if prop.key == field_name:
-                        col = prop.columns[0] if prop.columns else None
-                        if col is not None and hasattr(col.type, "enums"):
-                            choices = [("", "All")]
-                            for val in col.type.enums:
-                                choices.append((val, val.replace("_", " ").title()))
-                            return {"field_type": field_type, "choices": choices}
-
-        if field_type in ("date", "datetime", "time"):
-            return {"field_type": field_type, "choices": [("", "All")]}
-
-        choices = [("", "All")]
-        if introspection is not None:
-            col = introspection.get_column_attr(model, field_name)
-            if col is not None and session is not None:
-                try:
-                    from sqlalchemy import select
-
-                    q = select(col).where(col.isnot(None)).group_by(col).order_by(col).limit(100)
-                    result = session.execute(q)
-                    for (val,) in result:
-                        label = str(val).replace("_", " ").title()
-                        choices.append((str(val), label))
-                except Exception:
-                    pass
-        else:
-            from sqlalchemy import inspect as sa_inspect
-            from sqlalchemy import select
-
-            mapper = sa_inspect(model)
-            for prop in mapper.column_attrs:
-                if prop.key == field_name:
-                    col = prop.columns[0] if prop.columns else None
-                    if col is not None and session is not None:
-                        try:
-                            q = (
-                                select(col)
-                                .where(col.isnot(None))
-                                .group_by(col)
-                                .order_by(col)
-                                .limit(100)
-                            )
-                            result = session.execute(q)
-                            for (val,) in result:
-                                label = str(val).replace("_", " ").title()
-                                choices.append((str(val), label))
-                        except Exception:
-                            pass
-        return {"field_type": "text", "choices": choices}
+        return clauses
 
     async def get_list(
         self, request: Request, q: str = "", page: int = 1
@@ -545,144 +303,20 @@ class DefaultQueryProvider:
             for opt in eager_loads:
                 base = base.options(opt)
 
-        if registered.admin.list_filter:
-            filter_clauses = []
-            for filter_field in registered.admin.list_filter:
-                param_key = f"filter_{filter_field}"
-                filter_value = request.query_params.get(param_key, "")
-                if filter_value and hasattr(model, filter_field):
-                    field_type = self._get_field_type(request, model, filter_field)
-                    col = getattr(model, filter_field)
+        filter_clauses = self._build_filter_clauses(request, model, registered)
+        if filter_clauses:
+            if query_adapter is not None:
+                base = query_adapter.where(base, *filter_clauses)
+            else:
+                from sqlalchemy import and_
 
-                    # If col is a relationship, resolve to its FK column
-                    from sqlalchemy.orm import RelationshipProperty
-
-                    if hasattr(col, "property") and isinstance(col.property, RelationshipProperty):
-                        fk_cols = list(col.property.remote_side)
-                        if fk_cols:
-                            col = getattr(model, fk_cols[0].key)
-                            # Cast filter value to the FK column's Python type
-                            pk_prop = fk_cols[0]
-                            from sqlalchemy import Integer
-
-                            col_type = type(pk_prop.type)
-                            if col_type in (Integer,):
-                                try:
-                                    filter_value = int(filter_value)
-                                except (ValueError, TypeError):
-                                    continue
-                        else:
-                            continue
-
-                    if field_type == "boolean":
-                        bool_val = filter_value == "1"
-                        filter_clauses.append(col == bool_val)
-                    elif field_type == "datetime":
-                        from datetime import datetime as _dt
-
-                        try:
-                            parsed = _dt.fromisoformat(filter_value)
-                        except (ValueError, TypeError):
-                            parsed = None
-                        if parsed is not None:
-                            filter_clauses.append(col == parsed)
-                    elif field_type == "date":
-                        from datetime import date as _date
-
-                        try:
-                            parsed = _date.fromisoformat(filter_value)
-                        except (ValueError, TypeError):
-                            parsed = None
-                        if parsed is not None:
-                            filter_clauses.append(col == parsed)
-                    elif field_type == "time":
-                        from datetime import time as _time
-
-                        try:
-                            parsed = _time.fromisoformat(filter_value)
-                        except (ValueError, TypeError):
-                            parsed = None
-                        if parsed is not None:
-                            filter_clauses.append(col == parsed)
-                    else:
-                        filter_clauses.append(col == filter_value)
-
-            # Range filters
-            for filter_field in registered.admin.list_filter:
-                gte_val = request.query_params.get(f"filter_{filter_field}__gte", "")
-                lte_val = request.query_params.get(f"filter_{filter_field}__lte", "")
-                from_val = request.query_params.get(f"filter_{filter_field}__from", "")
-                to_val = request.query_params.get(f"filter_{filter_field}__to", "")
-
-                if (gte_val or lte_val) and hasattr(model, filter_field):
-                    col = getattr(model, filter_field)
-                    if gte_val:
-                        try:
-                            filter_clauses.append(
-                                col >= type(col.property.columns[0].type)().coerce(gte_val)
-                            )
-                        except Exception:
-                            pass
-                    if lte_val:
-                        try:
-                            filter_clauses.append(
-                                col <= type(col.property.columns[0].type)().coerce(lte_val)
-                            )
-                        except Exception:
-                            pass
-
-                if (from_val or to_val) and hasattr(model, filter_field):
-                    col = getattr(model, filter_field)
-                    field_type = self._get_field_type(request, model, filter_field)
-                    if field_type == "date" and from_val:
-                        try:
-                            from datetime import date as _date
-
-                            d = _date.fromisoformat(from_val)
-                            filter_clauses.append(col >= d)
-                        except (ValueError, TypeError):
-                            pass
-                    if field_type == "date" and to_val:
-                        try:
-                            from datetime import date as _date
-
-                            d = _date.fromisoformat(to_val)
-                            filter_clauses.append(col <= d)
-                        except (ValueError, TypeError):
-                            pass
-                    if field_type == "datetime" and from_val:
-                        try:
-                            from datetime import datetime as _dt
-
-                            dt = _dt.fromisoformat(from_val)
-                            filter_clauses.append(col >= dt)
-                        except (ValueError, TypeError):
-                            pass
-                    if field_type == "datetime" and to_val:
-                        try:
-                            from datetime import datetime as _dt
-
-                            dt = _dt.fromisoformat(to_val)
-                            filter_clauses.append(col <= dt)
-                        except (ValueError, TypeError):
-                            pass
-
-            if filter_clauses:
-                if query_adapter is not None:
-                    base = query_adapter.where(base, *filter_clauses)
-                else:
-                    from sqlalchemy import and_
-
-                    base = base.where(and_(*filter_clauses))
+                base = base.where(and_(*filter_clauses))
 
         if q and registered.admin.search_fields:
             base = apply_search_filter(request, base, model, registered.admin.search_fields, q)
 
         query_ordering = request.query_params.get("ordering", "")
-        if query_ordering:
-            order = [query_ordering]
-        else:
-            order = registered.admin.ordering or []
+        order = [query_ordering] if query_ordering else registered.admin.ordering or []
         if order:
             col_name = order[0].lstrip("-")
             col = getattr(model, col_name, None) if hasattr(model, col_name) else None
@@ -699,7 +333,10 @@ class DefaultQueryProvider:
 
         per_page = registered.admin.per_page
 
-        from fastapi_admin_kit.pagination import OffsetPagination, PaginationResult
+        from fastapi_admin_kit.pagination import (
+            OffsetPagination,
+            PaginationResult,
+        )
 
         pagination = getattr(registered.admin, "pagination", None) or OffsetPagination()
         pk_col = getattr(model, self.registered.pk_field) if self.registered.pk_field else None

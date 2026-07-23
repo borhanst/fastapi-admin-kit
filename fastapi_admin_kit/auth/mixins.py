@@ -61,23 +61,18 @@ class AuthModelMixin:
 
     def verify_password(self, password: str) -> bool:
         """Check if plaintext password matches the stored hash."""
-        hasher = self._get_hasher()
-        return hasher.verify(password, self.hashed_password)
+        from fastapi_admin_kit.auth.password import password_manager
+
+        return password_manager.verify(password, self.hashed_password)
 
     @classmethod
     def hash_password(cls, password: str) -> str:
         """Hash a plaintext password using the configured hasher."""
-        hasher = cls._get_hasher()
-        return hasher.hash(password)
-
-    @classmethod
-    def _get_hasher(cls) -> type:
-        """Return the configured hasher class, or default BcryptHasher."""
         if cls._hasher is not None:
-            return cls._hasher
-        from fastapi_admin_kit.auth.hasher import BcryptHasher
+            return cls._hasher.hash(password)
+        from fastapi_admin_kit.auth.password import password_manager
 
-        return BcryptHasher
+        return password_manager.hash(password)
 
     @classmethod
     def set_hasher(cls, hasher: type) -> None:

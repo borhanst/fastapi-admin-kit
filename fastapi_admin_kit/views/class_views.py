@@ -16,9 +16,11 @@ from fastapi.responses import RedirectResponse, Response
 from fastapi_admin_kit.admin.builtin_models import flush_pending_perm_ops
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.flash import add_flash
+from fastapi_admin_kit.form.types import FieldError
 from fastapi_admin_kit.registry import RegisteredModel
-from fastapi_admin_kit.types import FieldError
 from fastapi_admin_kit.views.context import DisplayColumn
+from fastapi_admin_kit.views.list_context import ListContextBuilder
+from fastapi_admin_kit.views.model_saver import ModelSaver
 from fastapi_admin_kit.views.renderers import (
     DefaultQueryProvider,
     FormHTMLRenderer,
@@ -48,6 +50,8 @@ class BaseView:
     form_parser_class: type = HTMLFormParser
     html_renderer_class: type | None = None
     api_renderer_class: type | None = None
+    model_saver_class: type = ModelSaver
+    list_context_builder_class: type = ListContextBuilder
 
     def __init__(self, registered: RegisteredModel):
         self.registered = registered
@@ -57,6 +61,8 @@ class BaseView:
         self.form_parser = self.form_parser_class(registered)
         self.html_renderer = self.html_renderer_class() if self.html_renderer_class else None
         self.api_renderer = self.api_renderer_class(registered) if self.api_renderer_class else None
+        self.model_saver = self.model_saver_class(registered)
+        self.list_context_builder = self.list_context_builder_class()
 
     def _get_extra_context(self, request: Request) -> dict[str, Any]:
         """Inject AdminExtra CSS/JS into template context.
@@ -226,68 +232,10 @@ class ListView(BaseView):
     async def get_context(
         self, request: Request, q: str, page: int, checker: Any
     ) -> dict[str, Any]:
-        """Build template context — override to add custom context."""
-        from fastapi_admin_kit.types import PermissionSet
-        from fastapi_admin_kit.views.sidebar import inject_sidebar_context
-
-        (
-            items,
-            total,
-            page,
-            per_page,
-            next_cursor,
-            has_next,
-            pagination_mode,
-        ) = await self.query_provider.get_list(request, q, page)
-
-        active_filters: dict[str, str] = {}
-        if self.admin.list_filter:
-            for filter_field in self.admin.list_filter:
-                val = request.query_params.get(f"filter_{filter_field}", "")
-                if val:
-                    active_filters[filter_field] = val
-                for suffix in ("__gte", "__lte", "__from", "__to"):
-                    val = request.query_params.get(f"filter_{filter_field}{suffix}", "")
-                    if val:
-                        active_filters[f"{filter_field}{suffix}"] = val
-
-        display_columns = self._build_display_columns()
-        filter_fields = await self._build_filter_fields(request)
-        ordering = request.query_params.get("ordering", "")
-        if not ordering and self.admin.ordering:
-            ordering = self.admin.ordering[0]
-
-        template_context = {
-            "model": self.registered,
-            "registered": self.registered,
-            "display_columns": display_columns,
-            "items": items,
-            "search_query": q,
-            "page": page,
-            "total_pages": max(1, math.ceil(total / per_page)) if per_page else 1,
-            "total": total,
-            "per_page": per_page,
-            "next_cursor": next_cursor,
-            "has_next": has_next,
-            "pagination_mode": pagination_mode,
-            "filter_fields": filter_fields,
-            "active_filters": active_filters,
-            "ordering": ordering,
-            "permissions": checker.permission_set(self.registered.table_name)
-            if checker
-            else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),
-            "list_actions": self.admin.get_list_actions(),
-            "row_actions": self.admin.get_row_actions(),
-            "list_tabs": getattr(self.admin, "list_tabs", []),
-            "list_sections": getattr(self.admin, "list_sections", []),
-            "ordering_field": getattr(self.admin, "ordering_field", None),
-            "hide_ordering_field": getattr(self.admin, "hide_ordering_field", False),
-            "list_filter_options": getattr(self.admin, "list_filter_options", {}),
-            "list_filter_horizontal": getattr(self.admin, "list_filter_horizontal", False),
-        }
-        template_context.update(self._get_extra_context(request))
-        await inject_sidebar_context(request, template_context)
-        return template_context
+        """Build template context — delegates to ListContextBuilder."""
+        return await self.list_context_builder.build_list_context(
+            self.registered, request, q, page, checker
+        )
 
     async def html_response(self, request: Request, q: str = "", page: int = 1) -> Response:
         checker = await _resolve_permission_checker(request)
@@ -349,13 +297,13 @@ class CreateView(BaseView):
         inline_errors: dict[str, dict[int, dict[str, list[str]]]] | None = None,
     ) -> dict[str, Any]:
         """Build form template context."""
+        from fastapi_admin_kit.auth.types import PermissionSet
         from fastapi_admin_kit.form.pipeline import (
             build_form_context as _build_form_ctx,
         )
         from fastapi_admin_kit.form.pipeline import (
             build_inline_formsets,
         )
-        from fastapi_admin_kit.types import PermissionSet
         from fastapi_admin_kit.views.sidebar import inject_sidebar_context
 
         # Build inline formsets
@@ -410,17 +358,17 @@ class CreateView(BaseView):
         """Create object in database."""
         try:
             session = get_db_session(request)
-            m2m_data = self._pop_manytomany_keys(self.registered.model, parsed)
-            resolved = self._resolve_rel_keys(parsed)
+            m2m_data = self.model_saver.extract_m2m(self.registered.model, parsed, request)
+            resolved = self.model_saver.resolve_rel_keys(parsed, request)
             resolved = self.admin.prepare_create_data(resolved, request)
             obj = self.registered.model(**resolved)
             self.admin.on_create(obj, request)
             session.add(obj)
             await session.flush()
-            await self._apply_m2m_from_data(obj, m2m_data, session)
+            await self.model_saver.apply_m2m(obj, m2m_data, request)
 
             # Save inline objects
-            await self._save_inline_objects(request, obj)
+            await self.model_saver.save_inline_objects(request, obj)
 
             self.admin.after_create(obj, request)
             await flush_pending_perm_ops(request)
@@ -546,7 +494,9 @@ class CreateView(BaseView):
                                     None,
                                 )
                             if related_col is not None:
-                                from fastapi_admin_kit.inspection import cast_value
+                                from fastapi_admin_kit.inspection import (
+                                    cast_value,
+                                )
 
                                 val = cast_value(related_col, val)
                             data[field_name] = val
@@ -649,14 +599,14 @@ class CreateView(BaseView):
         if errors:
             raise HTTPException(status_code=422, detail=errors)
         session = get_db_session(request)
-        m2m_data = self._pop_manytomany_keys(self.registered.model, parsed)
-        resolved = self._resolve_rel_keys(parsed)
+        m2m_data = self.model_saver.extract_m2m(self.registered.model, parsed, request)
+        resolved = self.model_saver.resolve_rel_keys(parsed, request)
         resolved = self.admin.prepare_create_data(resolved, request)
         obj = self.registered.model(**resolved)
         self.admin.on_create(obj, request)
         session.add(obj)
         await session.flush()
-        await self._apply_m2m_from_data(obj, m2m_data, session)
+        await self.model_saver.apply_m2m(obj, m2m_data, request)
         self.admin.after_create(obj, request)
         await flush_pending_perm_ops(request)
         return await self.api_renderer.render(request, self._serialize(obj))
@@ -712,13 +662,13 @@ class EditView(BaseView):
         inline_errors: dict[str, dict[int, dict[str, list[str]]]] | None = None,
     ) -> dict[str, Any]:
         """Build form template context."""
+        from fastapi_admin_kit.auth.types import PermissionSet
         from fastapi_admin_kit.form.pipeline import (
             build_form_context as _build_form_ctx,
         )
         from fastapi_admin_kit.form.pipeline import (
             build_inline_formsets,
         )
-        from fastapi_admin_kit.types import PermissionSet
         from fastapi_admin_kit.views.sidebar import inject_sidebar_context
 
         # Build inline formsets
@@ -807,15 +757,15 @@ class EditView(BaseView):
         """Update object in database."""
         try:
             parsed = self.admin.prepare_update_data(parsed, request)
-            m2m_data = self._pop_manytomany_keys(obj, parsed)
-            self._apply_parsed(obj, parsed)
+            m2m_data = self.model_saver.extract_m2m(obj, parsed, request)
+            self.model_saver.apply_parsed(obj, parsed, request)
             session = get_db_session(request)
-            await self._apply_m2m_from_data(obj, m2m_data, session)
+            await self.model_saver.apply_m2m(obj, m2m_data, request)
             self.admin.on_update(obj, parsed, request)
             await session.flush()
 
             # Save inline objects
-            await self._save_inline_objects(request, obj)
+            await self.model_saver.save_inline_objects(request, obj)
 
             self.admin.after_update(obj, request)
             await flush_pending_perm_ops(request)
@@ -941,7 +891,9 @@ class EditView(BaseView):
                                     None,
                                 )
                             if related_col is not None:
-                                from fastapi_admin_kit.inspection import cast_value
+                                from fastapi_admin_kit.inspection import (
+                                    cast_value,
+                                )
 
                                 val = cast_value(related_col, val)
                             data[field_name] = val
@@ -970,10 +922,10 @@ class EditView(BaseView):
         checker: Any = None,
     ) -> dict[str, Any]:
         """Build read-only detail view context with all fields."""
+        from fastapi_admin_kit.auth.types import PermissionSet
         from fastapi_admin_kit.form.pipeline import (
             build_form_context as _build_form_ctx,
         )
-        from fastapi_admin_kit.types import PermissionSet
         from fastapi_admin_kit.views.sidebar import inject_sidebar_context
 
         rel_labels = await self._resolve_rel_labels(obj, request)
@@ -1119,10 +1071,10 @@ class EditView(BaseView):
         parser = JSONBodyParser(self.registered)
         parsed, _ = await parser.parse(request, obj)
         try:
-            m2m_data = self._pop_manytomany_keys(obj, parsed)
-            self._apply_parsed(obj, parsed)
+            m2m_data = self.model_saver.extract_m2m(obj, parsed, request)
+            self.model_saver.apply_parsed(obj, parsed, request)
             session = get_db_session(request)
-            await self._apply_m2m_from_data(obj, m2m_data, session)
+            await self.model_saver.apply_m2m(obj, m2m_data, request)
             self.admin.on_update(obj, parsed, request)
             await session.flush()
             self.admin.after_update(obj, request)
@@ -1323,7 +1275,10 @@ class SearchView(BaseView):
     ) -> Any:
         templates = request.app.state.admin_jinja_env
         admin_path = request.app.state.admin_config["admin_path"]
-        search_fields = getattr(self.admin, "search_fields", None) or ["name", "title"]
+        search_fields = getattr(self.admin, "search_fields", None) or [
+            "name",
+            "title",
+        ]
         return templates.TemplateResponse(
             request,
             "pages/search.html",

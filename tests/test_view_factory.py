@@ -1,4 +1,4 @@
-"""Tests for ViewFactory and ViewContextBuilder."""
+"""Tests for ViewContextBuilder and backward-compatible factory wrappers."""
 
 from __future__ import annotations
 
@@ -102,149 +102,6 @@ class TestViewContextBuilder:
 
 
 # ===========================================================================
-# ViewFactory Tests
-# ===========================================================================
-
-
-class TestViewFactory:
-    def setup_method(self):
-        from fastapi_admin_kit.registry import AdminRegistry
-
-        AdminRegistry().clear()
-
-    def test_init_default(self):
-        from fastapi_admin_kit.views.context import ViewContextBuilder
-        from fastapi_admin_kit.views.factory import ViewFactory
-
-        factory = ViewFactory()
-        assert isinstance(factory.context_builder, ViewContextBuilder)
-        assert factory.validation_engine is not None
-
-    def test_init_with_custom_builder(self):
-        from fastapi_admin_kit.views.context import ViewContextBuilder
-        from fastapi_admin_kit.views.factory import ViewFactory
-
-        builder = ViewContextBuilder()
-        factory = ViewFactory(context_builder=builder)
-        assert factory.context_builder is builder
-
-    def test_create_list_view(self):
-        from fastapi_admin_kit.registry import AdminRegistry
-        from fastapi_admin_kit.views.factory import ViewFactory
-
-        reg = AdminRegistry()
-        reg.clear()
-        registered = reg.register(TestProduct)
-
-        factory = ViewFactory()
-        view = factory.create_list_view(registered)
-        assert callable(view)
-        assert view.__name__ == "list_test_products"
-
-    def test_create_create_form_view(self):
-        from fastapi_admin_kit.registry import AdminRegistry
-        from fastapi_admin_kit.views.factory import ViewFactory
-
-        reg = AdminRegistry()
-        reg.clear()
-        registered = reg.register(TestProduct)
-
-        factory = ViewFactory()
-        view = factory.create_create_form_view(registered)
-        assert callable(view)
-        assert view.__name__ == "create_form_test_products"
-
-    def test_create_create_submit_view(self):
-        from fastapi_admin_kit.registry import AdminRegistry
-        from fastapi_admin_kit.views.factory import ViewFactory
-
-        reg = AdminRegistry()
-        reg.clear()
-        registered = reg.register(TestProduct)
-
-        factory = ViewFactory()
-        view = factory.create_create_submit_view(registered)
-        assert callable(view)
-        assert view.__name__ == "create_submit_test_products"
-
-    def test_create_edit_form_view(self):
-        from fastapi_admin_kit.registry import AdminRegistry
-        from fastapi_admin_kit.views.factory import ViewFactory
-
-        reg = AdminRegistry()
-        reg.clear()
-        registered = reg.register(TestProduct)
-
-        factory = ViewFactory()
-        view = factory.create_edit_form_view(registered)
-        assert callable(view)
-        assert view.__name__ == "edit_form_test_products"
-
-    def test_create_edit_submit_view(self):
-        from fastapi_admin_kit.registry import AdminRegistry
-        from fastapi_admin_kit.views.factory import ViewFactory
-
-        reg = AdminRegistry()
-        reg.clear()
-        registered = reg.register(TestProduct)
-
-        factory = ViewFactory()
-        view = factory.create_edit_submit_view(registered)
-        assert callable(view)
-        assert view.__name__ == "edit_submit_test_products"
-
-    def test_create_delete_view(self):
-        from fastapi_admin_kit.registry import AdminRegistry
-        from fastapi_admin_kit.views.factory import ViewFactory
-
-        reg = AdminRegistry()
-        reg.clear()
-        registered = reg.register(TestProduct)
-
-        factory = ViewFactory()
-        view = factory.create_delete_view(registered)
-        assert callable(view)
-        assert view.__name__ == "delete_test_products"
-
-    def test_create_bulk_view(self):
-        from fastapi_admin_kit.registry import AdminRegistry
-        from fastapi_admin_kit.views.factory import ViewFactory
-
-        reg = AdminRegistry()
-        reg.clear()
-        registered = reg.register(TestProduct)
-
-        factory = ViewFactory()
-        view = factory.create_bulk_view(registered)
-        assert callable(view)
-        assert view.__name__ == "bulk_test_products"
-
-    def test_create_all_views(self):
-        from fastapi_admin_kit.registry import AdminRegistry
-        from fastapi_admin_kit.views.factory import ViewFactory
-
-        reg = AdminRegistry()
-        reg.clear()
-        registered = reg.register(TestProduct)
-
-        factory = ViewFactory()
-        views = factory.create_all_views(registered)
-
-        assert "list" in views
-        assert "create_form" in views
-        assert "create_submit" in views
-        assert "edit_form" in views
-        assert "edit_submit" in views
-        assert "delete" in views
-        assert "bulk" in views
-
-        assert callable(views["list"])
-        assert callable(views["create_form"])
-        assert callable(views["delete"])
-        assert callable(views["bulk"])
-
-
-# ===========================================================================
 # Backward Compatibility Tests
 # ===========================================================================
 
@@ -322,18 +179,30 @@ class TestBackwardCompatibility:
 
 
 class TestViewsPackageExports:
-    def test_imports_view_factory(self):
+    def test_imports_class_views(self):
         from fastapi_admin_kit.views import (
+            BaseView,
+            BulkView,
+            CreateView,
+            DeleteView,
             DisplayColumn,
+            EditView,
+            ListView,
+            SearchView,
             ViewContextBuilder,
-            ViewFactory,
         )
 
-        assert ViewFactory is not None
+        assert BaseView is not None
+        assert ListView is not None
+        assert CreateView is not None
+        assert EditView is not None
+        assert DeleteView is not None
+        assert BulkView is not None
+        assert SearchView is not None
         assert ViewContextBuilder is not None
         assert DisplayColumn is not None
 
-    def test_imports_backward_compatible(self):
+    def test_imports_backward_compatible_factories(self):
         from fastapi_admin_kit.views import (
             bulk_factory,
             create_form_factory,
