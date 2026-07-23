@@ -508,3 +508,108 @@ class SqlAlchemyDatabaseBackend:
         from fastapi_admin_kit.db import create_session_factory
 
         return create_session_factory(connection)
+
+    def materialize(
+        self,
+        schema: Any,
+        base: Any | None = None,
+    ) -> type:
+        """Convert a :class:`Schema` into a SQLAlchemy model class.
+
+        This is the materialization layer of the three-layer architecture:
+
+        1. **Protocol** — contract definition (``auth/protocol.py``)
+        2. **Schema** — declarative model definitions (``schemas/builtin.py``)
+        3. **Materialization** — this method converts schemas to native models
+
+        Args:
+            schema: A :class:`~fastapi_admin_kit.schemas.schema.Schema` instance
+                describing the model structure.
+            base: The SQLAlchemy declarative base class. If ``None``, falls back
+                to the configured ``AdminDatabase.base`` or ``Base``.
+
+        Returns:
+            A new SQLAlchemy model class with ``__tablename__`` and mapped columns.
+
+        Example::
+
+            from fastapi_admin_kit.schemas.builtin import USER_SCHEMA
+
+            backend = SqlAlchemyDatabaseBackend(admin_database=db)
+            UserModel = backend.materialize(USER_SCHEMA, base=Base)
+            # UserModel is a class usable with SQLAlchemy
+        """
+        from sqlalchemy import (
+            Boolean,
+            Column,
+            DateTime,
+            Float,
+            Integer,
+            String,
+            Text,
+        )
+        from sqlalchemy.dialects.postgresql import JSON as PG_JSON
+        from sqlalchemy.sql import func
+
+        from fastapi_admin_kit.schemas.schema import Schema as SchemaType
+
+        if not isinstance(schema, SchemaType):
+            raise TypeError(f"Expected Schema instance, got {type(schema).__name__}")
+
+        if base is None and self._admin_database is not None:
+            base = getattr(self._admin_database, "base", None)
+        if base is None:
+            from fastapi_admin_kit.models.base import Base
+
+            base = Base
+
+        type_map: dict[str, type] = {
+            "integer": Integer,
+            "string": String,
+            "text": Text,
+            "boolean": Boolean,
+            "datetime": DateTime(timezone=True),
+            "float": Float,
+            "json": PG_JSON,
+        }
+
+        columns: list[Column] = []
+        for f in schema.fields:
+            sa_type = type_map.get(f.type, String)
+
+            kwargs: dict[str, Any] = {}
+            if f.primary_key:
+                kwargs["primary_key"] = True
+            if f.auto_increment and f.primary_key:
+                kwargs["autoincrement"] = True
+            if f.nullable and not f.primary_key:
+                kwargs["nullable"] = True
+            elif not f.nullable:
+                kwargs["nullable"] = False
+            if f.unique:
+                kwargs["unique"] = True
+            if f.max_length and sa_type is String:
+                sa_type = String(f.max_length)
+            if f.default is not None:
+                kwargs["default"] = f.default
+            if f.server_default is not None:
+                if f.server_default == "now()":
+                    kwargs["server_default"] = func.now()
+                else:
+                    kwargs["server_default"] = f.server_default
+            if f.index and not f.primary_key:
+                kwargs["index"] = True
+
+            columns.append(Column(f.name, sa_type, **kwargs))
+
+        # Build the model class dynamically
+        table_name = schema.table_name
+        model_attrs: dict[str, Any] = {
+            "__tablename__": table_name,
+            "__table_args__": {"extend_existing": True},
+        }
+        for col in columns:
+            model_attrs[col.key] = col
+
+        model_class = type(table_name, (base,), model_attrs)
+        return model_class
