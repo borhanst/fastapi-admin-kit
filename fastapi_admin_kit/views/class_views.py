@@ -219,7 +219,7 @@ class ListView(BaseView):
         filter_fields: dict[str, dict[str, Any]] = {}
         for filter_field in self.admin.list_filter:
             filter_fields[filter_field] = await self.query_provider._get_filter_choices(
-                model, filter_field, session
+                request, model, filter_field, session
             )
         return filter_fields
 
@@ -1354,7 +1354,7 @@ class SearchView(BaseView):
                 "name",
                 "title",
             ]
-            base = apply_search_filter(select(model), model, search_fields, q)
+            base = apply_search_filter(request, select(model), model, search_fields, q)
 
             if exclude_id:
                 pk_col = getattr(model, self.registered.pk_field, None)

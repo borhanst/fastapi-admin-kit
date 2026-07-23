@@ -1,54 +1,28 @@
-"""Model inspection — SQLAlchemy model → ColumnMeta / RelationMeta."""
+"""Model inspection — SQLAlchemy model → ColumnMeta / RelationMeta.
+
+Re-exports backward-compatible module-level functions from
+:class:`~fastapi_admin_kit.backends.sqlalchemy.SqlAlchemyIntrospectionAdapter`.
+"""
 
 from __future__ import annotations
 
 import re
 from typing import Any
 
-from sqlalchemy import inspect
-
+from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyIntrospectionAdapter
 from fastapi_admin_kit.types import ColumnMeta, RelationMeta
+
+_inspector = SqlAlchemyIntrospectionAdapter()
 
 
 def inspect_model(model: type) -> tuple[list[ColumnMeta], list[RelationMeta]]:
     """Inspect a SQLAlchemy model and return column + relationship metadata."""
-    mapper = inspect(model)
-    columns: list[ColumnMeta] = []
-    relationships: list[RelationMeta] = []
-
-    for col in mapper.columns:
-        columns.append(
-            ColumnMeta(
-                name=col.key,
-                type=col.type,
-                nullable=col.nullable,
-                primary_key=col.primary_key,
-                foreign_keys=list(col.foreign_keys),
-                default=col.default,
-                server_default=col.server_default,
-                index=col.index,
-                unique=col.unique,
-            )
-        )
-
-    for rel in mapper.relationships:
-        relationships.append(
-            RelationMeta(
-                name=rel.key,
-                direction=rel.direction.name,
-                target_model=rel.mapper.class_,
-                uselist=rel.uselist,
-                back_populates=rel.back_populates,
-                secondary=rel.secondary,
-            )
-        )
-
-    return columns, relationships
+    return _inspector.inspect_model(model)
 
 
 def is_abstract(model: type) -> bool:
     """Check if a model is abstract and should be skipped during auto-discovery."""
-    return getattr(model, "__abstract__", False)
+    return _inspector.is_abstract(model)
 
 
 def get_pk_field(model: type) -> str | None:
@@ -58,13 +32,7 @@ def get_pk_field(model: type) -> str | None:
     or a tuple of names for composite PKs.
     Returns None if no primary key is found.
     """
-    mapper = inspect(model)
-    pk_cols = mapper.primary_key
-    if not pk_cols:
-        return None
-    if len(pk_cols) == 1:
-        return pk_cols[0].key
-    return tuple(col.key for col in pk_cols)
+    return _inspector.get_pk_field(model)
 
 
 def cast_pk_value(model: type, value: Any) -> Any:
@@ -74,25 +42,7 @@ def cast_pk_value(model: type, value: Any) -> Any:
     accordingly. Supports Integer, BigInteger, String, and UUID types.
     Returns the original value if type cannot be determined.
     """
-    if value is None:
-        return None
-    mapper = inspect(model)
-    pk_cols = mapper.primary_key
-    if not pk_cols or len(pk_cols) != 1:
-        return value
-    pk_col = pk_cols[0]
-    from sqlalchemy import BigInteger, Integer
-    from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-    from sqlalchemy.types import Uuid
-
-    col_type = type(pk_col.type)
-    if col_type in (Integer, BigInteger):
-        return int(value)
-    if col_type in (PG_UUID, Uuid):
-        from uuid import UUID
-
-        return UUID(str(value))
-    return value
+    return _inspector.cast_pk_value(model, value)
 
 
 def cast_value(col_meta: Any, value: Any) -> Any:

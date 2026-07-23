@@ -6,6 +6,7 @@ import logging
 import re
 from typing import Any
 
+from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyDatabaseBackend
 from fastapi_admin_kit.config.database import DatabaseConfig
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,11 @@ def _validate_identifier(name: str, kind: str = "table") -> str:
 
 
 class AdminDatabase:
-    """Handles database setup, table creation, and role seeding."""
+    """Handles database setup, table creation, and role seeding.
+
+    Delegates engine creation, table creation, and auto-migration to
+    :class:`SqlAlchemyDatabaseBackend`.
+    """
 
     def __init__(
         self,
@@ -32,11 +37,12 @@ class AdminDatabase:
         self.engine = engine
         self.base = base
         self.database_config = database_config
+        self._backend = SqlAlchemyDatabaseBackend(
+            admin_database=self, database_config=database_config
+        )
 
     def _ensure_engine(self) -> Any:
-        """
-        Create the async engine from ``database_config`` if no engine is set.
-        """
+        """Create the async engine from ``database_config`` if no engine is set."""
         if self.engine is None and self.database_config is not None:
             self.engine = self.database_config.create_engine()
         return self.engine
@@ -108,9 +114,7 @@ class AdminDatabase:
                         conn.execute(sql)
 
     def _auto_migrate(self, sync_conn: Any, metadata: Any) -> None:
-        """
-        Add missing columns to existing tables (sync, called via run_sync).
-        """
+        """Add missing columns to existing tables (sync, called via run_sync)."""
         from sqlalchemy import inspect as sa_inspect
         from sqlalchemy import text
 

@@ -351,7 +351,7 @@ class ViewContextBuilder:
                 base = base.where(and_(*filter_clauses))
 
         if q and registered.admin.search_fields:
-            base = apply_search_filter(base, model, registered.admin.search_fields, q)
+            base = apply_search_filter(request, base, model, registered.admin.search_fields, q)
 
         query_ordering = request.query_params.get("ordering", "")
         if query_ordering:
