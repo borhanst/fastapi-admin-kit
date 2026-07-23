@@ -25,10 +25,28 @@ class FilterRegistry:
     def get_filters(self, model_name: str) -> dict[str, Filter]:
         return self._filters.get(model_name, {}).copy()
 
-    def auto_generate(self, model: Any, columns: list[Any]) -> dict[str, Filter]:
-        from sqlalchemy import inspect as sa_inspect
+    def auto_generate(
+        self,
+        model: Any,
+        columns: list[Any],
+        introspection: Any | None = None,
+    ) -> dict[str, Filter]:
+        """Auto-generate filters for a model's columns.
 
-        mapper = sa_inspect(model)
+        Args:
+            model: The ORM model.
+            columns: List of ColumnMeta for the model.
+            introspection: Optional IntrospectionBackend adapter. When None,
+                falls back to direct SQLAlchemy inspection.
+        """
+        if introspection is not None:
+            rel_names = introspection.get_relationship_names(model)
+        else:
+            from sqlalchemy import inspect as sa_inspect
+
+            mapper = sa_inspect(model)
+            rel_names = {r.key for r in mapper.relationships}
+
         filters: dict[str, Filter] = {}
 
         for col_meta in columns:
@@ -36,27 +54,33 @@ class FilterRegistry:
             if field_name == "id":
                 continue
 
-            rel_names = {r.key for r in mapper.relationships}
             if field_name in rel_names:
                 filters[field_name] = RelationFilter(field_name)
                 continue
 
-            for prop in mapper.column_attrs:
-                if prop.key != field_name:
-                    continue
-                col = prop.columns[0] if prop.columns else None
-                if col is None:
-                    break
+            if introspection is not None:
+                type_name = introspection.get_column_type_name(model, field_name)
+                col = introspection.get_column_attr(model, field_name)
+            else:
+                from sqlalchemy import inspect as sa_inspect
 
-                type_name = col.type.__class__.__name__
-                if type_name == "Boolean":
-                    filters[field_name] = BooleanFilter(field_name)
-                elif hasattr(col.type, "enums") and col.type.enums:
-                    filters[field_name] = EnumFilter(field_name, choices=list(col.type.enums))
-                elif col.foreign_keys:
-                    filters[field_name] = RelationFilter(field_name)
-                else:
-                    filters[field_name] = TextFilter(field_name)
-                break
+                mapper = sa_inspect(model)
+                type_name = None
+                col = None
+                for prop in mapper.column_attrs:
+                    if prop.key == field_name:
+                        col = prop.columns[0] if prop.columns else None
+                        if col is not None:
+                            type_name = col.type.__class__.__name__
+                        break
+
+            if type_name == "Boolean":
+                filters[field_name] = BooleanFilter(field_name)
+            elif col is not None and hasattr(col.type, "enums") and col.type.enums:
+                filters[field_name] = EnumFilter(field_name, choices=list(col.type.enums))
+            elif col is not None and col.foreign_keys:
+                filters[field_name] = RelationFilter(field_name)
+            else:
+                filters[field_name] = TextFilter(field_name)
 
         return filters
