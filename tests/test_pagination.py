@@ -10,6 +10,7 @@ from sqlalchemy import Column, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base
 
+from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyQueryAdapter
 from fastapi_admin_kit.pagination import (
     CursorPagination,
     DynamicPagination,
@@ -26,6 +27,11 @@ class Item(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(100))
     value = Column(Integer, default=0)
+
+
+@pytest.fixture
+def query_adapter():
+    return SqlAlchemyQueryAdapter()
 
 
 @pytest.fixture
@@ -63,10 +69,12 @@ class TestPaginationResult:
 
 class TestOffsetPagination:
     @pytest.mark.asyncio
-    async def test_first_page(self, populated_session):
+    async def test_first_page(self, populated_session, query_adapter):
         stmt = select(Item).order_by(Item.id)
         pagination = OffsetPagination()
-        result = await pagination.paginate(stmt, populated_session, per_page=10, page=1)
+        result = await pagination.paginate(
+            stmt, populated_session, per_page=10, page=1, query_adapter=query_adapter
+        )
 
         assert len(result.items) == 10
         assert result.total == 50
@@ -75,42 +83,50 @@ class TestOffsetPagination:
         assert result.mode == "offset"
 
     @pytest.mark.asyncio
-    async def test_last_page(self, populated_session):
+    async def test_last_page(self, populated_session, query_adapter):
         stmt = select(Item).order_by(Item.id)
         pagination = OffsetPagination()
-        result = await pagination.paginate(stmt, populated_session, per_page=10, page=5)
+        result = await pagination.paginate(
+            stmt, populated_session, per_page=10, page=5, query_adapter=query_adapter
+        )
 
         assert len(result.items) == 10
         assert result.page == 5
 
     @pytest.mark.asyncio
-    async def test_beyond_last_page(self, populated_session):
+    async def test_beyond_last_page(self, populated_session, query_adapter):
         stmt = select(Item).order_by(Item.id)
         pagination = OffsetPagination()
-        result = await pagination.paginate(stmt, populated_session, per_page=10, page=999)
+        result = await pagination.paginate(
+            stmt, populated_session, per_page=10, page=999, query_adapter=query_adapter
+        )
 
         assert result.page == 5  # clamped to last page
 
     @pytest.mark.asyncio
-    async def test_empty_results(self, engine):
+    async def test_empty_results(self, engine, query_adapter):
         async with AsyncSession(engine) as sess:
             stmt = select(Item).order_by(Item.id)
             pagination = OffsetPagination()
-            result = await pagination.paginate(stmt, sess, per_page=10, page=1)
+            result = await pagination.paginate(
+                stmt, sess, per_page=10, page=1, query_adapter=query_adapter
+            )
 
             assert result.items == []
             assert result.total == 0
             assert result.total_pages == 1
 
     @pytest.mark.asyncio
-    async def test_single_page(self, engine):
+    async def test_single_page(self, engine, query_adapter):
         async with AsyncSession(engine) as sess:
             sess.add(Item(name="only", value=1))
             await sess.commit()
 
             stmt = select(Item).order_by(Item.id)
             pagination = OffsetPagination()
-            result = await pagination.paginate(stmt, sess, per_page=20, page=1)
+            result = await pagination.paginate(
+                stmt, sess, per_page=20, page=1, query_adapter=query_adapter
+            )
 
             assert len(result.items) == 1
             assert result.total_pages == 1
@@ -124,12 +140,17 @@ class TestCursorPagination:
         return json.loads(base64.b64decode(cursor))
 
     @pytest.mark.asyncio
-    async def test_first_page(self, populated_session):
+    async def test_first_page(self, populated_session, query_adapter):
         stmt = select(Item).order_by(Item.id)
         pagination = CursorPagination()
         pk_col = Item.id
         result = await pagination.paginate(
-            stmt, populated_session, per_page=10, pk_col=pk_col, model=Item
+            stmt,
+            populated_session,
+            per_page=10,
+            pk_col=pk_col,
+            model=Item,
+            query_adapter=query_adapter,
         )
 
         assert len(result.items) == 10
@@ -139,24 +160,34 @@ class TestCursorPagination:
         assert result.mode == "cursor"
 
     @pytest.mark.asyncio
-    async def test_cursor_encoding(self, populated_session):
+    async def test_cursor_encoding(self, populated_session, query_adapter):
         stmt = select(Item).order_by(Item.id)
         pagination = CursorPagination()
         result = await pagination.paginate(
-            stmt, populated_session, per_page=10, pk_col=Item.id, model=Item
+            stmt,
+            populated_session,
+            per_page=10,
+            pk_col=Item.id,
+            model=Item,
+            query_adapter=query_adapter,
         )
 
         cursor_val = self._decode(result.next_cursor)
         assert cursor_val == 10  # last item id on first page
 
     @pytest.mark.asyncio
-    async def test_forward_pagination(self, populated_session):
+    async def test_forward_pagination(self, populated_session, query_adapter):
         stmt = select(Item).order_by(Item.id)
         pagination = CursorPagination()
 
         # First page
         result1 = await pagination.paginate(
-            stmt, populated_session, per_page=10, pk_col=Item.id, model=Item
+            stmt,
+            populated_session,
+            per_page=10,
+            pk_col=Item.id,
+            model=Item,
+            query_adapter=query_adapter,
         )
         assert result1.items[0].id == 1
         assert result1.items[-1].id == 10
@@ -170,18 +201,24 @@ class TestCursorPagination:
             after=result1.next_cursor,
             pk_col=Item.id,
             model=Item,
+            query_adapter=query_adapter,
         )
         assert result2.items[0].id == 11
         assert result2.items[-1].id == 20
 
     @pytest.mark.asyncio
-    async def test_no_next_on_last_page(self, populated_session):
+    async def test_no_next_on_last_page(self, populated_session, query_adapter):
         stmt = select(Item).order_by(Item.id)
         pagination = CursorPagination()
         # Get last page worth of items
         stmt = stmt.where(Item.id > 40)
         result = await pagination.paginate(
-            stmt, populated_session, per_page=10, pk_col=Item.id, model=Item
+            stmt,
+            populated_session,
+            per_page=10,
+            pk_col=Item.id,
+            model=Item,
+            query_adapter=query_adapter,
         )
 
         assert len(result.items) == 10
@@ -189,10 +226,16 @@ class TestCursorPagination:
         assert result.next_cursor is None
 
     @pytest.mark.asyncio
-    async def test_custom_cursor_column(self, populated_session):
+    async def test_custom_cursor_column(self, populated_session, query_adapter):
         stmt = select(Item).order_by(Item.value)
         pagination = CursorPagination(cursor_column="value")
-        result = await pagination.paginate(stmt, populated_session, per_page=10, model=Item)
+        result = await pagination.paginate(
+            stmt,
+            populated_session,
+            per_page=10,
+            model=Item,
+            query_adapter=query_adapter,
+        )
 
         assert len(result.items) == 10
         assert result.has_next is True
@@ -204,7 +247,7 @@ class TestCursorPagination:
 
 class TestDynamicPagination:
     @pytest.mark.asyncio
-    async def test_uses_offset_for_small_dataset(self, populated_session):
+    async def test_uses_offset_for_small_dataset(self, populated_session, query_adapter):
         stmt = select(Item).order_by(Item.id)
         pagination = DynamicPagination(threshold=100)
         result = await pagination.paginate(
@@ -214,6 +257,7 @@ class TestDynamicPagination:
             page=1,
             pk_col=Item.id,
             model=Item,
+            query_adapter=query_adapter,
         )
 
         # 50 items < 100 threshold, should use offset
@@ -222,7 +266,7 @@ class TestDynamicPagination:
         assert result.total_pages == 5
 
     @pytest.mark.asyncio
-    async def test_uses_cursor_for_large_dataset(self, engine):
+    async def test_uses_cursor_for_large_dataset(self, engine, query_adapter):
         async with AsyncSession(engine) as sess:
             # Insert 150 items
             for i in range(150):
@@ -238,6 +282,7 @@ class TestDynamicPagination:
                 page=1,
                 pk_col=Item.id,
                 model=Item,
+                query_adapter=query_adapter,
             )
 
             # 150 items > 100 threshold, should use cursor
@@ -246,7 +291,7 @@ class TestDynamicPagination:
             assert result.next_cursor is not None
 
     @pytest.mark.asyncio
-    async def test_custom_threshold(self, engine):
+    async def test_custom_threshold(self, engine, query_adapter):
         async with AsyncSession(engine) as sess:
             for i in range(25):
                 sess.add(Item(name=f"item_{i}", value=i))
@@ -262,12 +307,13 @@ class TestDynamicPagination:
                 page=1,
                 pk_col=Item.id,
                 model=Item,
+                query_adapter=query_adapter,
             )
 
             assert result.mode == "dynamic_cursor"
 
     @pytest.mark.asyncio
-    async def test_custom_cursor_column(self, engine):
+    async def test_custom_cursor_column(self, engine, query_adapter):
         async with AsyncSession(engine) as sess:
             for i in range(150):
                 sess.add(Item(name=f"item_{i}", value=i * 10))
@@ -281,6 +327,7 @@ class TestDynamicPagination:
                 per_page=10,
                 page=1,
                 model=Item,
+                query_adapter=query_adapter,
             )
 
             assert result.mode == "dynamic_cursor"

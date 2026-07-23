@@ -29,6 +29,7 @@ from fastapi_admin_kit.audit.models import (
 )
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
 from fastapi_admin_kit.auth.models import User
+from fastapi_admin_kit.backends import SqlAlchemyBackend
 from fastapi_admin_kit.config import ThemeConfig
 from fastapi_admin_kit.dashboard import (
     CardComponent,
@@ -792,6 +793,7 @@ admin = Admin(
     app=app,
     engine=engine,
     base=Base,
+    backend=SqlAlchemyBackend(),
     title="My Admin Panel",
     logo_url=None,
     primary_color="#3b82f6",

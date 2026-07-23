@@ -4,17 +4,22 @@ Contains:
 - ``SqlAlchemyIntrospectionAdapter`` — model introspection (#23)
 - ``SqlAlchemySessionAdapter`` — per-request session lifecycle (#24)
 - ``SqlAlchemyQueryAdapter`` — chainable query building (#25)
+- ``SqlAlchemyAuditBackend`` — change tracking: listeners, snapshot, diff (#29)
 - ``SqlAlchemyDatabaseBackend`` — connection lifecycle & DDL (#30)
+- ``SqlAlchemyBackend`` — composite backend wiring all adapters together
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import inspect as sa_inspect
 
 from fastapi_admin_kit.types import ColumnMeta, RelationMeta
+
+if TYPE_CHECKING:
+    from fastapi_admin_kit.admin.admin_database import AdminDatabase
 
 
 def _is_async_session(session: Any) -> bool:
@@ -384,6 +389,50 @@ class SqlAlchemyQueryAdapter:
 
 
 # ---------------------------------------------------------------------------
+# #29 — Audit Backend
+# ---------------------------------------------------------------------------
+
+
+class SqlAlchemyAuditBackend:
+    """Implements :class:`AuditBackend` via structural subtyping.
+
+    Wraps the SQLAlchemy-specific audit listener, snapshot, and diff logic
+    so the rest of the codebase can use the protocol interface.
+    """
+
+    def attach_listeners(self, session_factory: Any, registry: Any) -> None:
+        """Wire up SQLAlchemy ``before_flush`` and ``after_flush_postexec`` listeners."""
+        from fastapi_admin_kit.audit.listener import attach_audit_listener
+
+        attach_audit_listener(session_factory, registry)
+
+    def snapshot(self, obj: Any) -> dict[str, Any]:
+        """Snapshot all mapped columns of a SQLAlchemy model instance."""
+        from sqlalchemy.inspection import inspect as sa_inspect
+
+        from fastapi_admin_kit.audit.diff import serialize_value
+
+        if not hasattr(obj, "__table__"):
+            raise ValueError("Object is not a SQLAlchemy model instance")
+        mapper = sa_inspect(obj.__class__)
+        data: dict[str, Any] = {}
+        for column in mapper.columns:
+            data[column.key] = serialize_value(getattr(obj, column.key))
+        return data
+
+    def compute_diff(self, before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+        """Compute changed fields between two snapshots."""
+        diff: dict[str, Any] = {}
+        all_keys = set(before.keys()) | set(after.keys())
+        for key in all_keys:
+            old_val = before.get(key)
+            new_val = after.get(key)
+            if old_val != new_val:
+                diff[key] = {"old": old_val, "new": new_val}
+        return diff
+
+
+# ---------------------------------------------------------------------------
 # #30 — Database Backend
 # ---------------------------------------------------------------------------
 
@@ -463,3 +512,154 @@ class SqlAlchemyDatabaseBackend:
         from fastapi_admin_kit.db import create_session_factory
 
         return create_session_factory(connection)
+
+    def materialize(
+        self,
+        schema: Any,
+        base: Any | None = None,
+    ) -> type:
+        """Convert a :class:`Schema` into a SQLAlchemy model class.
+
+        This is the materialization layer of the three-layer architecture:
+
+        1. **Protocol** — contract definition (``auth/protocol.py``)
+        2. **Schema** — declarative model definitions (``schemas/builtin.py``)
+        3. **Materialization** — this method converts schemas to native models
+
+        Args:
+            schema: A :class:`~fastapi_admin_kit.schemas.schema.Schema` instance
+                describing the model structure.
+            base: The SQLAlchemy declarative base class. If ``None``, falls back
+                to the configured ``AdminDatabase.base`` or ``Base``.
+
+        Returns:
+            A new SQLAlchemy model class with ``__tablename__`` and mapped columns.
+
+        Example::
+
+            from fastapi_admin_kit.schemas.builtin import USER_SCHEMA
+
+            backend = SqlAlchemyDatabaseBackend(admin_database=db)
+            UserModel = backend.materialize(USER_SCHEMA, base=Base)
+            # UserModel is a class usable with SQLAlchemy
+        """
+        from sqlalchemy import (
+            Boolean,
+            Column,
+            DateTime,
+            Float,
+            Integer,
+            String,
+            Text,
+        )
+        from sqlalchemy.dialects.postgresql import JSON as PG_JSON
+        from sqlalchemy.sql import func
+
+        from fastapi_admin_kit.schemas.schema import Schema as SchemaType
+
+        if not isinstance(schema, SchemaType):
+            raise TypeError(f"Expected Schema instance, got {type(schema).__name__}")
+
+        if base is None and self._admin_database is not None:
+            base = getattr(self._admin_database, "base", None)
+        if base is None:
+            from fastapi_admin_kit.models.base import Base
+
+            base = Base
+
+        type_map: dict[str, type] = {
+            "integer": Integer,
+            "string": String,
+            "text": Text,
+            "boolean": Boolean,
+            "datetime": DateTime(timezone=True),
+            "float": Float,
+            "json": PG_JSON,
+        }
+
+        columns: list[Column] = []
+        existing_cols: dict[str, Any] = {}
+        if base is not None and hasattr(base, "metadata"):
+            existing_table = base.metadata.tables.get(schema.table_name)
+            if existing_table is not None:
+                existing_cols = {c.name: c for c in existing_table.columns}
+        for f in schema.fields:
+            sa_type = type_map.get(f.type, String)
+
+            kwargs: dict[str, Any] = {}
+            if f.primary_key:
+                kwargs["primary_key"] = True
+            if f.auto_increment and f.primary_key:
+                kwargs["autoincrement"] = True
+            if f.nullable and not f.primary_key:
+                kwargs["nullable"] = True
+            elif not f.nullable:
+                kwargs["nullable"] = False
+            if f.unique:
+                kwargs["unique"] = True
+            if f.max_length and sa_type is String:
+                sa_type = String(f.max_length)
+            if f.default is not None:
+                kwargs["default"] = f.default
+            if f.server_default is not None:
+                if f.server_default == "now()":
+                    kwargs["server_default"] = func.now()
+                else:
+                    kwargs["server_default"] = f.server_default
+            if f.index and not f.primary_key:
+                existing_col = existing_cols.get(f.name)
+                if existing_col is None or not existing_col.index:
+                    kwargs["index"] = True
+
+            columns.append(Column(f.name, sa_type, **kwargs))
+
+        # Build the model class dynamically
+        table_name = schema.table_name
+        model_attrs: dict[str, Any] = {
+            "__tablename__": table_name,
+            "__table_args__": {"extend_existing": True},
+        }
+        for col in columns:
+            model_attrs[col.key] = col
+
+        model_class = type(table_name, (base,), model_attrs)
+        return model_class
+
+
+# ---------------------------------------------------------------------------
+# Composite Backend — wires all SQLAlchemy adapters together
+# ---------------------------------------------------------------------------
+
+
+class SqlAlchemyBackend:
+    """Composite backend that composes all SQLAlchemy adapters into one object.
+
+    This is the default backend for Admin when no custom backend is provided.
+    Users can pass a custom backend (e.g. ``MongoDBBackend``) to ``Admin()``
+    to switch ORM strategies without changing the rest of the admin wiring.
+
+    Example::
+
+        from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyBackend
+
+        admin = Admin(backend=SqlAlchemyBackend())
+    """
+
+    def __init__(
+        self,
+        admin_database: AdminDatabase | None = None,
+        *,
+        introspection: SqlAlchemyIntrospectionAdapter | None = None,
+        query: SqlAlchemyQueryAdapter | None = None,
+        audit: SqlAlchemyAuditBackend | None = None,
+        database: SqlAlchemyDatabaseBackend | None = None,
+    ) -> None:
+        self.introspection = introspection or SqlAlchemyIntrospectionAdapter()
+        self.query = query or SqlAlchemyQueryAdapter()
+        self.audit = audit or SqlAlchemyAuditBackend()
+        self.database = database or SqlAlchemyDatabaseBackend(admin_database=admin_database)
+
+    @classmethod
+    def from_admin_database(cls, admin_database: AdminDatabase) -> SqlAlchemyBackend:
+        """Create a backend from an existing ``AdminDatabase`` instance."""
+        return cls(admin_database=admin_database)

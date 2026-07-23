@@ -35,6 +35,19 @@ class BasePagination(ABC):
         before: str | None = None,
         pk_col: Any = None,
         model: Any = None,
+        query_adapter: Any = None,
     ) -> PaginationResult:
-        """Execute paginated query and return results."""
+        """Execute paginated query and return results.
+
+        Args:
+            stmt: The base query/statement to paginate.
+            session: Session or SessionBackend for query execution.
+            per_page: Number of items per page.
+            page: Page number (for offset pagination).
+            after: Cursor for forward pagination.
+            before: Cursor for backward pagination.
+            pk_col: Primary key column for cursor pagination.
+            model: SQLAlchemy model class.
+            query_adapter: QueryBackend for ORM-agnostic query construction.
+        """
         ...

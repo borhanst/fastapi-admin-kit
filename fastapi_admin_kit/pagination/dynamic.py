@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import func, select
-
 from fastapi_admin_kit.pagination.base import BasePagination, PaginationResult
 from fastapi_admin_kit.pagination.cursor import CursorPagination
 from fastapi_admin_kit.pagination.offset import OffsetPagination
@@ -33,16 +31,27 @@ class DynamicPagination(BasePagination):
         stmt: Any,
         session: Any,
         per_page: int,
+        query_adapter: Any = None,
         **kw: Any,
     ) -> PaginationResult:
         # Count total to decide strategy
-        count_q = select(func.count()).select_from(stmt.subquery())
-        total = (await session.execute(count_q)).scalar() or 0
+        if query_adapter is not None:
+            count_q = query_adapter.count(stmt)
+            total = (await session.execute(count_q)).scalar() or 0
+        else:
+            from sqlalchemy import func, select
+
+            count_q = select(func.count()).select_from(stmt.subquery())
+            total = (await session.execute(count_q)).scalar() or 0
 
         if total <= self.threshold:
-            result = await self._offset.paginate(stmt, session, per_page, **kw)
+            result = await self._offset.paginate(
+                stmt, session, per_page, query_adapter=query_adapter, **kw
+            )
         else:
-            result = await self._cursor.paginate(stmt, session, per_page, **kw)
+            result = await self._cursor.paginate(
+                stmt, session, per_page, query_adapter=query_adapter, **kw
+            )
 
         result.mode = "dynamic_offset" if total <= self.threshold else "dynamic_cursor"
         return result

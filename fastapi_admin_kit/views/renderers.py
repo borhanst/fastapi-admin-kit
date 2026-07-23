@@ -554,6 +554,26 @@ class DefaultQueryProvider:
                     field_type = self._get_field_type(request, model, filter_field)
                     col = getattr(model, filter_field)
 
+                    # If col is a relationship, resolve to its FK column
+                    from sqlalchemy.orm import RelationshipProperty
+
+                    if hasattr(col, "property") and isinstance(col.property, RelationshipProperty):
+                        fk_cols = list(col.property.remote_side)
+                        if fk_cols:
+                            col = getattr(model, fk_cols[0].key)
+                            # Cast filter value to the FK column's Python type
+                            pk_prop = fk_cols[0]
+                            from sqlalchemy import Integer
+
+                            col_type = type(pk_prop.type)
+                            if col_type in (Integer,):
+                                try:
+                                    filter_value = int(filter_value)
+                                except (ValueError, TypeError):
+                                    continue
+                        else:
+                            continue
+
                     if field_type == "boolean":
                         bool_val = filter_value == "1"
                         filter_clauses.append(col == bool_val)
@@ -692,6 +712,7 @@ class DefaultQueryProvider:
             before=request.query_params.get("before"),
             pk_col=pk_col,
             model=model,
+            query_adapter=query_adapter,
         )
 
         return (

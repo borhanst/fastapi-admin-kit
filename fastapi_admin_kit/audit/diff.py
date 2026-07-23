@@ -1,4 +1,8 @@
-"""Audit diff utilities — snapshot and diff computation for SQLAlchemy models."""
+"""Audit diff utilities — snapshot and diff computation for SQLAlchemy models.
+
+``serialize_value()`` is ORM-agnostic and stays here.
+``snapshot()`` and ``compute_diff()`` delegate to the active AuditBackend.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +11,6 @@ import decimal
 import enum
 from typing import Any
 from uuid import UUID
-
-from sqlalchemy.inspection import inspect as sqlalchemy_inspect
 
 
 def serialize_value(val: Any) -> Any:
@@ -33,12 +35,9 @@ def serialize_value(val: Any) -> Any:
     if isinstance(val, UUID):
         return str(val)
     if isinstance(val, bytes):
-        # For simplicity, we'll return the hex representation.
-        # Alternatively, we could use base64, but hex is simpler.
         return val.hex()
     if isinstance(val, enum.Enum):
         return val.value
-    # For other types, we assume they are JSON serializable (or let JSON encoder handle it)
     return val
 
 
@@ -46,18 +45,12 @@ def snapshot(obj: Any) -> dict[str, Any]:
     """Snapshot all mapped columns of a SQLAlchemy model instance.
 
     Returns a dict mapping column name to serialized value.
+    Delegates to the active AuditBackend.
     """
-    if not hasattr(obj, "__table__"):
-        raise ValueError("Object is not a SQLAlchemy model instance")
+    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyAuditBackend
 
-    mapper = sqlalchemy_inspect(obj.__class__)
-    data = {}
-    for column in mapper.columns:
-        # Skip foreign key columns that are represented by relationships?
-        # We'll include all columns for simplicity.
-        value = getattr(obj, column.key)
-        data[column.key] = serialize_value(value)
-    return data
+    backend = SqlAlchemyAuditBackend()
+    return backend.snapshot(obj)
 
 
 def compute_diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
@@ -66,12 +59,9 @@ def compute_diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any
     Returns a dict of changed fields, each containing:
         {"old": <value>, "new": <value>}
     Only fields that have changed are included.
+    Delegates to the active AuditBackend.
     """
-    diff = {}
-    all_keys = set(before.keys()) | set(after.keys())
-    for key in all_keys:
-        old_val = before.get(key)
-        new_val = after.get(key)
-        if old_val != new_val:
-            diff[key] = {"old": old_val, "new": new_val}
-    return diff
+    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyAuditBackend
+
+    backend = SqlAlchemyAuditBackend()
+    return backend.compute_diff(before, after)
