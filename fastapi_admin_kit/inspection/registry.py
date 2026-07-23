@@ -5,19 +5,27 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyIntrospectionAdapter
 from fastapi_admin_kit.types import ColumnMeta, RelationMeta
 
 
 class ModelInspector:
     """Inspects SQLAlchemy models and extracts column/relationship metadata.
 
-    Delegates core inspection to :class:`SqlAlchemyIntrospectionAdapter`
+    Delegates core inspection to an :class:`IntrospectionBackend` adapter
     and adds validation / metadata-extraction helpers on top.
+
+    When no adapter is provided, falls back to ``SqlAlchemyIntrospectionAdapter``.
     """
 
-    def __init__(self) -> None:
-        self._adapter = SqlAlchemyIntrospectionAdapter()
+    def __init__(self, adapter: Any = None) -> None:
+        if adapter is not None:
+            self._adapter = adapter
+        else:
+            from fastapi_admin_kit.backends.sqlalchemy import (
+                SqlAlchemyIntrospectionAdapter,
+            )
+
+            self._adapter = SqlAlchemyIntrospectionAdapter()
 
     def inspect_model(self, model: type) -> tuple[list[ColumnMeta], list[RelationMeta]]:
         """Inspect a SQLAlchemy or SQLModel model and return column + relationship metadata.

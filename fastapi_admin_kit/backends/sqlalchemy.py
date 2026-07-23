@@ -6,16 +6,20 @@ Contains:
 - ``SqlAlchemyQueryAdapter`` — chainable query building (#25)
 - ``SqlAlchemyAuditBackend`` — change tracking: listeners, snapshot, diff (#29)
 - ``SqlAlchemyDatabaseBackend`` — connection lifecycle & DDL (#30)
+- ``SqlAlchemyBackend`` — composite backend wiring all adapters together
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import inspect as sa_inspect
 
 from fastapi_admin_kit.types import ColumnMeta, RelationMeta
+
+if TYPE_CHECKING:
+    from fastapi_admin_kit.admin.admin_database import AdminDatabase
 
 
 def _is_async_session(session: Any) -> bool:
@@ -613,3 +617,42 @@ class SqlAlchemyDatabaseBackend:
 
         model_class = type(table_name, (base,), model_attrs)
         return model_class
+
+
+# ---------------------------------------------------------------------------
+# Composite Backend — wires all SQLAlchemy adapters together
+# ---------------------------------------------------------------------------
+
+
+class SqlAlchemyBackend:
+    """Composite backend that composes all SQLAlchemy adapters into one object.
+
+    This is the default backend for Admin when no custom backend is provided.
+    Users can pass a custom backend (e.g. ``MongoDBBackend``) to ``Admin()``
+    to switch ORM strategies without changing the rest of the admin wiring.
+
+    Example::
+
+        from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyBackend
+
+        admin = Admin(backend=SqlAlchemyBackend())
+    """
+
+    def __init__(
+        self,
+        admin_database: AdminDatabase | None = None,
+        *,
+        introspection: SqlAlchemyIntrospectionAdapter | None = None,
+        query: SqlAlchemyQueryAdapter | None = None,
+        audit: SqlAlchemyAuditBackend | None = None,
+        database: SqlAlchemyDatabaseBackend | None = None,
+    ) -> None:
+        self.introspection = introspection or SqlAlchemyIntrospectionAdapter()
+        self.query = query or SqlAlchemyQueryAdapter()
+        self.audit = audit or SqlAlchemyAuditBackend()
+        self.database = database or SqlAlchemyDatabaseBackend(admin_database=admin_database)
+
+    @classmethod
+    def from_admin_database(cls, admin_database: AdminDatabase) -> SqlAlchemyBackend:
+        """Create a backend from an existing ``AdminDatabase`` instance."""
+        return cls(admin_database=admin_database)
