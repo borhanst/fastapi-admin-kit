@@ -181,8 +181,9 @@ class PermissionChecker:
     def permission_set(self, table_name: str) -> PermissionSet:
         """Return a :class:`PermissionSet` for convenient template / UI use.
 
-        Note: This is a sync convenience wrapper. For async contexts,
-        use the individual async methods directly.
+        Warning: This reads from the async-populated cache. If ``load_permissions()``
+        was not called first, all values will be ``False`` (except for superusers).
+        Always call ``await load_permissions(table_name)`` before using this method.
         """
         if self._is_superuser:
             return PermissionSet(
@@ -190,6 +191,16 @@ class PermissionChecker:
                 can_create=True,
                 can_edit=True,
                 can_delete=True,
+            )
+        # Check if cache has been populated for this table
+        cache_populated = any(key[0] == table_name for key in self._cache)
+        if not cache_populated:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "permission_set('%s') called before load_permissions() — "
+                "returning default (all-False). Always call await load_permissions() first.",
+                table_name,
             )
         return PermissionSet(
             can_view=self._cache.get((table_name, "view"), False),

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import Request
+
+logger = logging.getLogger(__name__)
 
 
 async def inject_sidebar_context(request: Request, context: dict[str, Any]) -> dict[str, Any]:
@@ -99,10 +102,10 @@ async def inject_sidebar_context(request: Request, context: dict[str, Any]) -> d
                                 can_delete=perm.can_delete,
                             )
             except Exception:
-                pass
+                logger.warning("Failed to load permissions for sidebar context", exc_info=True)
 
         context.update(
-            admin_instance.build_sidebar_context(
+            await admin_instance.build_sidebar_context(
                 request, user=user, permissions_map=permissions_map
             )
         )

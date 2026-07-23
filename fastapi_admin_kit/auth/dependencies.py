@@ -144,3 +144,31 @@ async def require_superuser(
     if not getattr(user, "is_superuser", False):
         raise HTTPException(status_code=403, detail="Superuser access required.")
     return user
+
+
+# ---------------------------------------------------------------------------
+# Permission checker resolver (single source — deduplicated from renderers/factory)
+# ---------------------------------------------------------------------------
+
+
+async def resolve_permission_checker(request: Request) -> Any:
+    """Resolve a ``PermissionChecker`` for the current request.
+
+    Returns ``None`` if the user is not authenticated or the checker cannot be built.
+    This is the canonical implementation — import from here, not from renderers/factory.
+    """
+    from fastapi_admin_kit.auth.identity import get_current_user_from_cookie
+    from fastapi_admin_kit.auth.permissions import PermissionChecker
+
+    user = await get_current_user_from_cookie(request)
+    if user is None:
+        return None
+
+    from fastapi_admin_kit.db import get_db_session
+
+    async_session = get_db_session(request)
+    if async_session is None:
+        return None
+
+    snapshot = getattr(request.state, "admin_user_snapshot", None)
+    return PermissionChecker(session=async_session, user=user, user_snapshot=snapshot)

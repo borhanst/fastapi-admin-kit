@@ -1018,21 +1018,21 @@ class Admin:
             admin_path=self.router.admin_path,
         )
 
-    def build_sidebar_context(
+    async def build_sidebar_context(
         self,
         request: Any,
         user: Any = None,
         permissions_map: dict | None = None,
     ) -> dict:
         """Build per-request sidebar context (RBAC filter + permissions map)."""
-        return self.template.build_sidebar_context(
+        return await self.template.build_sidebar_context(
             request, user=user, permissions_map=permissions_map
         )
 
-    def sidebar_template_kwargs(self, request: Any) -> dict[str, Any]:
+    async def sidebar_template_kwargs(self, request: Any) -> dict[str, Any]:
         """Thin wrapper — returns sidebar kwargs for TemplateResponse contexts."""
-        return self.template.sidebar_template_kwargs(request)
+        return await self.template.sidebar_template_kwargs(request)
 
-    def apply_sidebar_context(self, request: Any, user: Any, context: dict) -> dict:
+    async def apply_sidebar_context(self, request: Any, user: Any, context: dict) -> dict:
         """Inject nav_groups + permissions_map into a template context dict."""
-        return self.template.apply_sidebar_context(request, user, context)
+        return await self.template.apply_sidebar_context(request, user, context)
