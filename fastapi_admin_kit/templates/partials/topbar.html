@@ -58,11 +58,11 @@
       <button @click="open = !open" @click.outside="open = false"
               class="topbar-user-btn">
         <div class="user-avatar">
-          {{ current_user.full_name[0] | upper if current_user and current_user.full_name else "A" }}
+          {{ current_user.full_name[0] | upper if current_user is defined and current_user and current_user.full_name else "A" }}
         </div>
         <div class="topbar-user-info">
-          <span class="topbar-user-name">{{ current_user.full_name | default("Admin") }}</span>
-          <span class="topbar-user-role">{{ "Superuser" if current_user and current_user.is_superuser else "Admin" }}</span>
+          <span class="topbar-user-name">{{ current_user.full_name if current_user is defined and current_user else "Admin" }}</span>
+          <span class="topbar-user-role">{{ "Superuser" if current_user is defined and current_user and current_user.is_superuser else "Admin" }}</span>
         </div>
         {{ icon("chevron-down", size="14px") }}
       </button>
@@ -77,8 +77,8 @@
            class="user-dropdown"
            style="display: none;">
         <div class="user-dropdown-header">
-          <div class="user-dropdown-name">{{ current_user.full_name | default("Admin") }}</div>
-          <div class="user-dropdown-email">{{ current_user.email | default("") }}</div>
+          <div class="user-dropdown-name">{{ current_user.full_name if current_user is defined and current_user else "Admin" }}</div>
+          <div class="user-dropdown-email">{{ current_user.email if current_user is defined and current_user else "" }}</div>
         </div>
         <a href="{{ admin_path | default('/admin') }}/profile/" class="user-dropdown-item">
           Profile

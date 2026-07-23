@@ -144,7 +144,7 @@ class UserPermission(Base):
 
     __tablename__ = "admin_user_permissions"
     __table_args__ = (
-        UniqueConstraint("user_id", "table_name", name="uq_admin_user_perm_user_table"),
+        UniqueConstraint("user_id", "permission_id", name="uq_admin_user_perm_user_perm"),
     )
 
     id = Column(Integer, primary_key=True)
@@ -153,19 +153,22 @@ class UserPermission(Base):
         ForeignKey("admin_users.id", ondelete="CASCADE"),
         nullable=False,
     )
-    table_name = Column(String(255), nullable=False)
-    can_view = Column(Boolean, default=False)
-    can_create = Column(Boolean, default=False)
-    can_edit = Column(Boolean, default=False)
-    can_delete = Column(Boolean, default=False)
+    permission_id = Column(
+        Integer,
+        ForeignKey("admin_permissions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
 
     user = relationship("User", back_populates="direct_permissions")
+    permission = relationship("Permission", backref="user_overrides")
 
     def __str__(self) -> str:
-        return f"{self.table_name} (user {self.user_id})"
+        if self.permission:
+            return f"{self.permission.name} (user {self.user_id})"
+        return f"user {self.user_id}"
 
     def __repr__(self) -> str:
-        return f"<UserPermission user={self.user_id} table={self.table_name!r}>"
+        return f"<UserPermission user={self.user_id} perm={self.permission_id}>"
 
 
 class RefreshToken(Base):

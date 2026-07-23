@@ -36,7 +36,10 @@ async def _create_superuser(args: argparse.Namespace) -> None:
     from fastapi_admin_kit.models.base import Base
 
     database_url = _resolve_database_url(args.database_url)
-    engine = create_async_engine(database_url, poolclass=NullPool)
+    connect_args = {}
+    if database_url.startswith("sqlite"):
+        connect_args = {"timeout": 30}
+    engine = create_async_engine(database_url, poolclass=NullPool, connect_args=connect_args)
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -44,26 +47,27 @@ async def _create_superuser(args: argparse.Namespace) -> None:
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as session:
-        from sqlalchemy import select
+        with session.no_autoflush:
+            from sqlalchemy import select
 
-        result = await session.execute(select(User).where(User.email == args.email))
-        existing = result.scalar_one_or_none()
-        if existing:
-            print(f"Error: User with email '{args.email}' already exists.")
-            await engine.dispose()
-            sys.exit(1)
+            result = await session.execute(select(User).where(User.email == args.email))
+            existing = result.scalar_one_or_none()
+            if existing:
+                print(f"Error: User with email '{args.email}' already exists.")
+                await engine.dispose()
+                sys.exit(1)
 
-        hashed_password = User.hash_password(args.password)
-        user = User(
-            email=args.email,
-            hashed_password=hashed_password,
-            full_name=args.name or "",
-            is_superuser=True,
-            is_active=True,
-        )
-        session.add(user)
-        await session.commit()
-        await session.refresh(user)
+            hashed_password = User.hash_password(args.password)
+            user = User(
+                email=args.email,
+                hashed_password=hashed_password,
+                full_name=args.name or "",
+                is_superuser=True,
+                is_active=True,
+            )
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
 
         print("Superuser created successfully!")
         print(f"  Email: {user.email}")
@@ -83,7 +87,10 @@ async def _list_users(args: argparse.Namespace) -> None:
     from fastapi_admin_kit.models.base import Base
 
     database_url = _resolve_database_url(args.database_url)
-    engine = create_async_engine(database_url, poolclass=NullPool)
+    connect_args = {}
+    if database_url.startswith("sqlite"):
+        connect_args = {"timeout": 30}
+    engine = create_async_engine(database_url, poolclass=NullPool, connect_args=connect_args)
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -123,7 +130,10 @@ async def _change_password(args: argparse.Namespace) -> None:
     from fastapi_admin_kit.models.base import Base
 
     database_url = _resolve_database_url(args.database_url)
-    engine = create_async_engine(database_url, poolclass=NullPool)
+    connect_args = {}
+    if database_url.startswith("sqlite"):
+        connect_args = {"timeout": 30}
+    engine = create_async_engine(database_url, poolclass=NullPool, connect_args=connect_args)
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -131,20 +141,21 @@ async def _change_password(args: argparse.Namespace) -> None:
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as session:
-        from sqlalchemy import select
+        with session.no_autoflush:
+            from sqlalchemy import select
 
-        result = await session.execute(select(User).where(User.email == args.email))
-        user = result.scalar_one_or_none()
+            result = await session.execute(select(User).where(User.email == args.email))
+            user = result.scalar_one_or_none()
 
-        if not user:
-            print(f"Error: User with email '{args.email}' not found.")
-            await engine.dispose()
-            sys.exit(1)
+            if not user:
+                print(f"Error: User with email '{args.email}' not found.")
+                await engine.dispose()
+                sys.exit(1)
 
-        user.hashed_password = User.hash_password(args.password)
-        await session.commit()
+            user.hashed_password = User.hash_password(args.password)
+            await session.commit()
 
-        print(f"Password changed successfully for '{user.email}'!")
+            print(f"Password changed successfully for '{user.email}'!")
 
     await engine.dispose()
 

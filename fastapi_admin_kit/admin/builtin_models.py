@@ -7,24 +7,33 @@ from fastapi_admin_kit.widgets.relation import MultiRelationWidget
 
 
 async def flush_pending_perm_ops(request):
-    """Execute any pending direct-permission writes on the request's session.
+    """Flush pending direct-permission writes for the user on the request."""
+    from sqlalchemy import delete
 
-    Called after ``after_create`` / ``after_update`` so the ops run on the
-    same session (and thus the same SQLite connection) as the main request.
-    """
-    from sqlalchemy import text
-
+    from fastapi_admin_kit.auth.models import UserPermission
     from fastapi_admin_kit.db import get_db_session
 
-    ops = getattr(request.state, "_admin_perm_pending_ops", None)
-    if not ops:
+    perm_ids = getattr(request.state, "_admin_perm_perm_ids", None)
+    if not perm_ids or not isinstance(perm_ids, list):
         return
-    request.state._admin_perm_pending_ops = []
+
+    # Get the user object from request state
+    user_obj = getattr(request.state, "_admin_perm_user_obj", None)
+    if user_obj is None:
+        return
+
+    request.state._admin_perm_perm_ids = None
     session = get_db_session(request)
     if session is None:
         return
-    for sql_str, params in ops:
-        await session.execute(text(sql_str), params)
+
+    # Delete existing direct permissions
+    await session.execute(delete(UserPermission).where(UserPermission.user_id == user_obj.id))
+
+    # Insert new permissions
+    for perm_id in perm_ids:
+        up = UserPermission(user_id=user_obj.id, permission_id=perm_id)
+        session.add(up)
 
 
 def _get_table_names() -> list[str]:
@@ -69,8 +78,33 @@ class UserAdmin(ModelAdmin):
             data["hashed_password"] = ""
         return data
 
+    def validate_create(self, data, request=None):
+        """Validate user creation data — require password and validate strength."""
+        from fastapi_admin_kit.auth.password import validate_password_strength
+        from fastapi_admin_kit.types import FieldError
+
+        password = data.get("password", "")
+        if not password:
+            raise FieldError({"password": ["Password is required for new users."]})
+        errors = validate_password_strength(password)
+        if errors:
+            raise FieldError({"password": errors})
+        return data
+
     def on_create(self, obj, request=None):
         pass
+
+    def validate_update(self, obj, data, request=None):
+        """Validate user update data — validate password strength if changed."""
+        from fastapi_admin_kit.auth.password import validate_password_strength
+        from fastapi_admin_kit.types import FieldError
+
+        password = data.get("password", "")
+        if password:
+            errors = validate_password_strength(password)
+            if errors:
+                raise FieldError({"password": errors})
+        return data
 
     def on_update(self, obj, data, request=None):
         pass
@@ -80,124 +114,56 @@ class UserAdmin(ModelAdmin):
             return
         perm_data = getattr(request.state, "_admin_perm_data", None)
         if perm_data:
-            self._save_direct_permissions_after_commit(obj, perm_data, request)
+            request.state._admin_perm_perm_ids = perm_data
+            request.state._admin_perm_user_obj = obj
 
     def after_update(self, obj, request=None):
         if request is None:
             return
         perm_data = getattr(request.state, "_admin_perm_data", None)
         if perm_data:
-            self._save_direct_permissions_after_commit(obj, perm_data, request)
+            request.state._admin_perm_perm_ids = perm_data
+            request.state._admin_perm_user_obj = obj
 
-    def _save_direct_permissions_after_commit(self, obj, perm_data, request):
-        delete_sql = "DELETE FROM admin_user_permissions WHERE user_id = :uid"
-        insert_sql = (
-            "INSERT INTO admin_user_permissions"
-            " (user_id, table_name, can_view, can_create, can_edit, can_delete)"
-            " VALUES (:uid, :tn, :cv, :cc, :ce, :cd)"
-        )
-
-        ops = []
-        ops.append((delete_sql, {"uid": obj.id}))
-
-        for table_name, perms in perm_data.items():
-            if not any(perms.get(a) for a in ["view", "create", "edit", "delete"]):
-                continue
-            ops.append(
-                (
-                    insert_sql,
-                    {
-                        "uid": obj.id,
-                        "tn": table_name,
-                        "cv": 1 if perms.get("view") else 0,
-                        "cc": 1 if perms.get("create") else 0,
-                        "ce": 1 if perms.get("edit") else 0,
-                        "cd": 1 if perms.get("delete") else 0,
-                    },
-                )
-            )
-
-        if not hasattr(request.state, "_admin_perm_pending_ops"):
-            request.state._admin_perm_pending_ops = []
-        request.state._admin_perm_pending_ops.extend(ops)
-
-    def get_form_context(self, context, obj=None, request=None):
+    async def get_form_context(self, context, obj=None, request=None):
+        """Load direct permissions for the user being edited."""
         from sqlalchemy import select
 
-        from fastapi_admin_kit.auth.models import UserPermission
+        from fastapi_admin_kit.auth.models import Permission, UserPermission
         from fastapi_admin_kit.db import get_db_session
 
-        perm_data = {}
+        perm_data = []
         if obj is not None and request is not None:
             try:
                 session = get_db_session(request)
-                import asyncio
-
-                async def _load_perms():
-                    result = await session.execute(
-                        select(UserPermission).where(UserPermission.user_id == obj.id)
+                result = await session.execute(
+                    select(UserPermission, Permission)
+                    .join(Permission, UserPermission.permission_id == Permission.id)
+                    .where(UserPermission.user_id == obj.id)
+                )
+                for up, perm in result:
+                    perm_data.append(
+                        {
+                            "id": perm.id,
+                            "name": perm.name,
+                            "table_name": perm.table_name,
+                        }
                     )
-                    return result.scalars().all()
+            except Exception as exc:
+                import logging
 
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    import concurrent.futures
-
-                    with concurrent.futures.ThreadPoolExecutor() as pool:
-                        perms = pool.submit(asyncio.run, _load_perms()).result()
-                else:
-                    perms = loop.run_until_complete(_load_perms())
-
-                for p in perms:
-                    perm_data[p.table_name] = {
-                        "_label": p.table_name,
-                        "view": p.can_view,
-                        "create": p.can_create,
-                        "edit": p.can_edit,
-                        "delete": p.can_delete,
-                    }
-            except Exception:
-                pass
+                logging.getLogger(__name__).debug("Permission load failed: %s", exc)
 
         context["perm_data"] = perm_data
-        context["search_url"] = "/admin/tables/search"
+        context["search_url"] = "/admin/permissions/search"
         return context
 
     def process_form_data(self, data, request=None):
-        if request is not None:
-            import asyncio
+        """Extract perm_data from request state and store for after_create/after_update.
 
-            async def _get_perm_data():
-                form = await request.form()
-                return form.get("perm_data", "{}")
-
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-
-            if loop and loop.is_running():
-                import concurrent.futures
-
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    perm_data_raw = pool.submit(asyncio.run, _get_perm_data()).result()
-            elif loop:
-                perm_data_raw = loop.run_until_complete(_get_perm_data())
-            else:
-                perm_data_raw = asyncio.run(_get_perm_data())
-        else:
-            perm_data_raw = "{}"
-
-        import json
-
-        try:
-            perm_data = json.loads(perm_data_raw)
-        except (json.JSONDecodeError, TypeError):
-            perm_data = {}
-
-        if request is not None and perm_data:
-            request.state._admin_perm_data = perm_data
-
+        perm_data should already be extracted by the view and stored on
+        request.state._admin_perm_data before this is called.
+        """
         return data
 
 
@@ -273,14 +239,15 @@ class UserTOTPAdmin(ModelAdmin):
     icon = "lock"
     verbose_name = "2FA Token"
     verbose_name_plural = "2FA Tokens"
-    list_display = ["id", "user_id", "enabled", "secret_key", "created_at"]
+    list_display = ["id", "user_id", "enabled", "created_at"]
+    exclude = ["secret_key", "backup_codes"]
 
 
 class UserPermissionAdmin(ModelAdmin):
     tag = "admin"
     icon = "lock"
-    verbose_name = "User Permission---"
-    verbose_name_plural = "User Permissions---"
+    verbose_name = "User Permission"
+    verbose_name_plural = "User Permissions"
     list_display = [
         "id",
         "user",

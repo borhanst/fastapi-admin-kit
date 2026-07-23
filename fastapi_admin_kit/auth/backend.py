@@ -82,7 +82,6 @@ class BuiltinAuthBackend(AuthBackend):
             field = getattr(model, "email", None)
         if field is None:
             return None
-
         result = await session.execute(
             select(model).where(field == credential, model.is_active.is_(True))
         )

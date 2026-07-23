@@ -78,12 +78,24 @@ class SeedRole:
     permissions: dict[str, dict[str, bool]] = field(default_factory=dict)
 
 
+class FieldError(ValueError):
+    """Raise to abort create/update with per-field validation errors."""
+
+    def __init__(self, errors: dict[str, list[str]]):
+        self.field_errors = errors
+        super().__init__(str(errors))
+
+
 @dataclass
 class FieldRenderContext:
     meta: FieldMeta
     widget_macro: str
     widget_context: dict = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        if self.errors is None:
+            self.errors = []
 
 
 @dataclass

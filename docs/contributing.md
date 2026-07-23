@@ -23,11 +23,24 @@ uv sync
 uv run pytest
 ```
 
+### Run Tests with Coverage
+
+```bash
+uv run pytest --cov=fastapi_admin_kit --cov-report=term-missing
+```
+
 ### Run Linter
 
 ```bash
-uv run ruff check .
-uv run ruff format .
+uv run ruff check fastapi_admin_kit/
+uv run ruff format --check fastapi_admin_kit/
+```
+
+### Auto-Fix Lint Issues
+
+```bash
+uv run ruff check fastapi_admin_kit/ --fix
+uv run ruff format fastapi_admin_kit/
 ```
 
 ### Run Documentation Server
@@ -43,10 +56,14 @@ Open `http://localhost:8000` in your browser.
 ```
 fastapi_admin_kit/
 ├── admin/          # Admin class and configuration
+├── api/            # JSON API endpoints
 ├── auth/           # Authentication and RBAC
 ├── audit/          # Audit logging
+├── cli/            # CLI commands (fak-admin / fak)
+├── config/         # Configuration classes
+├── filters/        # List view filters
+├── views/          # Route handlers and view classes
 ├── widgets/        # Form widgets
-├── views/          # Route handlers
 ├── templates/      # Jinja2 templates
 ├── static/         # CSS, JS, images
 └── plugins/        # Plugin system
@@ -59,6 +76,13 @@ We use Ruff for linting and formatting:
 - Line length: 100
 - Target: Python 3.11
 - Rules: E, F, I, N, UP
+
+Always run the linter and formatter before submitting a PR:
+
+```bash
+uv run ruff check fastapi_admin_kit/
+uv run ruff format fastapi_admin_kit/
+```
 
 ## Pull Request Process
 
