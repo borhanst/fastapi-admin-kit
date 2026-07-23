@@ -57,6 +57,7 @@ dev = [
     "ruff>=0.5.0",
     "hatch>=1.13.0",
     "pre-commit>=3.5.0",
+    "pyjwt>=2.13.0",
 ]
 sqlmodel = ["sqlmodel>=0.0.39"]
 postgres = ["asyncpg>=0.29.0"]
