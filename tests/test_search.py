@@ -13,7 +13,6 @@ from sqlalchemy.orm import DeclarativeBase, Session, relationship
 
 from fastapi_admin_kit.admin import Admin
 from fastapi_admin_kit.modeladmin import ModelAdmin
-from fastapi_admin_kit.models.base import Base as AdminBase
 from fastapi_admin_kit.registry import AdminRegistry
 from tests.conftest import SECRET_KEY, create_session_cookie
 
@@ -118,7 +117,6 @@ def engine():
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     sync_engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False})
-    AdminBase.metadata.create_all(bind=sync_engine)
     _Base.metadata.create_all(bind=sync_engine)
     sync_engine.dispose()
     async_engine = create_async_engine(

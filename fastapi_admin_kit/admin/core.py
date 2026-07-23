@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from fastapi_admin_kit.auth.backend import AuthBackend
+    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyBackend
     from fastapi_admin_kit.nav import NavGroupConfig, SidebarBuilder
     from fastapi_admin_kit.storage.base import StorageBackend
     from fastapi_admin_kit.views import ModelAdmin
@@ -124,6 +125,7 @@ class Admin:
         database: AdminDatabase | None = None,
         router: AdminRouter | None = None,
         template: AdminTemplate | None = None,
+        backend: SqlAlchemyBackend | None = None,
         # Legacy kwargs for backward compatibility
         base: type | None = None,
         title: str = "FastAPI Admin Kit",
@@ -287,6 +289,16 @@ class Admin:
         self.database = database
         self.router = router
         self.template = template
+
+        # Backend: defaults to composed SqlAlchemyBackend
+        if backend is None:
+            from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyBackend
+
+            backend = SqlAlchemyBackend.from_admin_database(database)
+        self.backend = backend
+
+        # Inject backend's introspection adapter into the registry's ModelInspector
+        self.registry.inspector._adapter = self.backend.introspection
 
         # RBAC
         self.seed_roles = seed_roles if seed_roles is not None else DEFAULT_SEED_ROLES
@@ -704,6 +716,7 @@ class Admin:
             admin_instance=self,
             secret_key=self.router.secret_key,
             session_samesite=self.config.auth.session_samesite,
+            backend=self.backend,
         )
 
         # Store typed state as single attribute
@@ -722,20 +735,14 @@ class Admin:
         app.state.admin_jinja_env = state.jinja_env
         # Unified signing-key source for sessions, CSRF, and JWT (see AdminState).
         app.state.admin_secret_key = state.secret_key
-        # Multi-ORM backend: store adapter class for views to access
-        from fastapi_admin_kit.backends.sqlalchemy import (
-            SqlAlchemyIntrospectionAdapter,
-            SqlAlchemyQueryAdapter,
-            SqlAlchemySessionAdapter,
-        )
+        # Multi-ORM backend: store composed backend and derive individual adapters
+        from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
 
+        app.state.admin_backend = self.backend
         app.state.admin_session_backend_class = SqlAlchemySessionAdapter
-        app.state.admin_query_adapter = SqlAlchemyQueryAdapter()
-        app.state.admin_introspection_adapter = SqlAlchemyIntrospectionAdapter()
-
-        from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyAuditBackend
-
-        app.state.admin_audit_backend = SqlAlchemyAuditBackend()
+        app.state.admin_query_adapter = self.backend.query
+        app.state.admin_introspection_adapter = self.backend.introspection
+        app.state.admin_audit_backend = self.backend.audit
 
         # Wire the password hasher to the User model
         from fastapi_admin_kit.auth.models import User
