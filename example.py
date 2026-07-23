@@ -312,7 +312,7 @@ class ProductAdmin(ModelAdmin):
         "status",
         "created_at",
     ]
-    list_filter = ["is_active", "category", "created_at", "updated_at"]
+    list_filter = ["is_active", "category"]
     search_fields = ["name", "description"]
     ordering = ["-created_at"]
     inline_edit = True
@@ -362,6 +362,13 @@ class ProductAdmin(ModelAdmin):
     warn_unsaved_form = True
     compressed_fields = True
     change_form_show_cancel_button = True
+
+    def get_queryset(self, session, request = None):
+
+        # if request.user.has_params("product_view"):
+        #     return super().get_queryset(session, request).where(Product.is_active == True)
+
+        return super().get_queryset(session, request)
 
     @column(header="Price", format="$ {:,.2f}", order="price", icon="attach_money")
     def formatted_price(self, obj):

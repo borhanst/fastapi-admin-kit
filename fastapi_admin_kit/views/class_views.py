@@ -1295,7 +1295,6 @@ class SearchView(BaseView):
 
     async def _search(self, request: Request, q: str, limit: int = 20, exclude_id: str = "") -> Any:
         from fastapi.responses import JSONResponse
-        from sqlalchemy import select
 
         is_browser = self._is_browser_request(request)
 
@@ -1309,7 +1308,9 @@ class SearchView(BaseView):
                 "name",
                 "title",
             ]
-            base = apply_search_filter(request, select(model), model, search_fields, q)
+            base = apply_search_filter(
+                request, self.admin.get_queryset(session, request), model, search_fields, q
+            )
 
             if exclude_id:
                 pk_col = getattr(model, self.registered.pk_field, None)

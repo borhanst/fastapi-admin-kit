@@ -287,9 +287,7 @@ class DefaultQueryProvider:
         if query_adapter is not None:
             base = query_adapter.select(model)
         else:
-            from sqlalchemy import select
-
-            base = select(model)
+            base = registered.admin.get_queryset(session, request)
 
         list_display = registered.admin.list_display or [
             c.name for c in registered.columns if c.name != "id"

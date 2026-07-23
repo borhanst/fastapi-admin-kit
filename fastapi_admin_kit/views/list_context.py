@@ -354,9 +354,9 @@ class ListContextBuilder:
 
         session = get_db_session(request)
         model = registered.model
-        from sqlalchemy import and_, desc, select
+        from sqlalchemy import and_, desc
 
-        base = select(model)
+        base = registered.admin.get_queryset(session, request)
 
         list_display = registered.admin.list_display or [
             c.name for c in registered.columns if c.name != "id"

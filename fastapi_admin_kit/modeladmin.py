@@ -99,8 +99,15 @@ class ModelAdmin:
     # ── Query hooks ──────────────────────────────────────────────────
 
     def get_queryset(self, session: Session, request: Any = None) -> Any:
-        """Override to filter records globally (e.g. soft-delete filter)."""
-        return session.query(self.model)  # type: ignore[attr-defined]
+        """Override to filter records globally (e.g. soft-delete filter).
+
+        Returns a SQLAlchemy ``select`` statement for the model.
+        Override and call ``super().get_queryset(session, request)`` to
+        chain additional ``.where()`` conditions.
+        """
+        from sqlalchemy import select
+
+        return select(self.model)  # type: ignore[attr-defined]
 
     def get_object(self, session: Session, id: Any) -> Any:
         """Override for custom PK lookup."""
