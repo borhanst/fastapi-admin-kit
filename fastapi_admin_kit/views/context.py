@@ -351,7 +351,7 @@ class ViewContextBuilder:
                 base = base.where(and_(*filter_clauses))
 
         if q and registered.admin.search_fields:
-            base = apply_search_filter(base, model, registered.admin.search_fields, q)
+            base = apply_search_filter(request, base, model, registered.admin.search_fields, q)
 
         query_ordering = request.query_params.get("ordering", "")
         if query_ordering:
@@ -370,6 +370,7 @@ class ViewContextBuilder:
 
         pagination = getattr(registered.admin, "pagination", None) or OffsetPagination()
         pk_col = getattr(model, registered.pk_field) if registered.pk_field else None
+        query_adapter = getattr(request.app.state, "admin_query_adapter", None)
         pagination_result: PaginationResult = await pagination.paginate(
             base,
             session,
@@ -379,6 +380,7 @@ class ViewContextBuilder:
             before=request.query_params.get("before"),
             pk_col=pk_col,
             model=model,
+            query_adapter=query_adapter,
         )
         items = pagination_result.items
         total = pagination_result.total

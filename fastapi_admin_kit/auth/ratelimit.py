@@ -1,4 +1,20 @@
-"""In-memory sliding window rate limiter — no external dependencies."""
+"""In-memory sliding window rate limiter — no external dependencies.
+
+.. warning::
+
+    This rate limiter stores state in process memory. When running with
+    multiple workers (e.g., ``gunicorn -w N`` or multiple Kubernetes pods),
+    each worker has its own rate limiter state. An attacker can bypass rate
+    limiting by hitting different workers.
+
+    For production deployments with multiple workers, consider:
+    - Using a Redis-backed rate limiter
+    - Using an API gateway rate limiter (e.g., Cloudflare, NGINX)
+    - Deploying behind a reverse proxy with its own rate limiting
+
+    This implementation is suitable for single-worker deployments and
+    development environments.
+"""
 
 from __future__ import annotations
 

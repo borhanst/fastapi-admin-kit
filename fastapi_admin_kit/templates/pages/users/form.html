@@ -100,61 +100,32 @@
         </div>
         <div class="field-wrapper field-wrapper--full">
           <label class="field-label">Direct Permissions</label>
-          {% set user_perm_data = {} %}
-          {% if user and user.direct_permissions %}
-            {% for p in user.direct_permissions %}
-              {% set _ = user_perm_data.update({p.table_name: {"_label": p.table_name, "view": p.can_view, "create": p.can_create, "edit": p.can_edit, "delete": p.can_delete}}) %}
-            {% endfor %}
-          {% endif %}
-          {% set perm_search_url = admin_path | default('/admin') ~ '/tables/search' %}
-          <div x-data="permissionWidget('{{ perm_search_url }}', {{ user_perm_data | tojson | forceescape }})">
+          {% set perm_search_url = admin_path | default('/admin') ~ '/permissions/search' %}
+          <div x-data="permissionWidget('{{ perm_search_url }}', {{ perm_data | tojson | forceescape }})">
             <input type="hidden" name="perm_data" :value="serializedPermData">
 
-            {# Full-width permission table with dark mode support #}
-            <div x-show="selectedTables.length > 0" style="width: 100%;">
+            {# Selected permissions list #}
+            <div x-show="selectedPerms.length > 0" style="width: 100%;">
               <div style="border: 1px solid var(--surface-border); border-radius: var(--radius-lg); overflow: hidden;">
                 <table style="width: 100%; border-collapse: collapse;">
                   <thead>
                     <tr style="background: var(--surface-inset); border-bottom: 1px solid var(--surface-border);">
+                      <th style="text-align: left; padding: 10px 16px; font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Permission</th>
                       <th style="text-align: left; padding: 10px 16px; font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Table</th>
-                      <th style="text-align: center; padding: 10px 16px; font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; width: 80px;">View</th>
-                      <th style="text-align: center; padding: 10px 16px; font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; width: 80px;">Create</th>
-                      <th style="text-align: center; padding: 10px 16px; font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; width: 80px;">Edit</th>
-                      <th style="text-align: center; padding: 10px 16px; font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; width: 80px;">Delete</th>
                       <th style="width: 48px;"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    <template x-for="(table, index) in selectedTables" :key="table.id">
+                    <template x-for="(perm, index) in selectedPerms" :key="perm.id">
                       <tr style="border-bottom: 1px solid var(--surface-border);" onmouseover="this.style.background='var(--surface-inset)'" onmouseout="this.style.background=''">
                         <td style="padding: 12px 16px;">
-                          <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);" x-text="table.label"></span>
-                            <span style="font-size: 0.75rem; color: var(--text-secondary);" x-text="table.id"></span>
-                          </div>
+                          <span style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);" x-text="perm.name"></span>
+                        </td>
+                        <td style="padding: 12px 16px;">
+                          <span style="font-size: 0.875rem; color: var(--text-secondary);" x-text="perm.table_name"></span>
                         </td>
                         <td style="text-align: center; padding: 12px 16px;">
-                          <input type="checkbox" :checked="permData[table.id]?.view"
-                                 @change="permData[table.id].view = $event.target.checked"
-                                 style="width: 16px; height: 16px; accent-color: var(--primary-500);">
-                        </td>
-                        <td style="text-align: center; padding: 12px 16px;">
-                          <input type="checkbox" :checked="permData[table.id]?.create"
-                                 @change="permData[table.id].create = $event.target.checked"
-                                 style="width: 16px; height: 16px; accent-color: var(--primary-500);">
-                        </td>
-                        <td style="text-align: center; padding: 12px 16px;">
-                          <input type="checkbox" :checked="permData[table.id]?.edit"
-                                 @change="permData[table.id].edit = $event.target.checked"
-                                 style="width: 16px; height: 16px; accent-color: var(--primary-500);">
-                        </td>
-                        <td style="text-align: center; padding: 12px 16px;">
-                          <input type="checkbox" :checked="permData[table.id]?.delete"
-                                 @change="permData[table.id].delete = $event.target.checked"
-                                 style="width: 16px; height: 16px; accent-color: var(--primary-500);">
-                        </td>
-                        <td style="text-align: center; padding: 12px 16px;">
-                          <button type="button" @click="removeTable(index)"
+                          <button type="button" @click="removePerm(index)"
                                   style="color: var(--text-secondary); cursor: pointer; background: none; border: none; padding: 4px; line-height: 1;"
                                   onmouseover="this.style.color='var(--danger-500)'" onmouseout="this.style.color='var(--text-secondary)'">
                             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -166,48 +137,27 @@
                     </template>
                   </tbody>
                 </table>
-
-                {# Bulk actions #}
-                <div style="display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--surface-inset); border-top: 1px solid var(--surface-border);">
-                  <span style="font-size: 0.75rem; color: var(--text-secondary);">Bulk:</span>
-                  <button type="button" @click="toggleAllTables('view', true)"
-                          style="font-size: 0.75rem; color: var(--primary-500); cursor: pointer; background: none; border: none; padding: 0;"
-                          onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">All View</button>
-                  <button type="button" @click="toggleAllTables('create', true)"
-                          style="font-size: 0.75rem; color: var(--primary-500); cursor: pointer; background: none; border: none; padding: 0;"
-                          onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">All Create</button>
-                  <button type="button" @click="toggleAllTables('edit', true)"
-                          style="font-size: 0.75rem; color: var(--primary-500); cursor: pointer; background: none; border: none; padding: 0;"
-                          onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">All Edit</button>
-                  <button type="button" @click="toggleAllTables('delete', true)"
-                          style="font-size: 0.75rem; color: var(--primary-500); cursor: pointer; background: none; border: none; padding: 0;"
-                          onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">All Delete</button>
-                  <span style="color: var(--surface-border);">|</span>
-                  <button type="button" @click="toggleAllTables('view', false); toggleAllTables('create', false); toggleAllTables('edit', false); toggleAllTables('delete', false)"
-                          style="font-size: 0.75rem; color: var(--text-secondary); cursor: pointer; background: none; border: none; padding: 0;"
-                          onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">Clear All</button>
-                </div>
               </div>
             </div>
 
             {# Empty state #}
-            <div x-show="selectedTables.length === 0" style="text-align: center; padding: 32px 0; font-size: 0.875rem; color: var(--text-secondary);">
-              No permissions added yet. Search below to add tables.
+            <div x-show="selectedPerms.length === 0" style="text-align: center; padding: 32px 0; font-size: 0.875rem; color: var(--text-secondary);">
+              No permissions added yet. Search below to add.
             </div>
 
             {# Search input #}
             <div style="margin-top: 12px; position: relative;">
               <input type="text" x-model="searchQuery" @input="search()" @focus="open = true" @click.outside="open = false"
-                     placeholder="Search tables to add..."
+                     placeholder="Search permissions (e.g. products_view)..."
                      class="form-input" style="width: 100%;">
               <div x-show="open && results.length > 0" x-cloak
                    style="position: absolute; z-index: 50; width: 100%; margin-top: 4px; background: var(--surface-raised); border: 1px solid var(--surface-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); max-height: 200px; overflow-y: auto;">
                 <template x-for="result in results" :key="result.id">
-                  <div @click="addTable(result)"
+                  <div @click="addPerm(result)"
                        style="padding: 8px 12px; cursor: pointer; font-size: 0.875rem; color: var(--text-primary);"
                        onmouseover="this.style.background='var(--surface-inset)'" onmouseout="this.style.background=''">
-                    <span x-text="result.label"></span>
-                    <span style="font-size: 0.75rem; color: var(--text-secondary); margin-left: 8px;" x-text="result.id"></span>
+                    <span x-text="result.name"></span>
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); margin-left: 8px;" x-text="result.table_name"></span>
                   </div>
                 </template>
               </div>

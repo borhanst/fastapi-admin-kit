@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from fastapi_admin_kit.auth.backend import AuthBackend
+    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyBackend
     from fastapi_admin_kit.nav import NavGroupConfig, SidebarBuilder
     from fastapi_admin_kit.storage.base import StorageBackend
     from fastapi_admin_kit.views import ModelAdmin
@@ -124,6 +125,7 @@ class Admin:
         database: AdminDatabase | None = None,
         router: AdminRouter | None = None,
         template: AdminTemplate | None = None,
+        backend: SqlAlchemyBackend | None = None,
         # Legacy kwargs for backward compatibility
         base: type | None = None,
         title: str = "FastAPI Admin Kit",
@@ -142,7 +144,7 @@ class Admin:
         auth_model: type | None = None,
         auth_backend: AuthBackend | None = None,
         session_cookie_name: str = "admin_session",
-        session_secure: bool = False,
+        session_secure: bool = True,
         session_samesite: str = "strict",
         seed_roles: list[SeedRole] | None = None,
         seed_roles_overwrite: bool = False,
@@ -287,6 +289,16 @@ class Admin:
         self.database = database
         self.router = router
         self.template = template
+
+        # Backend: defaults to composed SqlAlchemyBackend
+        if backend is None:
+            from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyBackend
+
+            backend = SqlAlchemyBackend.from_admin_database(database)
+        self.backend = backend
+
+        # Inject backend's introspection adapter into the registry's ModelInspector
+        self.registry.inspector._adapter = self.backend.introspection
 
         # RBAC
         self.seed_roles = seed_roles if seed_roles is not None else DEFAULT_SEED_ROLES
@@ -535,8 +547,6 @@ class Admin:
                 registered.admin.skip_auto_routes = True
 
         # 8.3 Attach audit event listeners (after registry is populated)
-        from fastapi_admin_kit.audit.listener import attach_audit_listener
-
         engine = self.database.engine
         if engine is not None:
             from sqlalchemy.ext.asyncio import AsyncEngine
@@ -545,7 +555,10 @@ class Admin:
                 from fastapi_admin_kit.db import create_session_factory
 
                 session_factory = create_session_factory(engine)
-                attach_audit_listener(session_factory, self.registry)
+                from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyAuditBackend
+
+                audit_backend = SqlAlchemyAuditBackend()
+                audit_backend.attach_listeners(session_factory, self.registry)
 
         # 9. Validate require_tags
         if self.config.nav.require_tags:
@@ -703,6 +716,7 @@ class Admin:
             admin_instance=self,
             secret_key=self.router.secret_key,
             session_samesite=self.config.auth.session_samesite,
+            backend=self.backend,
         )
 
         # Store typed state as single attribute
@@ -721,6 +735,14 @@ class Admin:
         app.state.admin_jinja_env = state.jinja_env
         # Unified signing-key source for sessions, CSRF, and JWT (see AdminState).
         app.state.admin_secret_key = state.secret_key
+        # Multi-ORM backend: store composed backend and derive individual adapters
+        from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
+
+        app.state.admin_backend = self.backend
+        app.state.admin_session_backend_class = SqlAlchemySessionAdapter
+        app.state.admin_query_adapter = self.backend.query
+        app.state.admin_introspection_adapter = self.backend.introspection
+        app.state.admin_audit_backend = self.backend.audit
 
         # Wire the password hasher to the User model
         from fastapi_admin_kit.auth.models import User
@@ -755,8 +777,8 @@ class Admin:
         templates_dir = Path(__file__).parent.parent / "templates"
         self._jinja_env = Jinja2Templates(directory=str(templates_dir))
 
-        # Disable autoescape — templates are server-controlled, no user XSS risk
-        self._jinja_env.env.autoescape = False
+        # Enable autoescape for XSS protection
+        self._jinja_env.env.autoescape = True
 
         def slugify(s: str) -> str:
             return re.sub(r"[^\w]", "-", s, flags=re.A).strip("-").lower()
@@ -840,11 +862,13 @@ class Admin:
         }
 
         def _icon(name: str, size: str = "", **kwargs) -> str:
+            from markupsafe import Markup
+
             ms_name = _icon_map.get(name, name)
             css_class = kwargs.get("class", kwargs.get("css_class", ""))
             size_style = f' style="font-size: {size};"' if size else ""
             cls = f"material-symbols-outlined {css_class}".strip()
-            return f'<span class="{cls}"{size_style}>{ms_name}</span>'
+            return Markup(f'<span class="{cls}"{size_style}>{ms_name}</span>')
 
         self._jinja_env.env.globals["icon"] = _icon
 
@@ -1017,21 +1041,21 @@ class Admin:
             admin_path=self.router.admin_path,
         )
 
-    def build_sidebar_context(
+    async def build_sidebar_context(
         self,
         request: Any,
         user: Any = None,
         permissions_map: dict | None = None,
     ) -> dict:
         """Build per-request sidebar context (RBAC filter + permissions map)."""
-        return self.template.build_sidebar_context(
+        return await self.template.build_sidebar_context(
             request, user=user, permissions_map=permissions_map
         )
 
-    def sidebar_template_kwargs(self, request: Any) -> dict[str, Any]:
+    async def sidebar_template_kwargs(self, request: Any) -> dict[str, Any]:
         """Thin wrapper — returns sidebar kwargs for TemplateResponse contexts."""
-        return self.template.sidebar_template_kwargs(request)
+        return await self.template.sidebar_template_kwargs(request)
 
-    def apply_sidebar_context(self, request: Any, user: Any, context: dict) -> dict:
+    async def apply_sidebar_context(self, request: Any, user: Any, context: dict) -> dict:
         """Inject nav_groups + permissions_map into a template context dict."""
-        return self.template.apply_sidebar_context(request, user, context)
+        return await self.template.apply_sidebar_context(request, user, context)

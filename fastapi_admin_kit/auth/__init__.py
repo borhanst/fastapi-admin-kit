@@ -17,12 +17,20 @@ from fastapi_admin_kit.auth.models import (
     User,
     UserPermission,
 )
+from fastapi_admin_kit.auth.protocol import (
+    AdminPermissionProtocol,
+    AdminRoleProtocol,
+    AdminUserProtocol,
+)
 from fastapi_admin_kit.auth.session import (
     SessionBackend,
     SignedCookieSessionBackend,
 )
 
 __all__ = [
+    "AdminPermissionProtocol",
+    "AdminRoleProtocol",
+    "AdminUserProtocol",
     "AuthModelMixin",
     "BcryptHasher",
     "Permission",

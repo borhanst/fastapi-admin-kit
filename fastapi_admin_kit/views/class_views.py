@@ -17,6 +17,7 @@ from fastapi_admin_kit.admin.builtin_models import flush_pending_perm_ops
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.flash import add_flash
 from fastapi_admin_kit.registry import RegisteredModel
+from fastapi_admin_kit.types import FieldError
 from fastapi_admin_kit.views.context import DisplayColumn
 from fastapi_admin_kit.views.renderers import (
     DefaultQueryProvider,
@@ -218,7 +219,7 @@ class ListView(BaseView):
         filter_fields: dict[str, dict[str, Any]] = {}
         for filter_field in self.admin.list_filter:
             filter_fields[filter_field] = await self.query_provider._get_filter_choices(
-                model, filter_field, session
+                request, model, filter_field, session
             )
         return filter_fields
 
@@ -344,13 +345,29 @@ class CreateView(BaseView):
         errors: dict[str, list[str]] | None = None,
         is_create: bool = True,
         checker: Any = None,
+        inline_values: dict[str, dict[str, list[str]]] | None = None,
+        inline_errors: dict[str, dict[int, dict[str, list[str]]]] | None = None,
     ) -> dict[str, Any]:
         """Build form template context."""
         from fastapi_admin_kit.form.pipeline import (
             build_form_context as _build_form_ctx,
         )
+        from fastapi_admin_kit.form.pipeline import (
+            build_inline_formsets,
+        )
         from fastapi_admin_kit.types import PermissionSet
         from fastapi_admin_kit.views.sidebar import inject_sidebar_context
+
+        # Build inline formsets
+        inlines = getattr(self.admin, "inlines", [])
+        inline_formsets = await build_inline_formsets(
+            self.registered,
+            obj=obj,
+            inlines=inlines,
+            request=request,
+            inline_values=inline_values,
+            inline_errors=inline_errors,
+        )
 
         ctx = _build_form_ctx(
             self.registered,
@@ -359,6 +376,7 @@ class CreateView(BaseView):
             errors=errors,
             request=request,
             is_create=is_create,
+            inline_formsets=inline_formsets,
         )
         template_context = {
             "form_context": ctx,
@@ -379,11 +397,12 @@ class CreateView(BaseView):
             "change_form_show_cancel_button": getattr(
                 self.admin, "change_form_show_cancel_button", True
             ),
+            "inline_formsets": ctx.inline_formsets,
         }
         template_context.update(self._get_extra_context(request))
         await inject_sidebar_context(request, template_context)
 
-        template_context = self.admin.get_form_context(template_context, obj, request)
+        template_context = await self.admin.get_form_context(template_context, obj, request)
 
         return template_context
 
@@ -399,6 +418,10 @@ class CreateView(BaseView):
             session.add(obj)
             await session.flush()
             await self._apply_m2m_from_data(obj, m2m_data, session)
+
+            # Save inline objects
+            await self._save_inline_objects(request, obj)
+
             self.admin.after_create(obj, request)
             await flush_pending_perm_ops(request)
             await add_flash(request, "success", f"{self.registered.verbose_name} created.")
@@ -408,6 +431,142 @@ class CreateView(BaseView):
             raise
         url = f"{request.app.state.admin_config['admin_path']}/{self.registered.table_name}/"
         return RedirectResponse(url=url, status_code=303)
+
+    async def _save_inline_objects(self, request: Request, parent_obj: Any) -> None:
+        """Parse and save inline formset objects."""
+        from fastapi_admin_kit.inspection import cast_pk_value
+
+        inlines = getattr(self.admin, "inlines", [])
+        if not inlines:
+            return
+
+        # Use cached form data from form_parser.parse()
+        form_data = getattr(request, "_cached_form_data", None)
+        if form_data is None:
+            form_data = await request.form()
+        session = get_db_session(request)
+
+        for inline_cls in inlines:
+            inline_instance = inline_cls() if isinstance(inline_cls, type) else inline_cls
+            related_model = inline_instance.model
+            if related_model is None:
+                continue
+
+            prefix = f"{related_model.__tablename__}_set"
+
+            # Get FK field
+            fk_field = inline_instance.fk_name
+            if not fk_field:
+                from sqlalchemy import inspect as sa_inspect
+
+                mapper = sa_inspect(related_model)
+                parent_table = self.registered.table_name
+                for rel_key, rel_prop in mapper.relationships.items():
+                    if rel_prop.direction.name == "MANYTOONE":
+                        target_table = rel_prop.mapper.class_.__tablename__
+                        if target_table == parent_table:
+                            local_cols = [c.key for c in rel_prop.local_columns]
+                            if local_cols:
+                                fk_field = local_cols[0]
+                                break
+
+            if not fk_field:
+                continue
+
+            # Parse formset data
+            total_forms = int(form_data.get(f"{prefix}-TOTAL_FORMS", "0"))
+            initial_forms = int(form_data.get(f"{prefix}-INITIAL_FORMS", "0"))
+            deleted_ids: list[str] = []
+
+            # Collect deleted IDs
+            for i in range(initial_forms):
+                delete_key = f"{prefix}-{i}-DELETE"
+                if form_data.get(delete_key) in ("on", "1"):
+                    obj_id = form_data.get(f"{prefix}-{i}-id", "")
+                    if obj_id:
+                        deleted_ids.append(obj_id)
+
+            # Delete marked objects
+            for obj_id in deleted_ids:
+                try:
+                    pk_val = cast_pk_value(related_model, obj_id)
+                    existing = await session.get(related_model, pk_val)
+                    if existing:
+                        await session.delete(existing)
+                except Exception:
+                    pass
+
+            # Get fields to save — use registered columns if inline has no explicit fields
+            from fastapi_admin_kit.registry import AdminRegistry
+
+            related_registry = AdminRegistry()
+            related_registered = related_registry.get(related_model.__tablename__)
+            related_columns = related_registered.columns if related_registered else None
+            fields = inline_instance.get_form_fields(columns=related_columns)
+            if not fields:
+                continue
+
+            # Create/update objects
+            for i in range(total_forms):
+                obj_id = form_data.get(f"{prefix}-{i}-id", "")
+                delete_key = f"{prefix}-{i}-DELETE"
+                if form_data.get(delete_key) in ("on", "1"):
+                    continue
+
+                # Build data dict
+                data: dict[str, Any] = {}
+                for field_name in fields:
+                    val = form_data.get(f"{prefix}-{i}-{field_name}")
+                    if val is not None:
+                        from sqlalchemy import inspect as sa_inspect
+
+                        try:
+                            mapper = sa_inspect(related_model)
+                            rel = mapper.relationships.get(field_name)
+                        except Exception:
+                            rel = None
+
+                        if rel is not None:
+                            local_cols = [c.key for c in rel.local_columns]
+                            fk_col = local_cols[0] if local_cols else None
+                            if val and fk_col:
+                                casted_val = val
+                                try:
+                                    casted_val = cast_pk_value(related_model, val)
+                                except Exception:
+                                    pass
+                                data[fk_col] = casted_val
+                            elif not val and fk_col:
+                                data[fk_col] = None
+                        else:
+                            related_col = None
+                            if related_registered:
+                                related_col = next(
+                                    (c for c in related_registered.columns if c.name == field_name),
+                                    None,
+                                )
+                            if related_col is not None:
+                                from fastapi_admin_kit.inspection import cast_value
+
+                                val = cast_value(related_col, val)
+                            data[field_name] = val
+
+                if obj_id:
+                    try:
+                        pk_val = cast_pk_value(related_model, obj_id)
+                        existing = await session.get(related_model, pk_val)
+                        if existing:
+                            for k, v in data.items():
+                                setattr(existing, k, v)
+                    except Exception:
+                        pass
+                else:
+                    parent_pk_field = self.registered.pk_field or "id"
+                    data[fk_field] = getattr(parent_obj, parent_pk_field, None)
+                    new_obj = related_model(**data)
+                    session.add(new_obj)
+
+            await session.flush()
 
     async def html_response(self, request: Request) -> Response:
         checker = await _resolve_permission_checker(request)
@@ -420,6 +579,24 @@ class CreateView(BaseView):
 
         # POST
         parsed, errors = await self.form_parser.parse(request)
+
+        # Extract perm_data for User model direct permissions
+        if self.registered.table_name == "admin_users":
+            import json
+
+            form = await request.form()
+            perm_data_raw = form.get("perm_data")
+            if perm_data_raw:
+                try:
+                    perm_data = (
+                        json.loads(perm_data_raw)
+                        if isinstance(perm_data_raw, str)
+                        else perm_data_raw
+                    )
+                    request.state._admin_perm_data = perm_data
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
         if errors:
             session = get_db_session(request)
             await session.rollback()
@@ -436,7 +613,18 @@ class CreateView(BaseView):
             return await self.html_renderer.render(request, ctx)
 
         try:
-            parsed = self.admin.validate_create(parsed, request)
+            result = self.admin.validate_create(parsed, request)
+        except FieldError as e:
+            session = get_db_session(request)
+            await session.rollback()
+            ctx = await self._build_form_context(
+                request,
+                values=parsed,
+                errors=e.field_errors,
+                is_create=True,
+                checker=checker,
+            )
+            return await self.html_renderer.render(request, ctx)
         except ValueError as e:
             session = get_db_session(request)
             await session.rollback()
@@ -448,6 +636,8 @@ class CreateView(BaseView):
                 checker=checker,
             )
             return await self.html_renderer.render(request, ctx)
+
+        parsed = result
 
         parsed = self.admin.process_form_data(parsed, request)
 
@@ -518,13 +708,29 @@ class EditView(BaseView):
         is_create: bool = False,
         checker: Any = None,
         rel_labels: dict[str, str] | None = None,
+        inline_values: dict[str, dict[str, list[str]]] | None = None,
+        inline_errors: dict[str, dict[int, dict[str, list[str]]]] | None = None,
     ) -> dict[str, Any]:
         """Build form template context."""
         from fastapi_admin_kit.form.pipeline import (
             build_form_context as _build_form_ctx,
         )
+        from fastapi_admin_kit.form.pipeline import (
+            build_inline_formsets,
+        )
         from fastapi_admin_kit.types import PermissionSet
         from fastapi_admin_kit.views.sidebar import inject_sidebar_context
+
+        # Build inline formsets
+        inlines = getattr(self.admin, "inlines", [])
+        inline_formsets = await build_inline_formsets(
+            self.registered,
+            obj=obj,
+            inlines=inlines,
+            request=request,
+            inline_values=inline_values,
+            inline_errors=inline_errors,
+        )
 
         ctx = _build_form_ctx(
             self.registered,
@@ -534,6 +740,7 @@ class EditView(BaseView):
             request=request,
             is_create=is_create,
             rel_labels=rel_labels,
+            inline_formsets=inline_formsets,
         )
         template_context = {
             "form_context": ctx,
@@ -554,11 +761,12 @@ class EditView(BaseView):
             "change_form_show_cancel_button": getattr(
                 self.admin, "change_form_show_cancel_button", True
             ),
+            "inline_formsets": ctx.inline_formsets,
         }
         template_context.update(self._get_extra_context(request))
         await inject_sidebar_context(request, template_context)
 
-        template_context = self.admin.get_form_context(template_context, obj, request)
+        template_context = await self.admin.get_form_context(template_context, obj, request)
 
         return template_context
 
@@ -605,6 +813,10 @@ class EditView(BaseView):
             await self._apply_m2m_from_data(obj, m2m_data, session)
             self.admin.on_update(obj, parsed, request)
             await session.flush()
+
+            # Save inline objects
+            await self._save_inline_objects(request, obj)
+
             self.admin.after_update(obj, request)
             await flush_pending_perm_ops(request)
             await add_flash(request, "success", f"{self.registered.verbose_name} updated.")
@@ -614,6 +826,142 @@ class EditView(BaseView):
             raise
         url = f"{request.app.state.admin_config['admin_path']}/{self.registered.table_name}/"
         return RedirectResponse(url=url, status_code=303)
+
+    async def _save_inline_objects(self, request: Request, parent_obj: Any) -> None:
+        """Parse and save inline formset objects."""
+        from fastapi_admin_kit.inspection import cast_pk_value
+
+        inlines = getattr(self.admin, "inlines", [])
+        if not inlines:
+            return
+
+        # Use cached form data from form_parser.parse()
+        form_data = getattr(request, "_cached_form_data", None)
+        if form_data is None:
+            form_data = await request.form()
+        session = get_db_session(request)
+
+        for inline_cls in inlines:
+            inline_instance = inline_cls() if isinstance(inline_cls, type) else inline_cls
+            related_model = inline_instance.model
+            if related_model is None:
+                continue
+
+            prefix = f"{related_model.__tablename__}_set"
+
+            # Get FK field
+            fk_field = inline_instance.fk_name
+            if not fk_field:
+                from sqlalchemy import inspect as sa_inspect
+
+                mapper = sa_inspect(related_model)
+                parent_table = self.registered.table_name
+                for rel_key, rel_prop in mapper.relationships.items():
+                    if rel_prop.direction.name == "MANYTOONE":
+                        target_table = rel_prop.mapper.class_.__tablename__
+                        if target_table == parent_table:
+                            local_cols = [c.key for c in rel_prop.local_columns]
+                            if local_cols:
+                                fk_field = local_cols[0]
+                                break
+
+            if not fk_field:
+                continue
+
+            # Parse formset data
+            total_forms = int(form_data.get(f"{prefix}-TOTAL_FORMS", "0"))
+            initial_forms = int(form_data.get(f"{prefix}-INITIAL_FORMS", "0"))
+            deleted_ids: list[str] = []
+
+            # Collect deleted IDs
+            for i in range(initial_forms):
+                delete_key = f"{prefix}-{i}-DELETE"
+                if form_data.get(delete_key) in ("on", "1"):
+                    obj_id = form_data.get(f"{prefix}-{i}-id", "")
+                    if obj_id:
+                        deleted_ids.append(obj_id)
+
+            # Delete marked objects
+            for obj_id in deleted_ids:
+                try:
+                    pk_val = cast_pk_value(related_model, obj_id)
+                    existing = await session.get(related_model, pk_val)
+                    if existing:
+                        await session.delete(existing)
+                except Exception:
+                    pass
+
+            # Get fields to save — use registered columns if inline has no explicit fields
+            from fastapi_admin_kit.registry import AdminRegistry
+
+            related_registry = AdminRegistry()
+            related_registered = related_registry.get(related_model.__tablename__)
+            related_columns = related_registered.columns if related_registered else None
+            fields = inline_instance.get_form_fields(columns=related_columns)
+            if not fields:
+                continue
+
+            # Create/update objects
+            for i in range(total_forms):
+                obj_id = form_data.get(f"{prefix}-{i}-id", "")
+                delete_key = f"{prefix}-{i}-DELETE"
+                if form_data.get(delete_key) in ("on", "1"):
+                    continue
+
+                # Build data dict
+                data: dict[str, Any] = {}
+                for field_name in fields:
+                    val = form_data.get(f"{prefix}-{i}-{field_name}")
+                    if val is not None:
+                        from sqlalchemy import inspect as sa_inspect
+
+                        try:
+                            mapper = sa_inspect(related_model)
+                            rel = mapper.relationships.get(field_name)
+                        except Exception:
+                            rel = None
+
+                        if rel is not None:
+                            local_cols = [c.key for c in rel.local_columns]
+                            fk_col = local_cols[0] if local_cols else None
+                            if val and fk_col:
+                                casted_val = val
+                                try:
+                                    casted_val = cast_pk_value(related_model, val)
+                                except Exception:
+                                    pass
+                                data[fk_col] = casted_val
+                            elif not val and fk_col:
+                                data[fk_col] = None
+                        else:
+                            related_col = None
+                            if related_registered:
+                                related_col = next(
+                                    (c for c in related_registered.columns if c.name == field_name),
+                                    None,
+                                )
+                            if related_col is not None:
+                                from fastapi_admin_kit.inspection import cast_value
+
+                                val = cast_value(related_col, val)
+                            data[field_name] = val
+
+                if obj_id:
+                    try:
+                        pk_val = cast_pk_value(related_model, obj_id)
+                        existing = await session.get(related_model, pk_val)
+                        if existing:
+                            for k, v in data.items():
+                                setattr(existing, k, v)
+                    except Exception:
+                        pass
+                else:
+                    parent_pk_field = self.registered.pk_field or "id"
+                    data[fk_field] = getattr(parent_obj, parent_pk_field, None)
+                    new_obj = related_model(**data)
+                    session.add(new_obj)
+
+            await session.flush()
 
     async def _build_detail_context(
         self,
@@ -680,6 +1028,24 @@ class EditView(BaseView):
 
         # POST
         parsed, errors = await self.form_parser.parse(request, obj=obj)
+
+        # Extract perm_data for User model direct permissions
+        if self.registered.table_name == "admin_users":
+            import json
+
+            form = await request.form()
+            perm_data_raw = form.get("perm_data")
+            if perm_data_raw:
+                try:
+                    perm_data = (
+                        json.loads(perm_data_raw)
+                        if isinstance(perm_data_raw, str)
+                        else perm_data_raw
+                    )
+                    request.state._admin_perm_data = perm_data
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
         if errors:
             session = get_db_session(request)
             await session.rollback()
@@ -699,7 +1065,21 @@ class EditView(BaseView):
             return await self.html_renderer.render(request, ctx)
 
         try:
-            parsed = self.admin.validate_update(obj, parsed, request)
+            result = self.admin.validate_update(obj, parsed, request)
+        except FieldError as e:
+            session = get_db_session(request)
+            await session.rollback()
+            await session.refresh(obj)
+            rel_labels = await self._resolve_rel_labels(obj, request)
+            ctx = await self._build_form_context(
+                request,
+                obj=obj,
+                values=parsed,
+                errors=e.field_errors,
+                checker=checker,
+                rel_labels=rel_labels,
+            )
+            return await self.html_renderer.render(request, ctx)
         except ValueError as e:
             session = get_db_session(request)
             await session.rollback()
@@ -714,6 +1094,8 @@ class EditView(BaseView):
                 rel_labels=rel_labels,
             )
             return await self.html_renderer.render(request, ctx)
+
+        parsed = result
 
         parsed = self.admin.process_form_data(parsed, request)
 
@@ -972,7 +1354,7 @@ class SearchView(BaseView):
                 "name",
                 "title",
             ]
-            base = apply_search_filter(select(model), model, search_fields, q)
+            base = apply_search_filter(request, select(model), model, search_fields, q)
 
             if exclude_id:
                 pk_col = getattr(model, self.registered.pk_field, None)

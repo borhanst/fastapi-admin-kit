@@ -27,7 +27,6 @@ def engine():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    AdminBase.metadata.create_all(engine)
     Product.metadata.create_all(engine)
     return engine
 
@@ -51,6 +50,7 @@ def admin_user(engine):
 
     from fastapi_admin_kit.auth.models import Role, User
 
+    AdminBase.metadata.create_all(engine)
     session_local = sessionmaker(engine)
     session = session_local()
     try:
@@ -91,9 +91,14 @@ def run_async(coro):
 @pytest.fixture
 def admin_app(app, engine, admin_user):
     import asyncio
+    import os
 
     from fastapi_admin_kit import Admin
 
     admin = Admin(app=app, engine=engine, secret_key=SECRET_KEY, auto_discover=False)
-    asyncio.run(admin.setup(app))
+    os.environ["SKIP_CREATE_TABLES"] = "true"
+    try:
+        asyncio.run(admin.setup(app))
+    finally:
+        os.environ.pop("SKIP_CREATE_TABLES", None)
     return app

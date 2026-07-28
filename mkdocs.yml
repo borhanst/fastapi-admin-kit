@@ -59,12 +59,20 @@ nav:
       - Quick Start: getting-started/quickstart.md
       - Configuration: getting-started/configuration.md
   - Guide:
+      - All Features: guide/features.md
       - Model Registration: guide/model-registration.md
       - Authentication & RBAC: guide/auth-rbac.md
       - Widgets & Forms: guide/widgets-forms.md
+      - Themes & UI: guide/themes.md
+      - Inline Editing & Actions: guide/inline-editing-actions.md
+      - Filters: guide/filters.md
+      - Dashboard: guide/dashboard.md
+      - Navigation & Sidebar: guide/navigation.md
       - Audit Logging: guide/audit-logging.md
+      - Storage & File Uploads: guide/storage.md
+      - JSON API: guide/json-api.md
+      - CLI Tools: guide/cli.md
       - Command Palette: guide/command-palette.md
-      # - Plugins: guide/plugins.md
       - Pagination: guide/pagination.md
       - Alembic Setup: guide/alembic-setup.md
   - API Reference:

@@ -209,7 +209,7 @@ async def password_change_post(
     response.delete_cookie(
         key=session_backend.cookie_name,
         path="/",
-        secure=session_backend.secure,
+        secure=session_backend.should_secure(request),
         httponly=True,
         samesite=samesite,
     )

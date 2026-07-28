@@ -26,7 +26,7 @@ async def add_flash(request: Request, level: str, message: str) -> None:
         from starlette.responses import Response
 
         response = Response()
-        session_backend.save(response, data)
+        session_backend.save(response, data, request=request)
 
 
 async def get_flash_messages(request: Request) -> list[dict[str, str]]:
@@ -43,5 +43,5 @@ async def get_flash_messages(request: Request) -> list[dict[str, str]]:
         from starlette.responses import Response
 
         response = Response()
-        session_backend.save(response, data)
+        session_backend.save(response, data, request=request)
     return messages

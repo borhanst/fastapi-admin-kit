@@ -1,6 +1,8 @@
 # FastAPI Admin Kit
 
-A drop-in admin panel for FastAPI + SQLAlchemy apps.
+A drop-in admin panel for FastAPI + SQLAlchemy + SQLModel apps.
+
+![FastAPI Admin Kit Dashboard](assets/images/admin-dashboard.png)
 
 ---
 
@@ -13,17 +15,36 @@ A drop-in admin panel for FastAPI + SQLAlchemy apps.
 - **Fully Customizable** — Override widgets, templates, routes, and behavior via protocols
 - **Global Search / Command Palette** — Press `⌘K` / `Ctrl+K` to instantly search models and fields
 - **Inline Editing** — Edit records directly from the list view with a 3-dot action menu
+- **CLI Tools** — Create superusers, manage users, run migrations
+- **Async-First** — Built for async FastAPI with support for PostgreSQL, MySQL, and SQLite
+- **SQLModel Support** — Works with both SQLAlchemy and SQLModel models
 
 ## Quick Example
 
 ```python
+import os
+import secrets
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from sqlalchemy import Column, Integer, String, Float
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
+
 from fastapi_admin_kit import Admin
+from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
+from fastapi_admin_kit.auth.mixins import AuthModelMixin
+
 
 class Base(DeclarativeBase):
     pass
+
+
+class User(AuthModelMixin, Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), unique=True, nullable=False)
+
 
 class Product(Base):
     __tablename__ = "products"
@@ -31,8 +52,32 @@ class Product(Base):
     name = Column(String(100), nullable=False)
     price = Column(Float, nullable=False)
 
-app = FastAPI()
-admin = Admin(app, prefix="/admin")
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./app.db")
+SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
+
+engine = create_async_engine(DATABASE_URL)
+async_session = sessionmaker(engine, class_=AsyncSession)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    await admin.setup()
+    yield
+    await engine.dispose()
+
+
+app = FastAPI(lifespan=lifespan)
+admin = Admin(
+    app=app,
+    engine=engine,
+    base=Base,
+    secret_key=SECRET_KEY,
+    auth_model=User,
+    auth_backend=BuiltinAuthBackend(),
+)
 admin.register(Product)
 ```
 
@@ -43,12 +88,14 @@ That's it — you now have a full admin panel at `/admin/products/` with list, c
 | Layer | Technology |
 |-------|------------|
 | Web framework | FastAPI |
-| ORM | SQLAlchemy 2.x |
+| ORM | SQLAlchemy 2.x / SQLModel |
 | Templating | Jinja2 |
 | CSS | Tailwind CSS |
 | Interactivity | HTMX |
 | Micro-interactions | Alpine.js |
-| Icons | Google Icon |
+| Icons | Google Material Symbols |
+| Auth | Session-based with bcrypt |
+| Database | PostgreSQL, MySQL, SQLite (async) |
 
 ## Getting Started
 

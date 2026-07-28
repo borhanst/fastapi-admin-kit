@@ -16,7 +16,6 @@ from fastapi_admin_kit import Admin
 from fastapi_admin_kit.audit.models import AuditLog  # noqa: F401
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
 from fastapi_admin_kit.auth.models import Role, User
-from fastapi_admin_kit.models.base import Base as AdminBase
 from tests.conftest import SECRET_KEY, create_session_cookie, run_async
 from tests.test_registry import Category, Product
 
@@ -26,7 +25,6 @@ def engine():
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     sync_engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False})
-    AdminBase.metadata.create_all(sync_engine)
     Product.metadata.create_all(sync_engine)
     sync_engine.dispose()
     async_engine = create_async_engine(
@@ -40,32 +38,7 @@ def engine():
 
 
 @pytest.fixture
-def admin_user(engine):
-    sync_eng = create_engine(
-        f"sqlite:///{engine.url.database}",
-        connect_args={"check_same_thread": False},
-    )
-    with Session(sync_eng) as session:
-        role = Role(name="SuperAdmin")
-        session.add(role)
-        session.flush()
-        user = User(
-            email="admin@test.com",
-            hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
-            full_name="Admin User",
-            is_superuser=True,
-            is_active=True,
-        )
-        user.roles.append(role)
-        session.add(user)
-        session.commit()
-        session.refresh(user)
-        sync_eng.dispose()
-        return user
-
-
-@pytest.fixture
-def client(engine, admin_user):
+def client(engine):
     app = FastAPI()
     admin = Admin(
         app=app,
@@ -77,6 +50,32 @@ def client(engine, admin_user):
     asyncio.run(admin.setup(app))
 
     admin.register(Product)
+
+    sync_eng = create_engine(
+        f"sqlite:///{engine.url.database}",
+        connect_args={"check_same_thread": False},
+    )
+    with Session(sync_eng) as session:
+        from sqlalchemy import select as sa_select
+
+        result = session.execute(sa_select(Role).limit(1))
+        role = result.scalar_one_or_none()
+        if role is None:
+            role = Role(name="SuperAdmin")
+            session.add(role)
+            session.flush()
+        admin_user = User(
+            email="admin@test.com",
+            hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
+            full_name="Admin User",
+            is_superuser=True,
+            is_active=True,
+        )
+        admin_user.roles.append(role)
+        session.add(admin_user)
+        session.commit()
+        session.refresh(admin_user)
+    sync_eng.dispose()
 
     sync_eng = create_engine(
         f"sqlite:///{engine.url.database}",

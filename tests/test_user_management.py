@@ -32,9 +32,9 @@ class TestUserManagementPermissions:
 
     def test_superuser_required_for_create(self):
         """User create requires superuser role."""
-        from fastapi_admin_kit.views.users import _require_superuser
+        from fastapi_admin_kit.auth.dependencies import require_superuser
 
-        assert _require_superuser is not None
+        assert require_superuser is not None
 
 
 class TestSoftDelete:

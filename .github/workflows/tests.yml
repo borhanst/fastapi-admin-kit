@@ -24,7 +24,9 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Lint with ruff
-        run: ruff check fastapi_admin_kit/
+        run: |
+          ruff check fastapi_admin_kit/
+          ruff format --check fastapi_admin_kit/
 
-      - name: Run tests
-        run: pytest
+      - name: Run tests with coverage
+        run: pytest --cov=fastapi_admin_kit --cov-report=term-missing

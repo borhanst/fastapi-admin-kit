@@ -95,6 +95,19 @@
     </div>
     {% endif %}
 
+    {# Inline formsets #}
+    {% if inline_formsets is defined and inline_formsets %}
+    {% for formset in inline_formsets %}
+    <div class="fieldset">
+      {% if formset.inline_type == "tabular" %}
+        {% include "partials/inline_tabular.html" %}
+      {% else %}
+        {% include "partials/inline_stacked.html" %}
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
     <div class="sticky bottom-0 flex items-center justify-between p-4" style="background: var(--surface-base); border: 1px solid var(--surface-border); border-radius: var(--radius-lg);">
       <div class="text-sm" style="color: var(--text-secondary);" x-show="unsaved" x-transition>
         You have unsaved changes

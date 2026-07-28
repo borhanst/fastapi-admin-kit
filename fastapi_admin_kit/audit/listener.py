@@ -1,13 +1,14 @@
 """Audit listener — SQLAlchemy event listeners that write audit rows atomically.
 
-AuditLog rows are created inside ``before_flush`` and added to the session
-via ``session.add()``.  SQLAlchemy re-runs ``before_flush`` until no new
-pending objects appear, so the audit rows ride along in the same flush pass.
+AuditLog rows are created inside ``before_flush`` (UPDATE/DELETE) and
+``after_flush_postexec`` (CREATE) and added to the session via ``session.add()``.
+CREATE uses ``after_flush_postexec`` so the auto-generated primary key is available.
 No IO, no queries, no ``MissingGreenlet`` — just already-loaded attributes.
 """
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from sqlalchemy import event
@@ -17,6 +18,9 @@ from sqlalchemy.orm.attributes import instance_state
 from fastapi_admin_kit.audit.context import get_audit_context
 from fastapi_admin_kit.audit.diff import serialize_value
 from fastapi_admin_kit.audit.models import AuditLog
+
+_pending_creates: dict[int, list[tuple[Any, dict[str, Any], dict[str, Any]]]] = {}
+_pending_lock = threading.Lock()
 
 
 def is_registered_model(obj: Any, registry: Any) -> bool:
@@ -51,31 +55,29 @@ def _snapshot_from_committed(obj: Any) -> dict[str, Any]:
 
 
 def _snapshot_current(obj: Any) -> dict[str, Any]:
-    """Snapshot all mapped columns of a SQLAlchemy model instance."""
-    if not hasattr(obj, "__table__"):
-        return {}
-    from sqlalchemy.inspection import inspect as sa_inspect
+    """Snapshot all mapped columns of a SQLAlchemy model instance.
 
-    mapper = sa_inspect(obj.__class__)
-    data: dict[str, Any] = {}
-    for column in mapper.columns:
-        data[column.key] = serialize_value(getattr(obj, column.key))
-    return data
+    Delegates to the SqlAlchemyAuditBackend. Returns {} for non-model objects.
+    """
+    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyAuditBackend
+
+    backend = SqlAlchemyAuditBackend()
+    try:
+        return backend.snapshot(obj)
+    except ValueError:
+        return {}
 
 
 def _compute_diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
     """Compute changed fields between two snapshots.
 
     Returns ``{"field": {"old": ..., "new": ...}}`` for each difference.
+    Delegates to the SqlAlchemyAuditBackend.
     """
-    diff: dict[str, Any] = {}
-    all_keys = set(before.keys()) | set(after.keys())
-    for key in all_keys:
-        old_val = before.get(key)
-        new_val = after.get(key)
-        if old_val != new_val:
-            diff[key] = {"old": old_val, "new": new_val}
-    return diff
+    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyAuditBackend
+
+    backend = SqlAlchemyAuditBackend()
+    return backend.compute_diff(before, after)
 
 
 def _build_audit_row(
@@ -107,7 +109,7 @@ def attach_audit_listener(
     session_factory: Any,
     registry: Any,
 ) -> None:
-    """Set up SQLAlchemy ``before_flush`` listener for audit logging.
+    """Set up SQLAlchemy ``before_flush`` and ``after_flush_postexec`` listeners.
 
     Args:
         session_factory: The session factory (sync or async).
@@ -116,23 +118,27 @@ def attach_audit_listener(
 
     @event.listens_for(Session, "before_flush")
     def before_flush(session: Session, flush_context: Any, instances: Any) -> None:
-        """Create AuditLog rows for all tracked mutations.
+        """Capture new objects and create AuditLog rows for UPDATE/DELETE.
 
-        Runs inside the same flush pass — ``session.add()`` puts the
-        AuditLog into the pending set and SQLAlchemy will re-run
-        ``before_flush`` until no new objects appear.  No queries, no
-        lazy-loads, only already-loaded attribute history.
+        New objects are stored to create audit rows in ``after_flush_postexec``
+        where their auto-generated primary keys are available.
         """
         context = get_audit_context()
+        session_id = id(session)
 
-        # ── INSERT ──────────────────────────────────────────────────
+        # ── INSERT (capture for after_flush_postexec) ───────────────
+        new_items = []
         for obj in list(session.new):
             if not is_registered_model(obj, registry):
                 continue
             if obj.__tablename__ == AuditLog.__tablename__:
                 continue
-            row = _build_audit_row(obj, "CREATE", context)
-            session.add(row)
+            snap = _snapshot_current(obj)
+            new_items.append((obj, snap, context))
+
+        if new_items:
+            with _pending_lock:
+                _pending_creates[session_id] = new_items
 
         # ── UPDATE ──────────────────────────────────────────────────
         for obj in list(session.dirty):
@@ -156,4 +162,25 @@ def attach_audit_listener(
                 continue
             snap = _snapshot_current(obj)
             row = _build_audit_row(obj, "DELETE", context, snapshot_data=snap)
+            session.add(row)
+
+    @event.listens_for(Session, "after_flush_postexec")
+    def after_flush_postexec(session: Session, flush_context: Any) -> None:
+        """Create AuditLog rows for CREATE mutations after flush.
+
+        This runs after the flush completes, so auto-generated primary keys
+        are available on the ORM objects.
+        """
+        session_id = id(session)
+
+        with _pending_lock:
+            pending = _pending_creates.pop(session_id, [])
+
+        if not pending:
+            return
+
+        for obj, snap, context in pending:
+            # Update snapshot with the now-available id
+            snap["id"] = getattr(obj, "id", None)
+            row = _build_audit_row(obj, "CREATE", context, snapshot_data=snap)
             session.add(row)

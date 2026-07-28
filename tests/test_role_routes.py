@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from fastapi_admin_kit.auth.csrf import require_csrf_token
+from fastapi_admin_kit.auth.dependencies import require_superuser
 from fastapi_admin_kit.auth.models import (
     Permission,
     Role,
@@ -17,9 +18,6 @@ from fastapi_admin_kit.auth.models import (
 from fastapi_admin_kit.auth.session import SignedCookieSessionBackend
 from fastapi_admin_kit.db import SessionMiddleware
 from fastapi_admin_kit.models.base import Base as AdminBase
-from fastapi_admin_kit.views.roles import (
-    _require_superuser,
-)
 from fastapi_admin_kit.views.roles import (
     router as roles_router,
 )
@@ -127,7 +125,7 @@ def test_role_create_and_save_persist_junction_async():
     app.include_router(roles_router, prefix="/admin")
     app.add_middleware(SessionMiddleware)
 
-    app.dependency_overrides[_require_superuser] = lambda: _DummySuperuser()
+    app.dependency_overrides[require_superuser] = lambda: _DummySuperuser()
     app.dependency_overrides[require_csrf_token] = lambda: True
 
     async def _seed():

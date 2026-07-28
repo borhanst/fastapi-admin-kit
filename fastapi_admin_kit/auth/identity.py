@@ -70,10 +70,14 @@ async def resolve_user(request: Request, user_id: int | str | None) -> AdminUser
             try:
                 role_ids = list(getattr(cached, "role_ids", []))
             except Exception:
+                import logging
+
+                logging.getLogger(__name__).debug("Could not read role_ids from cached user")
                 role_ids = []
             request.state.admin_user_snapshot = {
                 "id": getattr(cached, "id", None),
                 "email": getattr(cached, "email", None),
+                "full_name": getattr(cached, "full_name", None),
                 "is_superuser": bool(getattr(cached, "is_superuser", False)),
                 "role_ids": role_ids,
             }
@@ -101,10 +105,14 @@ async def resolve_user(request: Request, user_id: int | str | None) -> AdminUser
     try:
         role_ids = list(getattr(user, "role_ids", []))
     except Exception:
+        import logging
+
+        logging.getLogger(__name__).debug("Could not read role_ids from user")
         role_ids = []
     request.state.admin_user_snapshot = {
         "id": getattr(user, "id", None),
         "email": getattr(user, "email", None),
+        "full_name": getattr(user, "full_name", None),
         "is_superuser": bool(getattr(user, "is_superuser", False)),
         "role_ids": role_ids,
     }

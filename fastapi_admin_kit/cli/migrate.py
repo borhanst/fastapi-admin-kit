@@ -4,8 +4,20 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import re
 import sys
+
+logger = logging.getLogger(__name__)
+
+_TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validate_identifier(name: str, kind: str = "table") -> str:
+    """Validate a SQL identifier to prevent injection. Raises ValueError if invalid."""
+    if not _TABLE_NAME_RE.match(name):
+        raise ValueError(f"Invalid {kind} name: {name!r}")
+    return name
 
 
 async def _migrate_permissions(args: argparse.Namespace) -> None:
@@ -21,7 +33,10 @@ async def _migrate_permissions(args: argparse.Namespace) -> None:
     from .user import _resolve_database_url
 
     database_url = _resolve_database_url(args.database_url)
-    engine = create_async_engine(database_url, poolclass=NullPool)
+    connect_args = {}
+    if database_url.startswith("sqlite"):
+        connect_args = {"timeout": 30}
+    engine = create_async_engine(database_url, poolclass=NullPool, connect_args=connect_args)
 
     # Pattern: old permissions have names like "admin_users", "product_view"
     # New permissions have names like "1:admin_users", "2:product_view"
@@ -87,8 +102,8 @@ async def _migrate_permissions(args: argparse.Namespace) -> None:
 
     await engine.dispose()
 
-    print(f"Converted {converted} permission(s) to per-role format.")
-    print(f"Roles processed: {len(roles)}, skipped (no old perms): {skipped}")
+    logger.info("Converted %d permission(s) to per-role format.", converted)
+    logger.info("Roles processed: %d, skipped (no old perms): %d", len(roles), skipped)
 
 
 async def _migrate_tables(args: argparse.Namespace) -> None:
@@ -105,11 +120,14 @@ async def _migrate_tables(args: argparse.Namespace) -> None:
     from .user import _resolve_database_url
 
     database_url = _resolve_database_url(args.database_url)
-    engine = create_async_engine(database_url, poolclass=NullPool)
+    connect_args = {}
+    if database_url.startswith("sqlite"):
+        connect_args = {"timeout": 30}
+    engine = create_async_engine(database_url, poolclass=NullPool, connect_args=connect_args)
 
     names = args.tables
     if not names:
-        print("Error: No tables specified. Usage: fak migrate User Product")
+        logger.error("No tables specified. Usage: fak migrate User Product")
         await engine.dispose()
         sys.exit(1)
 
@@ -120,9 +138,10 @@ async def _migrate_tables(args: argparse.Namespace) -> None:
     async with engine.begin() as conn:
         for input_name, table_name in resolved.items():
             if table_name not in AdminBase.metadata.tables:
-                print(f"Warning: '{input_name}' not found in metadata, skipping.")
+                logger.warning("'%s' not found in metadata, skipping.", input_name)
                 continue
 
+            safe_name = _validate_identifier(table_name)
             table = AdminBase.metadata.tables[table_name]
 
             # Get current model indexes
@@ -133,53 +152,53 @@ async def _migrate_tables(args: argparse.Namespace) -> None:
 
             # Drop indexes that exist in DB but not in model
             result = await conn.execute(
-                text(
-                    f"SELECT name, sql FROM sqlite_master "
-                    f"WHERE type='index' AND tbl_name='{table_name}'"
-                )
+                text("SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name=:tbl"),
+                {"tbl": safe_name},
             )
             for idx_name, idx_sql in result.fetchall():
                 if idx_name.startswith("sqlite_"):
                     continue  # Skip internal indexes
                 if idx_name not in model_indexes:
+                    safe_idx = _validate_identifier(idx_name, "index")
                     try:
-                        await conn.execute(text(f"DROP INDEX {idx_name}"))
-                        print(f"  Dropped index '{idx_name}'")
+                        await conn.execute(text(f"DROP INDEX {safe_idx}"))
+                        logger.info("Dropped index '%s'", idx_name)
                         altered += 1
                     except Exception:
                         pass
 
             # Check if table exists
             result = await conn.execute(
-                text(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name=:tbl"),
+                {"tbl": safe_name},
             )
             table_exists = result.scalar_one_or_none() is not None
 
             if not table_exists:
                 # Create table from model
                 await conn.run_sync(table.create)
-                print(f"  Created table '{table_name}'")
+                logger.info("Created table '%s'", table_name)
                 altered += 1
                 continue
 
-            result = await conn.execute(text(f"PRAGMA table_info({table_name})"))
+            result = await conn.execute(text(f"PRAGMA table_info({safe_name})"))
             existing_cols = {row[1] for row in result.fetchall()}
             model_cols = {col.name for col in table.columns}
 
             # If columns differ, recreate table
             if existing_cols != model_cols:
                 # Backup existing data
-                result = await conn.execute(text(f"SELECT * FROM {table_name}"))
+                result = await conn.execute(text(f"SELECT * FROM {safe_name}"))
                 rows = result.fetchall()
                 col_names_db = [
                     row[1]
                     for row in (
-                        await conn.execute(text(f"PRAGMA table_info({table_name})"))
+                        await conn.execute(text(f"PRAGMA table_info({safe_name})"))
                     ).fetchall()
                 ]
 
                 # Drop old table
-                await conn.execute(text(f"DROP TABLE {table_name}"))
+                await conn.execute(text(f"DROP TABLE {safe_name}"))
 
                 # Create new table from model
                 await conn.run_sync(table.create)
@@ -191,21 +210,21 @@ async def _migrate_tables(args: argparse.Namespace) -> None:
                     if insert_cols:
                         placeholders = ", ".join([f":{c}" for c in insert_cols])
                         cols_str = ", ".join(insert_cols)
-                        sql = text(f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders})")
+                        sql = text(f"INSERT INTO {safe_name} ({cols_str}) VALUES ({placeholders})")
                         for row in rows:
                             data = dict(zip(col_names_db, row))
                             filtered = {k: v for k, v in data.items() if k in insert_cols}
                             await conn.execute(sql, filtered)
 
-                print(f"  Recreated table '{table_name}'")
+                logger.info("Recreated table '%s'", table_name)
                 altered += 1
 
     await engine.dispose()
 
     if altered == 0:
-        print("No changes needed. All columns up to date.")
+        logger.info("No changes needed. All columns up to date.")
     else:
-        print(f"Migration complete. {altered} table(s) updated.")
+        logger.info("Migration complete. %d table(s) updated.", altered)
 
 
 def register_migrate_commands(subparsers) -> None:

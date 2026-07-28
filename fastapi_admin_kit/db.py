@@ -7,6 +7,7 @@ a fresh session for every incoming request.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -24,30 +25,35 @@ def create_session_factory(
     )
 
 
-def get_db_session(request: Request) -> AsyncSession:
-    """Return the per-request ``AsyncSession``.
+def _wrap_session(session: Any) -> Any:
+    """Wrap a raw session in ``SqlAlchemySessionAdapter``."""
+    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
+
+    return SqlAlchemySessionAdapter(session)
+
+
+def get_db_session(request: Request) -> Any:
+    """Return the per-request ``SqlAlchemySessionAdapter`` (implements ``SessionBackend``).
 
     The session is created by :class:`SessionMiddleware` and stored on
     ``scope["state"]["admin_db_session"]`` (accessible via
     ``request.state.admin_db_session``).  Falls back to the legacy
     ``app.state.admin_db_session`` when the middleware is not active.
     """
+    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
+
     session = getattr(request.state, "admin_db_session", None)
     if session is not None:
-        if isinstance(session, AsyncSession):
+        if isinstance(session, SqlAlchemySessionAdapter):
             return session
-        from fastapi_admin_kit.db import SyncSessionWrapper
-
-        return SyncSessionWrapper(session)
+        return _wrap_session(session)
     real_app = getattr(request.scope, "app", None) or request.app
     legacy = getattr(real_app.state, "admin_db_session", None)
     if legacy is not None:
-        if isinstance(legacy, AsyncSession):
+        if isinstance(legacy, SqlAlchemySessionAdapter):
             return legacy
-        from fastapi_admin_kit.db import SyncSessionWrapper
-
-        return SyncSessionWrapper(legacy)
-    return legacy
+        return _wrap_session(legacy)
+    return _wrap_session(legacy)  # type: ignore[arg-type]
 
 
 class SessionMiddleware:
@@ -106,28 +112,50 @@ class SessionMiddleware:
 
 
 class SyncSessionWrapper:
-    """Wraps a sync SQLAlchemy Session to provide an async-compatible interface."""
+    """Wraps a sync SQLAlchemy Session to provide an async-compatible interface.
+
+    Also implements :class:`SessionBackend` (via ``SqlAlchemySessionAdapter``).
+    """
 
     def __init__(self, session: Any) -> None:
         self._session = session
+        from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
+
+        self._adapter = SqlAlchemySessionAdapter(session)
+
+    @property
+    def adapter(self) -> Any:
+        return self._adapter
+
+    def get(self, model: type, pk: Any) -> Any | None:
+        return self._adapter.get(model, pk)
+
+    def add(self, obj: Any) -> None:
+        self._adapter.add(obj)
+
+    def flush(self) -> None:
+        self._adapter.flush()
+
+    def delete(self, obj: Any) -> None:
+        self._adapter.delete(obj)
+
+    def refresh(self, obj: Any, attributes: Sequence[str] | None = None) -> None:
+        self._adapter.refresh(obj, attributes)
+
+    def commit(self) -> None:
+        self._adapter.commit()
+
+    def rollback(self) -> None:
+        self._adapter.rollback()
+
+    def close(self) -> None:
+        self._adapter.close()
 
     async def execute(self, *args: Any, **kwargs: Any) -> Any:
         return self._session.execute(*args, **kwargs)
 
-    async def commit(self) -> None:
-        self._session.commit()
-
-    async def rollback(self) -> None:
-        self._session.rollback()
-
-    async def close(self) -> None:
-        self._session.close()
-
     async def merge(self, *args: Any, **kwargs: Any) -> Any:
         return self._session.merge(*args, **kwargs)
-
-    async def flush(self) -> None:
-        self._session.flush()
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._session, name)

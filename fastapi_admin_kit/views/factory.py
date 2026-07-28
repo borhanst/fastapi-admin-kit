@@ -9,6 +9,9 @@ from fastapi.responses import RedirectResponse
 from starlette.datastructures import UploadFile
 
 from fastapi_admin_kit.admin.builtin_models import flush_pending_perm_ops
+from fastapi_admin_kit.auth.dependencies import (
+    resolve_permission_checker as _resolve_permission_checker,
+)
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.flash import add_flash
 from fastapi_admin_kit.registry import RegisteredModel
@@ -167,30 +170,6 @@ async def _resolve_rel_labels(
 def _get_storage(request: Request):
     """Get the storage backend from app.state, or None."""
     return getattr(request.app.state, "admin_storage", None)
-
-
-async def _resolve_permission_checker(request: Request) -> Any:
-    """Resolve a PermissionChecker for the current request.
-
-    Returns None if the user is not authenticated or the checker cannot be built.
-    Delegates current-user resolution to :mod:`fastapi_admin_kit.auth.identity`, the
-    single request-authentication seam — so the user is loaded per request on
-    ``request.state.admin_user`` and never cached on ``app.state`` (which
-    previously leaked identity across concurrent requests).
-    """
-    from fastapi_admin_kit.auth.identity import get_current_user_from_cookie
-    from fastapi_admin_kit.auth.permissions import PermissionChecker
-
-    user = await get_current_user_from_cookie(request)
-    if user is None:
-        return None
-
-    async_session = get_db_session(request)
-    if async_session is None:
-        return None
-
-    snapshot = getattr(request.state, "admin_user_snapshot", None)
-    return PermissionChecker(session=async_session, user=user, user_snapshot=snapshot)
 
 
 async def _handle_file_field(
