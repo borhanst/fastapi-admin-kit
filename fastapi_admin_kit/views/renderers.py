@@ -558,7 +558,7 @@ class DefaultQueryProvider:
                     from sqlalchemy.orm import RelationshipProperty
 
                     if hasattr(col, "property") and isinstance(col.property, RelationshipProperty):
-                        fk_cols = list(col.property.remote_side)
+                        fk_cols = list(col.property.local_columns)
                         if fk_cols:
                             col = getattr(model, fk_cols[0].key)
                             # Cast filter value to the FK column's Python type
