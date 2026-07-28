@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import inspect as sa_inspect
 
-from fastapi_admin_kit.types import ColumnMeta, RelationMeta
+from fastapi_admin_kit.inspection.types import ColumnMeta, RelationMeta
 
 if TYPE_CHECKING:
     from fastapi_admin_kit.admin.admin_database import AdminDatabase
@@ -128,6 +128,19 @@ class SqlAlchemyIntrospectionAdapter:
         """Return a single relationship descriptor by name, or None."""
         mapper = sa_inspect(model)
         return mapper.relationships.get(name)
+
+    def get_relationship_local_columns(self, model: type, name: str) -> list[str]:
+        """Return the local column key(s) for a relationship.
+
+        For MANYTOONE relationships, these are the foreign key columns.
+        For ONETOMANY/MANYTOMANY, returns the local columns that participate
+        in the relationship (may be empty for purely reverse relationships).
+        """
+        mapper = sa_inspect(model)
+        rel = mapper.relationships.get(name)
+        if rel is None:
+            return []
+        return [c.key for c in rel.local_columns]
 
     def get_column_type_name(self, model: type, field_name: str) -> str | None:
         """Return the SQLAlchemy type class name for a column, or None."""

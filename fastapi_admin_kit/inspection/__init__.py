@@ -10,7 +10,7 @@ import re
 from typing import Any
 
 from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyIntrospectionAdapter
-from fastapi_admin_kit.types import ColumnMeta, RelationMeta
+from fastapi_admin_kit.inspection.types import ColumnMeta, RelationMeta
 
 _inspector = SqlAlchemyIntrospectionAdapter()
 

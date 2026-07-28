@@ -47,7 +47,7 @@ async def build_inline_formsets(
     checker = None
     if request is not None:
         try:
-            from fastapi_admin_kit.views.factory import _resolve_permission_checker
+            from fastapi_admin_kit.views.renderers import _resolve_permission_checker
 
             checker = await _resolve_permission_checker(request)
         except Exception:
