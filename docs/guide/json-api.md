@@ -88,6 +88,12 @@ The JSON API requires the `pyjwt` package:
 pip install fastapi-admin-kit[full]
 ```
 
+Or with uv:
+
+```bash
+uv add fastapi-admin-kit[full]
+```
+
 ## RBAC
 
 The API uses the same permission system as the HTML admin:

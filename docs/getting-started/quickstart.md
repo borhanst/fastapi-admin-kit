@@ -86,6 +86,13 @@ pip install fastapi-admin-kit[full]
 uvicorn main:app --reload
 ```
 
+Or with uv:
+
+```bash
+uv add fastapi-admin-kit[full]
+uvicorn main:app --reload
+```
+
 ## Step 3: Access the Admin
 
 Open your browser and go to:

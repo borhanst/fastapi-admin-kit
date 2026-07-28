@@ -23,6 +23,8 @@ class ExportBase(ABC):
     include_header: bool = True
     max_rows: int | None = None
     queryset_filter: callable | None = None
+    include_serial: bool = True
+    serial_header: str = "No."
 
     def __init__(self, registered: Any) -> None:
         self.registered = registered
@@ -50,10 +52,11 @@ class ExportBase(ABC):
         """Get the list of columns to export.
 
         Returns configured columns or all model columns.
+        Excludes primary key columns by default.
         """
         if self.columns:
             return self.columns
-        return [c.name for c in self.registered.columns]
+        return [c.name for c in self.registered.columns if not c.primary_key]
 
     def get_headers(self) -> dict[str, str]:
         """Get column headers for export.
@@ -107,13 +110,19 @@ class ExportBase(ABC):
         writer = csv.writer(wrapper, delimiter=self.delimiter)
 
         if self.include_header:
-            writer.writerow([headers.get(col, col) for col in columns])
+            header_row = []
+            if self.include_serial:
+                header_row.append(self.serial_header)
+            header_row.extend([headers.get(col, col) for col in columns])
+            writer.writerow(header_row)
 
         row_count = 0
         for obj in rows:
             if self.max_rows and row_count >= self.max_rows:
                 break
             row = []
+            if self.include_serial:
+                row.append(str(row_count + 1))
             for col in columns:
                 value = self.get_value(obj, col)
                 value = self.format_value(value, col)

@@ -555,7 +555,9 @@ class Admin:
                 from fastapi_admin_kit.db import create_session_factory
 
                 session_factory = create_session_factory(engine)
-                from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyAuditBackend
+                from fastapi_admin_kit.backends.sqlalchemy import (
+                    SqlAlchemyAuditBackend,
+                )
 
                 audit_backend = SqlAlchemyAuditBackend()
                 audit_backend.attach_listeners(session_factory, self.registry)
@@ -736,7 +738,9 @@ class Admin:
         # Unified signing-key source for sessions, CSRF, and JWT (see AdminState).
         app.state.admin_secret_key = state.secret_key
         # Multi-ORM backend: store composed backend and derive individual adapters
-        from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
+        from fastapi_admin_kit.backends.sqlalchemy import (
+            SqlAlchemySessionAdapter,
+        )
 
         app.state.admin_backend = self.backend
         app.state.admin_session_backend_class = SqlAlchemySessionAdapter

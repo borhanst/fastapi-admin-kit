@@ -171,7 +171,11 @@ class ModelAdmin:
         return data
 
     def save_model(
-        self, obj: Any, data: dict[str, Any], request: Any = None, is_create: bool = False
+        self,
+        obj: Any,
+        data: dict[str, Any],
+        request: Any = None,
+        is_create: bool = False,
     ) -> None:
         """Custom save logic. Override for full control over save flow.
 
@@ -370,7 +374,10 @@ class ModelAdmin:
     ) -> list[FieldMeta]:
         """Return FieldMeta list for the inline edit form."""
         all_fields = self.get_form_fields(
-            obj=obj, request=request, columns=columns, relationships=relationships
+            obj=obj,
+            request=request,
+            columns=columns,
+            relationships=relationships,
         )
         if self.inline_edit_fields is not None:
             allowed = set(self.inline_edit_fields)
@@ -409,7 +416,9 @@ class ModelAdmin:
         """
         if self.export_formats:
             return self.export_formats
-        from fastapi_admin_kit.export_import.registry import get_available_export_formats
+        from fastapi_admin_kit.export_import.registry import (
+            get_available_export_formats,
+        )
 
         formats = {}
         for name in get_available_export_formats():
@@ -423,7 +432,9 @@ class ModelAdmin:
         """
         if self.import_formats:
             return self.import_formats
-        from fastapi_admin_kit.export_import.registry import get_available_import_formats
+        from fastapi_admin_kit.export_import.registry import (
+            get_available_import_formats,
+        )
 
         formats = {}
         for name in get_available_import_formats():
@@ -446,7 +457,9 @@ class ModelAdmin:
         format_class = formats[format_name]
         if format_class is None:
             # Use default from registry
-            from fastapi_admin_kit.export_import.registry import get_export_class
+            from fastapi_admin_kit.export_import.registry import (
+                get_export_class,
+            )
 
             return get_export_class(format_name)
         return format_class
@@ -467,7 +480,9 @@ class ModelAdmin:
         format_class = formats[format_name]
         if format_class is None:
             # Use default from registry
-            from fastapi_admin_kit.export_import.registry import get_import_class
+            from fastapi_admin_kit.export_import.registry import (
+                get_import_class,
+            )
 
             return get_import_class(format_name)
         return format_class

@@ -56,8 +56,15 @@ class ExcelExport(ExportBase):
         header_font = Font(bold=True, color="FFFFFF")
         header_fill = PatternFill(start_color="0EA5E9", end_color="0EA5E9", fill_type="solid")
 
+        # Calculate column offset for serial number
+        col_offset = 1 if self.include_serial else 0
+
         # Write headers
-        for col_idx, col in enumerate(columns, 1):
+        if self.include_serial:
+            cell = ws.cell(row=1, column=1, value=self.serial_header)
+            cell.font = header_font
+            cell.fill = header_fill
+        for col_idx, col in enumerate(columns, 1 + col_offset):
             cell = ws.cell(row=1, column=col_idx, value=headers.get(col, col))
             cell.font = header_font
             cell.fill = header_fill
@@ -69,19 +76,30 @@ class ExcelExport(ExportBase):
                 if self.max_rows and row_count >= self.max_rows:
                     break
                 row_count += 1
-                for col_idx, col in enumerate(columns, 1):
+                if self.include_serial:
+                    ws.cell(row=row_count + 1, column=1, value=row_count)
+                for col_idx, col in enumerate(columns, 1 + col_offset):
                     value = self.get_value(obj, col)
                     value = self.format_value(value, col)
                     ws.cell(row=row_count + 1, column=col_idx, value=value)
 
         # Auto-adjust column widths
-        for col_idx, col in enumerate(columns, 1):
+        for col_idx, col in enumerate(columns, 1 + col_offset):
             max_length = len(headers.get(col, col))
             for row in ws.iter_rows(min_row=2, min_col=col_idx, max_col=col_idx):
                 for cell in row:
                     if cell.value:
                         max_length = max(max_length, len(str(cell.value)))
             ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = min(
+                max_length + 2, 50
+            )
+        if self.include_serial:
+            max_length = len(self.serial_header)
+            for row in ws.iter_rows(min_row=2, min_col=1, max_col=1):
+                for cell in row:
+                    if cell.value:
+                        max_length = max(max_length, len(str(cell.value)))
+            ws.column_dimensions[openpyxl.utils.get_column_letter(1)].width = min(
                 max_length + 2, 50
             )
 

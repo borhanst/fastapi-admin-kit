@@ -63,15 +63,17 @@ def get_available_import_formats() -> list[str]:
 
 def _register_defaults() -> None:
     """Register default export/import formats."""
-    from fastapi_admin_kit.export_import.csv_export import CSVExport
-    from fastapi_admin_kit.export_import.csv_import import CSVImport
+    from fastapi_admin_kit.export_import.csv import CSVExport, CSVImport
 
     register_export("csv", CSVExport)
     register_import("csv", CSVImport)
 
     # Try to register Excel formats if openpyxl is available
     try:
-        from fastapi_admin_kit.export_import.excel import ExcelExport, ExcelImport
+        from fastapi_admin_kit.export_import.excel import (
+            ExcelExport,
+            ExcelImport,
+        )
 
         register_export("excel", ExcelExport)
         register_import("excel", ExcelImport)
