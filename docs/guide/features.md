@@ -11,11 +11,11 @@ Everything FastAPI Admin Kit offers, in one place.
 | Feature | Description | Link |
 |---------|-------------|------|
 | Zero-Config Auto-Discovery | Register a model, get full CRUD UI automatically | [Model Registration](model-registration.md) |
-| SQLAlchemy & SQLModel | Works with both ORMs out of the box | [Quick Start](../getting-started/quickstart.md) |
+| SQLAlchemy & SQLModel | Default backends/sqlalchemy.py adapter | [Quick Start](../getting-started/quickstart.md) |
 | Async-First | Built for async FastAPI with `AsyncSession` support | [Quick Start](../getting-started/quickstart.md) |
 | Database Support | PostgreSQL, MySQL, and SQLite with auto URL normalization | [Configuration](../getting-started/configuration.md) |
 | Auto-Migration | Automatically adds missing columns to existing tables | [CLI Tools](cli.md) |
-| Plugin System | Extend every layer (widgets, auth, routes, audit, storage) via plugins | [Plugins](plugins.md) |
+| Plugin System | Extend every layer (widgets, auth, routes, audit, storage) via protocols and plugins | [Plugins](plugins.md) |
 
 ---
 
@@ -36,6 +36,7 @@ Everything FastAPI Admin Kit offers, in one place.
 | Session Security | Signed cookies with `SameSite=Strict`, `Secure`, and configurable TTL | [Configuration](../getting-started/configuration.md) |
 | Secret Key Validation | Enforces minimum 32-character secret key at startup | [Configuration](../getting-started/configuration.md) |
 | SQL Injection Prevention | Identifier validation on all raw SQL in CLI and auto-migrate | [Security](../getting-started/configuration.md) |
+| Backend Protocol Support | Introspection, Query, Session, and Audit backends for security | [Backends Guide](backends.md) |
 
 ---
 
@@ -121,8 +122,7 @@ Everything FastAPI Admin Kit offers, in one place.
 | Feature | Description | Link |
 |---------|-------------|------|
 | Auto-Generated Forms | Columns mapped to widgets automatically | [Widgets & Forms](widgets-forms.md) |
-| Fieldsets | Group form fields into titled sections | [Model Registration](model-registration.md) |
-| Conditional Fields | Show/hide fields based on other field values | [Model Registration](model-registration.md) |
+| Fieldset & Conditional Fields | Schema field grouping and conditional visibility | [Model Registration](model-registration.md) |
 | Field Overrides | Replace widget for any field via `formfield_overrides` | [Widgets & Forms](widgets-forms.md) |
 | Extra Fields | Add non-model fields to forms | [Model Registration](model-registration.md) |
 | Readonly Fields | Show fields without allowing edits | [Model Registration](model-registration.md) |
@@ -131,6 +131,8 @@ Everything FastAPI Admin Kit offers, in one place.
 | HTMX Partial Validation | Field-level validation on blur without page reload | [Widgets & Forms](widgets-forms.md) |
 | Object-Level Validation | Cross-field validation after all fields are parsed | [Widgets & Forms](widgets-forms.md) |
 | Global Validator | Validate across all models | [Widgets & Forms](widgets-forms.md) |
+| Schema Validation | Backend-agnostic schema validation before materialization | [Schemas Guide](../schemas) |
+| Type Mapping | Schema field types mapped to backend data types | [Backends Guide](backends.md) |
 
 ---
 

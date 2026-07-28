@@ -150,7 +150,7 @@ async def login_post(
             httponly=True,
             samesite=samesite,
         )
-        print("redirect")
+
         return response
 
     _login_rate_limiter.record_attempt(client_ip)
