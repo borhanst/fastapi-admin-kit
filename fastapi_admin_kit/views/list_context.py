@@ -373,12 +373,9 @@ class ListContextBuilder:
             base = apply_search_filter(request, base, model, registered.admin.search_fields, q)
 
         query_ordering = request.query_params.get("ordering", "")
-        if query_ordering:
-            order = [query_ordering]
-        elif registered.admin.ordering:
-            order = registered.admin.ordering
-        else:
-            order = []
+        order = registered.admin.get_ordering(
+            {"ordering": query_ordering}, registered.admin.ordering
+        )
         if order:
             col_name = order[0].lstrip("-")
             col = getattr(model, col_name, None) if hasattr(model, col_name) else None
@@ -410,9 +407,10 @@ class ListContextBuilder:
         display_columns = self._build_display_columns(registered, request)
         filter_fields = await self._build_filter_fields(request, model, registered, session)
 
-        ordering = request.query_params.get("ordering", "")
-        if not ordering and registered.admin.ordering:
-            ordering = registered.admin.ordering[0]
+        resolved_ordering = registered.admin.get_ordering(
+            {"ordering": request.query_params.get("ordering", "")}, registered.admin.ordering
+        )
+        ordering = resolved_ordering[0] if resolved_ordering else ""
 
         template_context = {
             "model": registered,

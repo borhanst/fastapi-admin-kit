@@ -30,6 +30,24 @@ class ModelAdmin:
     list_filter_options: dict[str, dict[str, Any]] = {}
     list_filter_horizontal: bool = False
 
+    @staticmethod
+    def get_ordering(request_params: dict, admin_ordering: list[str] | None) -> list[str]:
+        """Resolve ordering configuration based on request params and admin settings.
+
+        Priority (highest to lowest):
+        1. Query parameter (e.g., from URL ?ordering=name)
+        2. Admin class ordering (from ModelAdmin.ordering)
+        3. Empty list (no default ordering applied)
+
+        This prevents unwanted default sorting when ordering is not explicitly configured.
+        """
+        query_ordering = request_params.get("ordering", "")
+        if query_ordering:
+            return [query_ordering]
+        elif admin_ordering:
+            return admin_ordering
+        return []
+
     # Inline editing config
     inline_edit: bool = False
     inline_edit_fields: list[str] | None = None
