@@ -314,7 +314,12 @@ class DefaultQueryProvider:
             base = apply_search_filter(request, base, model, registered.admin.search_fields, q)
 
         query_ordering = request.query_params.get("ordering", "")
-        order = [query_ordering] if query_ordering else registered.admin.ordering or []
+        if query_ordering:
+            order = [query_ordering]
+        elif registered.admin.ordering:
+            order = registered.admin.ordering
+        else:
+            order = []
         if order:
             col_name = order[0].lstrip("-")
             col = getattr(model, col_name, None) if hasattr(model, col_name) else None
