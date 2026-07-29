@@ -2,10 +2,9 @@ name: Deploy Docs
 
 on:
   workflow_run:
-    workflows: ["Tests"]
+    workflows: ["Release"]
     types:
       - completed
-    branches: [main]
   workflow_dispatch:
 
 permissions:
