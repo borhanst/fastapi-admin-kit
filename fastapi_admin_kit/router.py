@@ -100,6 +100,208 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         ],
     )
 
+    # ── Export Endpoint ─────────────────────────────────────────────
+
+    @router.get("/export/")
+    async def export_data(
+        request: Request,
+        format: str = "csv",
+        _: None = Depends(require_permission(registered.table_name, "view")),
+    ):
+        """Export data in the specified format."""
+        from fastapi.responses import StreamingResponse
+
+        from fastapi_admin_kit.auth.identity import get_current_user_from_cookie
+        from fastapi_admin_kit.db import get_db_session
+
+        # Check export permission
+        current_user = await get_current_user_from_cookie(request)
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        user_id = getattr(current_user, "id", None)
+        user_email = getattr(current_user, "email", None)
+
+        session = get_db_session(request)
+        from fastapi_admin_kit.auth.permissions import PermissionChecker
+
+        checker = PermissionChecker(session=session, user=current_user)
+        if not await checker.has_permission(registered.table_name, "export"):
+            raise HTTPException(status_code=403, detail="Export permission denied")
+
+        # Get export class
+        export_class = admin.get_export_class(format)
+        if export_class is None:
+            raise HTTPException(status_code=400, detail=f"Export format '{format}' not available")
+
+        # Build query using select() for async compatibility
+        from sqlalchemy import select
+
+        base = select(registered.model)
+
+        # Apply search/filter from query params
+        q = request.query_params.get("q", "")
+        if q:
+            from fastapi_admin_kit.search_utils import apply_search_filter
+
+            search_fields = getattr(admin, "search_fields", None) or ["name", "title"]
+            base = apply_search_filter(base, registered.model, search_fields, q)
+
+        # Execute query
+        result = await session.execute(base)
+        queryset = result.scalars().all()
+
+        # Instantiate and export
+        exporter = export_class(registered)
+        output = exporter.export(queryset, request)
+
+        # Log audit event
+        from fastapi_admin_kit.audit.events import AuditEvent
+
+        event = AuditEvent(
+            event_type="EXPORT",
+            model_name=registered.model.__name__,
+            table_name=registered.table_name,
+            object_id="bulk",
+            object_repr=f"Exported data in {format} format",
+            user_id=user_id,
+            user_email=user_email,
+        )
+        try:
+            from fastapi_admin_kit.audit.context import log_audit_event
+
+            await log_audit_event(request, event)
+        except Exception:
+            pass  # Don't fail export if audit logging fails
+
+        # Determine content type and filename
+        content_types = {
+            "csv": "text/csv",
+            "excel": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }
+        content_type = content_types.get(format, "application/octet-stream")
+        ext = "xlsx" if format in ("excel", "xlsx") else format
+        filename = f"{registered.table_name}_export.{ext}"
+
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type=content_type,
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    # ── Import Endpoint ─────────────────────────────────────────────
+
+    @router.post("/import/")
+    async def import_data(
+        request: Request,
+        format: str = "csv",
+        _: None = Depends(require_permission(registered.table_name, "create")),
+        _csrf: bool = Depends(require_csrf_token),
+    ):
+        """Import data from uploaded file."""
+        from fastapi_admin_kit.auth.identity import get_current_user_from_cookie
+        from fastapi_admin_kit.db import get_db_session
+
+        # Check import permission
+        current_user = await get_current_user_from_cookie(request)
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        user_id = getattr(current_user, "id", None)
+        user_email = getattr(current_user, "email", None)
+
+        session = get_db_session(request)
+        from fastapi_admin_kit.auth.permissions import PermissionChecker
+
+        checker = PermissionChecker(session=session, user=current_user)
+        if not await checker.has_permission(registered.table_name, "import"):
+            raise HTTPException(status_code=403, detail="Import permission denied")
+
+        # Get import class
+        import_class = admin.get_import_class(format)
+        if import_class is None:
+            raise HTTPException(status_code=400, detail=f"Import format '{format}' not available")
+
+        # Get uploaded file
+        form = await request.form()
+        file = form.get("file")
+        if file is None:
+            raise HTTPException(status_code=400, detail="No file uploaded")
+
+        # Read file content
+        file_content = await file.read()
+
+        # Instantiate and parse
+        importer = import_class(registered)
+        try:
+            rows = importer.parse(file_content, request)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error parsing file: {str(e)}")
+
+        # Import data
+        result = await importer.import_data(rows, request)
+
+        # Log audit event
+        from fastapi_admin_kit.audit.events import AuditEvent
+
+        event = AuditEvent(
+            event_type="IMPORT",
+            model_name=registered.model.__name__,
+            table_name=registered.table_name,
+            object_id="bulk",
+            object_repr=f"Imported data: {result['created']} created, {result['updated']} updated",
+            user_id=user_id,
+            user_email=user_email,
+        )
+        try:
+            from fastapi_admin_kit.audit.context import log_audit_event
+
+            await log_audit_event(request, event)
+        except Exception:
+            pass  # Don't fail import if audit logging fails
+
+        if result["errors"] > 0 and result["created"] == 0 and result["updated"] == 0:
+            from fastapi.responses import HTMLResponse
+
+            error_list = "".join(f"<li>{msg}</li>" for msg in result["error_messages"][:10])
+            html = (
+                f"<div class='import-error'>"
+                f"<p>Import failed with {result['errors']} error(s):</p>"
+                f"<ul>{error_list}</ul></div>"
+            )
+            return HTMLResponse(content=html, status_code=422)
+
+        # Reload the list table so the user sees imported data
+        from fastapi.responses import HTMLResponse
+
+        from fastapi_admin_kit.views.class_views import ListView as _ListView
+        from fastapi_admin_kit.views.factory import _resolve_permission_checker
+
+        list_v = _ListView(registered)
+        checker = await _resolve_permission_checker(request)
+        if checker:
+            await checker.load_permissions(registered.table_name)
+        q = request.query_params.get("q", "")
+        page = int(request.query_params.get("page", 1))
+        ctx = await list_v.get_context(request, q, page, checker)
+        admin_path = request.app.state.admin_config["admin_path"]
+        ctx["admin_path"] = admin_path
+        ctx["registered"] = registered
+
+        flash_msg = ""
+        if result["created"] > 0:
+            flash_msg += f"{result['created']} item(s) created. "
+        if result["updated"] > 0:
+            flash_msg += f"{result['updated']} item(s) updated. "
+        if result["errors"] > 0:
+            flash_msg += f"{result['errors']} error(s)."
+        ctx["flash_message"] = flash_msg.strip()
+
+        templates = request.app.state.admin_jinja_env
+        html = templates.TemplateResponse(request, "partials/list_table.html", ctx)
+        return html
+
     @router.post("/validate-field")
     async def validate_field_endpoint(
         request: Request,

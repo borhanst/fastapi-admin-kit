@@ -82,6 +82,10 @@ class PermissionChecker:
                 ps.can_edit = True
             if perm.can_delete:
                 ps.can_delete = True
+            if perm.can_export:
+                ps.can_export = True
+            if perm.can_import:
+                ps.can_import = True
 
         return self._role_cache
 
@@ -116,6 +120,10 @@ class PermissionChecker:
                 ps.can_edit = True
             if perm.can_delete:
                 ps.can_delete = True
+            if perm.can_export:
+                ps.can_export = True
+            if perm.can_import:
+                ps.can_import = True
 
         return self._direct_cache
 
@@ -137,7 +145,7 @@ class PermissionChecker:
     async def has_permission(self, table_name: str, action: str) -> bool:
         """Return True if the current user may perform *action* on *table_name*.
 
-        Actions: ``"view"`` | ``"create"`` | ``"edit"`` | ``"delete"``
+        Actions: ``"view"`` | ``"create"`` | ``"edit"`` | ``"delete"`` | ``"export"`` | ``"import"``
 
         Superusers always return True. Results are cached per-request.
         """
@@ -191,6 +199,8 @@ class PermissionChecker:
                 can_create=True,
                 can_edit=True,
                 can_delete=True,
+                can_export=True,
+                can_import=True,
             )
         # Check if cache has been populated for this table
         cache_populated = any(key[0] == table_name for key in self._cache)
@@ -207,6 +217,8 @@ class PermissionChecker:
             can_create=self._cache.get((table_name, "create"), False),
             can_edit=self._cache.get((table_name, "edit"), False),
             can_delete=self._cache.get((table_name, "delete"), False),
+            can_export=self._cache.get((table_name, "export"), False),
+            can_import=self._cache.get((table_name, "import"), False),
         )
 
     async def load_permissions(self, table_name: str) -> PermissionSet:
@@ -218,4 +230,6 @@ class PermissionChecker:
         await self.has_permission(table_name, "create")
         await self.has_permission(table_name, "edit")
         await self.has_permission(table_name, "delete")
+        await self.has_permission(table_name, "export")
+        await self.has_permission(table_name, "import")
         return self.permission_set(table_name)

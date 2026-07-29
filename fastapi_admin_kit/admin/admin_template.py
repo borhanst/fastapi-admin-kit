@@ -22,6 +22,7 @@ class AdminTemplate:
         dark_mode_default: bool = False,
         dashboard_permission: str | None = None,
         settings_permission: str | None = None,
+        sidebar_bottom_links: list[dict[str, str]] | None = None,
     ):
         self.title = title
         self.logo_url = logo_url
@@ -31,6 +32,7 @@ class AdminTemplate:
         self.dark_mode_default = dark_mode_default
         self.dashboard_permission = dashboard_permission
         self.settings_permission = settings_permission
+        self.sidebar_bottom_links: list[dict[str, str]] = sidebar_bottom_links or []
         self._nav_groups_built: list = []
 
     def _init_jinja(self, app: Any) -> None:
@@ -221,6 +223,7 @@ class AdminTemplate:
             "current_user": user_for_template,
             "dashboard_visible": dashboard_visible,
             "settings_visible": settings_visible,
+            "sidebar_bottom_links": self.sidebar_bottom_links,
         }
 
     async def apply_sidebar_context(self, request: Any, user: Any, context: dict) -> dict:

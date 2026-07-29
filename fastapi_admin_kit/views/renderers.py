@@ -301,12 +301,133 @@ class DefaultQueryProvider:
             for opt in eager_loads:
                 base = base.options(opt)
 
-        filter_clauses = self._build_filter_clauses(request, model, registered)
-        if filter_clauses:
-            if query_adapter is not None:
-                base = query_adapter.where(base, *filter_clauses)
-            else:
-                from sqlalchemy import and_
+        if registered.admin.list_filter:
+            filter_clauses = []
+            for filter_field in registered.admin.list_filter:
+                param_key = f"filter_{filter_field}"
+                filter_value = request.query_params.get(param_key, "")
+                if filter_value and hasattr(model, filter_field):
+                    field_type = self._get_field_type(request, model, filter_field)
+                    col = getattr(model, filter_field)
+
+                    # If col is a relationship, resolve to its FK column
+                    from sqlalchemy.orm import RelationshipProperty
+
+                    if hasattr(col, "property") and isinstance(col.property, RelationshipProperty):
+                        fk_cols = list(col.property.local_columns)
+                        if fk_cols:
+                            col = getattr(model, fk_cols[0].key)
+                            # Cast filter value to the FK column's Python type
+                            pk_prop = fk_cols[0]
+                            from sqlalchemy import Integer
+
+                            col_type = type(pk_prop.type)
+                            if col_type in (Integer,):
+                                try:
+                                    filter_value = int(filter_value)
+                                except (ValueError, TypeError):
+                                    continue
+                        else:
+                            continue
+
+                    if field_type == "boolean":
+                        bool_val = filter_value == "1"
+                        filter_clauses.append(col == bool_val)
+                    elif field_type == "datetime":
+                        from datetime import datetime as _dt
+
+                        try:
+                            parsed = _dt.fromisoformat(filter_value)
+                        except (ValueError, TypeError):
+                            parsed = None
+                        if parsed is not None:
+                            filter_clauses.append(col == parsed)
+                    elif field_type == "date":
+                        from datetime import date as _date
+
+                        try:
+                            parsed = _date.fromisoformat(filter_value)
+                        except (ValueError, TypeError):
+                            parsed = None
+                        if parsed is not None:
+                            filter_clauses.append(col == parsed)
+                    elif field_type == "time":
+                        from datetime import time as _time
+
+                        try:
+                            parsed = _time.fromisoformat(filter_value)
+                        except (ValueError, TypeError):
+                            parsed = None
+                        if parsed is not None:
+                            filter_clauses.append(col == parsed)
+                    else:
+                        filter_clauses.append(col == filter_value)
+
+            # Range filters
+            for filter_field in registered.admin.list_filter:
+                gte_val = request.query_params.get(f"filter_{filter_field}__gte", "")
+                lte_val = request.query_params.get(f"filter_{filter_field}__lte", "")
+                from_val = request.query_params.get(f"filter_{filter_field}__from", "")
+                to_val = request.query_params.get(f"filter_{filter_field}__to", "")
+
+                if (gte_val or lte_val) and hasattr(model, filter_field):
+                    col = getattr(model, filter_field)
+                    if gte_val:
+                        try:
+                            filter_clauses.append(
+                                col >= type(col.property.columns[0].type)().coerce(gte_val)
+                            )
+                        except Exception:
+                            pass
+                    if lte_val:
+                        try:
+                            filter_clauses.append(
+                                col <= type(col.property.columns[0].type)().coerce(lte_val)
+                            )
+                        except Exception:
+                            pass
+
+                if (from_val or to_val) and hasattr(model, filter_field):
+                    col = getattr(model, filter_field)
+                    field_type = self._get_field_type(request, model, filter_field)
+                    if field_type == "date" and from_val:
+                        try:
+                            from datetime import date as _date
+
+                            d = _date.fromisoformat(from_val)
+                            filter_clauses.append(col >= d)
+                        except (ValueError, TypeError):
+                            pass
+                    if field_type == "date" and to_val:
+                        try:
+                            from datetime import date as _date
+
+                            d = _date.fromisoformat(to_val)
+                            filter_clauses.append(col <= d)
+                        except (ValueError, TypeError):
+                            pass
+                    if field_type == "datetime" and from_val:
+                        try:
+                            from datetime import datetime as _dt
+
+                            dt = _dt.fromisoformat(from_val)
+                            filter_clauses.append(col >= dt)
+                        except (ValueError, TypeError):
+                            pass
+                    if field_type == "datetime" and to_val:
+                        try:
+                            from datetime import datetime as _dt
+
+                            dt = _dt.fromisoformat(to_val)
+                            filter_clauses.append(col <= dt)
+                        except (ValueError, TypeError):
+                            pass
+
+            if filter_clauses:
+                if query_adapter is not None:
+                    base = query_adapter.where(base, *filter_clauses)
+                else:
+                    from sqlalchemy import and_
 
                 base = base.where(and_(*filter_clauses))
 
@@ -321,15 +442,20 @@ class DefaultQueryProvider:
             col_name = order[0].lstrip("-")
             col = getattr(model, col_name, None) if hasattr(model, col_name) else None
             if col is not None:
-                if query_adapter is not None:
-                    if order[0].startswith("-"):
-                        base = query_adapter.order_by(base, f"-{col_name}")
-                    else:
-                        base = query_adapter.order_by(base, col_name)
-                else:
-                    from sqlalchemy import asc, desc
+                from sqlalchemy.orm import ColumnProperty
 
-                    base = base.order_by(desc(col) if order[0].startswith("-") else asc(col))
+                if isinstance(getattr(col, "property", None), ColumnProperty):
+                    if query_adapter is not None:
+                        from sqlalchemy import desc
+
+                        if order[0].startswith("-"):
+                            base = query_adapter.order_by(base, desc(col))
+                        else:
+                            base = query_adapter.order_by(base, col)
+                    else:
+                        from sqlalchemy import asc, desc
+
+                        base = base.order_by(desc(col) if order[0].startswith("-") else asc(col))
 
         per_page = registered.admin.per_page
 

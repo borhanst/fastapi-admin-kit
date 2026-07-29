@@ -9,13 +9,13 @@ from typing import Any
 
 @dataclass
 class AuditEvent:
-    """Represents a single audit event (CREATE, UPDATE, or DELETE).
+    """Represents a single audit event (CREATE, UPDATE, DELETE, EXPORT, or IMPORT).
 
     This is a pure data structure with no side effects, making it
     easy to test and serialize.
     """
 
-    event_type: str  # "CREATE" | "UPDATE" | "DELETE"
+    event_type: str  # "CREATE" | "UPDATE" | "DELETE" | "EXPORT" | "IMPORT"
     model_name: str
     table_name: str
     object_id: str

@@ -60,6 +60,10 @@ class ModelAdmin:
     actions_submit_line: list[str] = []
     actions_list_hide_default: bool = False
 
+    # Export/Import config
+    export_formats: dict[str, Any] | None = None
+    import_formats: dict[str, Any] | None = None
+
     # Form config
     fields: list[str] | None = None
     exclude: list[str] | None = None
@@ -192,7 +196,11 @@ class ModelAdmin:
         return data
 
     def save_model(
-        self, obj: Any, data: dict[str, Any], request: Any = None, is_create: bool = False
+        self,
+        obj: Any,
+        data: dict[str, Any],
+        request: Any = None,
+        is_create: bool = False,
     ) -> None:
         """Custom save logic. Override for full control over save flow.
 
@@ -391,7 +399,10 @@ class ModelAdmin:
     ) -> list[FieldMeta]:
         """Return FieldMeta list for the inline edit form."""
         all_fields = self.get_form_fields(
-            obj=obj, request=request, columns=columns, relationships=relationships
+            obj=obj,
+            request=request,
+            columns=columns,
+            relationships=relationships,
         )
         if self.inline_edit_fields is not None:
             allowed = set(self.inline_edit_fields)
@@ -414,3 +425,89 @@ class ModelAdmin:
 
     def has_delete_permission(self, request: Any = None) -> bool:
         return True
+
+    def has_export_permission(self, request: Any = None) -> bool:
+        return True
+
+    def has_import_permission(self, request: Any = None) -> bool:
+        return True
+
+    # ── Export/Import helpers ───────────────────────────────────────
+
+    def get_export_formats(self) -> dict[str, Any]:
+        """Get available export formats for this model.
+
+        Returns configured formats or defaults to CSV + Excel.
+        """
+        if self.export_formats:
+            return self.export_formats
+        from fastapi_admin_kit.export_import.registry import (
+            get_available_export_formats,
+        )
+
+        formats = {}
+        for name in get_available_export_formats():
+            formats[name] = None
+        return formats or {"csv": None}
+
+    def get_import_formats(self) -> dict[str, Any]:
+        """Get available import formats for this model.
+
+        Returns configured formats or defaults to CSV + Excel.
+        """
+        if self.import_formats:
+            return self.import_formats
+        from fastapi_admin_kit.export_import.registry import (
+            get_available_import_formats,
+        )
+
+        formats = {}
+        for name in get_available_import_formats():
+            formats[name] = None
+        return formats or {"csv": None}
+
+    def get_export_class(self, format_name: str) -> type | None:
+        """Get the export class for a given format.
+
+        Args:
+            format_name: Format name (e.g., "csv", "excel")
+
+        Returns:
+            The export class or None if not available
+        """
+        formats = self.get_export_formats()
+        if format_name not in formats:
+            return None
+
+        format_class = formats[format_name]
+        if format_class is None:
+            # Use default from registry
+            from fastapi_admin_kit.export_import.registry import (
+                get_export_class,
+            )
+
+            return get_export_class(format_name)
+        return format_class
+
+    def get_import_class(self, format_name: str) -> type | None:
+        """Get the import class for a given format.
+
+        Args:
+            format_name: Format name (e.g., "csv", "excel")
+
+        Returns:
+            The import class or None if not available
+        """
+        formats = self.get_import_formats()
+        if format_name not in formats:
+            return None
+
+        format_class = formats[format_name]
+        if format_class is None:
+            # Use default from registry
+            from fastapi_admin_kit.export_import.registry import (
+                get_import_class,
+            )
+
+            return get_import_class(format_name)
+        return format_class

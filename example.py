@@ -564,7 +564,7 @@ class ArticleAdmin(ModelAdmin):
 
     list_display = ["id", "title", "tags", "created_at"]
     search_fields = ["title", "tags__name"]
-    list_filter = ["created_at"]
+    list_filter = ["tags"]
     ordering = ["-created_at"]
     verbose_name = "Article"
     verbose_name_plural = "Articles"
@@ -809,6 +809,10 @@ admin = Admin(
     per_page_default=25,
     secret_key=SECRET_KEY,
     auth_backend=BuiltinAuthBackend(),
+    sidebar_bottom_links=[
+        {"label": "Settings", "url": "/admin/users/", "icon": "cog-6-tooth"},
+        {"label": "Help", "url": "https://docs.example.com"},
+    ],
     # Theme configuration
     theme=ThemeConfig(
         preset="paper",

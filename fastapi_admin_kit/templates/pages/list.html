@@ -20,13 +20,96 @@
       <h1 class="page-header-title">{{ registered.verbose_name_plural }}</h1>
       <p class="page-header-subtitle">Manage your {{ registered.verbose_name_plural | lower }} and inventory</p>
     </div>
-    {% if permissions.can_create %}
-    <div class="page-header-right">
+    <div class="page-header-right" style="display: flex; gap: 0.5rem; align-items: center;">
+      {% if permissions.can_export %}
+      <div x-data="{ exportOpen: false }" class="relative">
+        <button type="button" class="btn btn-secondary btn-sm" @click="exportOpen = !exportOpen">
+          {{ icon("arrow-down-tray", size="16px") }} Export
+        </button>
+        <div x-show="exportOpen" @click.outside="exportOpen = false" x-transition
+             class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
+          {% set export_formats = registered.admin.get_export_formats() %}
+          {% for fmt in export_formats %}
+          <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/export/?format={{ fmt }}"
+             class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+             @click="exportOpen = false">
+            {{ fmt | upper }}
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      {% if permissions.can_import %}
+      <div x-data="{ importOpen: false, importFormat: 'csv' }" class="relative">
+        <button type="button" class="btn btn-secondary btn-sm" @click="importOpen = !importOpen">
+          {{ icon("arrow-up-tray", size="16px") }} Import
+        </button>
+        <div x-show="importOpen" @click.outside="importOpen = false" x-transition x-cloak
+             class="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 p-4"
+             x-data="{ dragOver: false, fileName: '' }">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Import Data</h3>
+            <button type="button" @click="importOpen = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+              {{ icon("x-mark", size="16px") }}
+            </button>
+          </div>
+          {% set import_formats = registered.admin.get_import_formats() %}
+          <div class="mb-3">
+            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Format</label>
+            <div class="flex gap-2">
+              {% for fmt in import_formats %}
+              <button type="button"
+                      class="px-3 py-1 text-xs rounded-md border transition-colors"
+                      :class="importFormat === '{{ fmt }}' ? 'bg-primary-500 text-white border-primary-500' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-primary-400'"
+                      @click="importFormat = '{{ fmt }}'">
+                {{ fmt | upper }}
+              </button>
+              {% endfor %}
+            </div>
+          </div>
+          <form id="import-form" enctype="multipart/form-data"
+                :hx-post="admin_path + '/{{ registered.table_name }}/import/?format=' + importFormat"
+                hx-encoding="multipart/form-data"
+                hx-target="#table-wrapper"
+                hx-swap="outerHTML"
+                hx-on::before-request="document.getElementById('import-progress').style.display='flex';"
+                hx-on::after-request="document.getElementById('import-progress').style.display='none'; importOpen = false;">
+            <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+            <label for="import-file-input"
+                   class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer transition-colors"
+                   :class="dragOver ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/10'"
+                   @dragover.prevent="dragOver = true"
+                   @dragleave.prevent="dragOver = false"
+                   @drop.prevent="dragOver = false; $refs.fileInput.click();">
+              <div class="flex flex-col items-center justify-center pt-3 pb-2">
+                {{ icon("arrow-up-tray", size="24px", css_class="mb-2 text-gray-400 dark:text-gray-500") }}
+                <p class="text-sm text-gray-600 dark:text-gray-400" x-text="fileName || 'Drop file here or click to browse'"></p>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">CSV or Excel files</p>
+              </div>
+              <input id="import-file-input" type="file" name="file" accept=".csv,.xlsx,.xls" required x-ref="fileInput"
+                     class="hidden"
+                     @change="fileName = $event.target.files[0]?.name || ''">
+            </label>
+            <div id="import-progress" style="display:none;" class="flex items-center justify-center gap-2 mt-3 text-sm text-primary-600 dark:text-primary-400">
+              <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Importing...
+            </div>
+            <button type="submit" class="mt-3 w-full btn btn-primary btn-sm">
+              {{ icon("arrow-up-tray", size="16px") }} Upload & Import
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+      {% if permissions.can_create %}
       <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/create" class="btn btn-primary">
         + New {{ registered.verbose_name }}
       </a>
+      {% endif %}
     </div>
-    {% endif %}
   </div>
 
   {# Filter Bar #}

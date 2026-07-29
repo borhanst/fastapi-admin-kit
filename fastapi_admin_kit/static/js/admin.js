@@ -210,6 +210,10 @@ document.addEventListener('alpine:init', () => {
     async _loadSelected() {
       try {
         const ids = this._ensureArray(this.selectedIds);
+        if (!ids.length) {
+          this.selectedItems = [];
+          return;
+        }
         const resp = await fetch(`${searchUrl}?ids=${ids.join(',')}`);
         if (resp.ok) {
           this.selectedItems = await resp.json();

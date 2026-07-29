@@ -276,6 +276,12 @@ class TestAuditLoggerInterface:
             def log_delete(self, event):
                 self.events.append(("DELETE", event))
 
+            def log_export(self, event):
+                self.events.append(("EXPORT", event))
+
+            def log_import(self, event):
+                self.events.append(("IMPORT", event))
+
         logger = MemLogger()
         ev = AuditEvent(event_type="CREATE", model_name="M", table_name="t", object_id="1")
         logger.log_create(ev)

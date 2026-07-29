@@ -51,6 +51,10 @@ class DisplayColumn:
         if self.is_relation and val is not None:
             from fastapi_admin_kit.inspection import model_display_name
 
+            # M2M relations return a list/InstrumentedList — join each item's name
+            if isinstance(val, list) or (hasattr(val, "__iter__") and not isinstance(val, str)):
+                parts = [model_display_name(item) for item in val]
+                return ", ".join(parts) if parts else "-"
             return model_display_name(val)
 
         return val
