@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from fastapi_admin_kit.admin.decorators import column
-from fastapi_admin_kit.types import ExtraField, FieldMeta
+from fastapi_admin_kit.form.types import ExtraField, FieldMeta
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -22,13 +22,31 @@ class ModelAdmin:
 
     # List view config
     list_display: list[str] | None = None
-    list_filter: list[str] | None = None
+    list_filter: list[str | Any] | None = None
     search_fields: list[str] | None = None
     ordering: list[str] | None = None
     per_page: int = 20
     pagination: Any = None  # OffsetPagination | CursorPagination | DynamicPagination
     list_filter_options: dict[str, dict[str, Any]] = {}
     list_filter_horizontal: bool = False
+
+    @staticmethod
+    def get_ordering(request_params: dict, admin_ordering: list[str] | None) -> list[str]:
+        """Resolve ordering configuration based on request params and admin settings.
+
+        Priority (highest to lowest):
+        1. Query parameter (e.g., from URL ?ordering=name)
+        2. Admin class ordering (from ModelAdmin.ordering)
+        3. Empty list (no default ordering applied)
+
+        This prevents unwanted default sorting when ordering is not explicitly configured.
+        """
+        query_ordering = request_params.get("ordering", "")
+        if query_ordering:
+            return [query_ordering]
+        elif admin_ordering:
+            return admin_ordering
+        return []
 
     # Inline editing config
     inline_edit: bool = False
@@ -103,8 +121,15 @@ class ModelAdmin:
     # ── Query hooks ──────────────────────────────────────────────────
 
     def get_queryset(self, session: Session, request: Any = None) -> Any:
-        """Override to filter records globally (e.g. soft-delete filter)."""
-        return session.query(self.model)  # type: ignore[attr-defined]
+        """Override to filter records globally (e.g. soft-delete filter).
+
+        Returns a SQLAlchemy ``select`` statement for the model.
+        Override and call ``super().get_queryset(session, request)`` to
+        chain additional ``.where()`` conditions.
+        """
+        from sqlalchemy import select
+
+        return select(self.model)  # type: ignore[attr-defined]
 
     def get_object(self, session: Session, id: Any) -> Any:
         """Override for custom PK lookup."""

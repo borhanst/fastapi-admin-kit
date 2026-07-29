@@ -18,7 +18,7 @@ class ModelAdmin:
 
     # List view config
     list_display: list[str] | None = None
-    list_filter: list[str] | None = None
+    list_filter: list[str | Any] | None = None
     search_fields: list[str] | None = None
     ordering: list[str] | None = None
     per_page: int = 20

@@ -10,6 +10,7 @@ A drop-in admin panel for FastAPI + SQLAlchemy + SQLModel apps.
 
 - **Zero-Config Auto-Discovery** — Register a model, get full CRUD UI automatically
 - **Built-in Auth & RBAC** — Session-based auth with role-based permissions per model
+- **Decoupled Systems** — Filters, audit logging, pagination, and permissions work as backend plugins
 - **Audit Logging** — Every create, update, and delete is recorded with full diffs
 - **Modern UI** — Tailwind CSS, HTMX, and Alpine.js for a fast, responsive experience
 - **Fully Customizable** — Override widgets, templates, routes, and behavior via protocols
@@ -88,7 +89,7 @@ That's it — you now have a full admin panel at `/admin/products/` with list, c
 | Layer | Technology |
 |-------|------------|
 | Web framework | FastAPI |
-| ORM | SQLAlchemy 2.x / SQLModel |
+| ORM | SQLAlchemy 2.x / SQLModel (backends/sqlalchemy.py) |
 | Templating | Jinja2 |
 | CSS | Tailwind CSS |
 | Interactivity | HTMX |
@@ -96,6 +97,7 @@ That's it — you now have a full admin panel at `/admin/products/` with list, c
 | Icons | Google Material Symbols |
 | Auth | Session-based with bcrypt |
 | Database | PostgreSQL, MySQL, SQLite (async) |
+| Backend Architecture | Protocol-driven multi-ORM (IntrospectionBackend, SessionBackend, QueryBackend, AuditBackend, DatabaseBackend) |
 
 ## Getting Started
 
@@ -112,18 +114,20 @@ Developer registers a model
         │
         ▼
 ┌─────────────────┐
-│ AUTO-DISCOVERY   │ → Inspects columns, maps types to widgets
+│ AUTO-DISCOVERY   │ → Schema validation, introspection, widget mapping
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ RBAC CHECK       │ → Validates permissions per request
+│ RBAC CHECK       │ → Validates permissions per request (protocol backend)
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ MODERN UI        │ → Renders with Tailwind + HTMX
+│ MODERN UI        │ → Renders with Tailwind + HTMX (backend adapters)
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ AUDIT LOG        │ → Records all changes automatically
+│ AUDIT LOG        │ → Records all changes (backend audit system)
 └─────────────────┘
 ```
+
+**Schema-First Flow:** Models are registered against backend-agnostic schemas, then materialized by the configured backend (SQLAlchemy by default, custom for other ORMs).

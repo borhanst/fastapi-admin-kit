@@ -35,6 +35,39 @@ class ExcelExport(ExportBase):
             )
         super().__init__(registered)
 
+    def format_value(self, value: Any, column: str) -> Any:
+        """Format a value for Excel export.
+
+        Converts non-Excel-safe types (dicts, lists, etc.) to strings so
+        openpyxl does not raise a ValueError. Native Excel types (int, float,
+        bool, datetime, str, None) are returned unchanged.
+        """
+        import datetime
+
+        if value is None:
+            return ""
+        # openpyxl accepts these types natively
+        if isinstance(
+            value, int | float | bool | str | datetime.datetime | datetime.date | datetime.time
+        ):
+            return value
+        # Related objects serialised as dicts → use their label/name/str
+        if isinstance(value, dict):
+            return value.get("label") or value.get("name") or value.get("title") or str(value)
+        # Many-to-many / one-to-many lists
+        if isinstance(value, list | tuple | set):
+            parts = []
+            for item in value:
+                if isinstance(item, dict):
+                    parts.append(
+                        str(item.get("label") or item.get("name") or item.get("title") or item)
+                    )
+                else:
+                    parts.append(str(item))
+            return ", ".join(parts)
+        # Fallback for any other unexpected type
+        return str(value)
+
     def export(self, queryset: Any, request: Any = None) -> io.BytesIO:
         """Export queryset to Excel format.
 

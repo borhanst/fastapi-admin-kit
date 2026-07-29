@@ -1,4 +1,8 @@
-"""Password hasher — pluggable protocol + default bcrypt implementation."""
+"""Password hasher — pluggable protocol + default bcrypt implementation.
+
+For new code, prefer ``fastapi_admin_kit.auth.password.password_manager``.
+This module is kept for backward compatibility and custom hasher support.
+"""
 
 from __future__ import annotations
 
@@ -25,19 +29,16 @@ class PasswordHasher(ABC):
 
 
 class BcryptHasher(PasswordHasher):
-    """Default hasher using bcrypt."""
+    """Default hasher using bcrypt — delegates to PasswordManager."""
 
     @staticmethod
     def hash(password: str) -> str:
-        import bcrypt
+        from fastapi_admin_kit.auth.password import password_manager
 
-        return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        return password_manager.hash(password)
 
     @staticmethod
     def verify(password: str, hashed: str) -> bool:
-        import bcrypt
+        from fastapi_admin_kit.auth.password import password_manager
 
-        try:
-            return bcrypt.checkpw(password.encode(), hashed.encode())
-        except (ValueError, TypeError):
-            return False
+        return password_manager.verify(password, hashed)
