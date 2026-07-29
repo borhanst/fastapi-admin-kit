@@ -68,11 +68,20 @@
     </ul>
   </nav>
 
-  {# Configurable bottom links #}
-  {% if sidebar_bottom_links %}
+  {# Bottom section — always rendered; includes Settings + any configured extra links #}
   <div class="sidebar-bottom">
     <ul class="sidebar-nav-list">
-      {% for link in sidebar_bottom_links %}
+      {% if settings_visible | default(true) %}
+      <li class="sidebar-nav-item">
+        <a href="{{ admin_path | default('/admin') }}/settings/"
+           class="nav-link {% if request.url.path.startswith((admin_path | default('/admin')) ~ '/settings/') %}active{% endif %}">
+          {{ icon("settings", size="18px") }}
+          <span class="nav-link-label">Settings</span>
+          <span class="nav-tooltip" x-show="sidebarCollapsed">Settings</span>
+        </a>
+      </li>
+      {% endif %}
+      {% for link in sidebar_bottom_links | default([]) %}
       <li class="sidebar-nav-item">
         <a href="{{ link.url }}"
            class="nav-link {% if request.url.path.startswith(link.url) %}active{% endif %}">
@@ -86,7 +95,6 @@
       {% endfor %}
     </ul>
   </div>
-  {% endif %}
 </aside>
 
 {# Mobile sidebar overlay #}
