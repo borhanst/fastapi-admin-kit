@@ -802,6 +802,10 @@ admin = Admin(
     per_page_default=25,
     secret_key=SECRET_KEY,
     auth_backend=BuiltinAuthBackend(),
+    sidebar_bottom_links=[
+        {"label": "Settings", "url": "/admin/users/", "icon": "cog-6-tooth"},
+        {"label": "Help", "url": "https://docs.example.com"},
+    ],
     # Theme configuration
     theme=ThemeConfig(
         preset="paper",

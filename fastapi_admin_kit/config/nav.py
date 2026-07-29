@@ -16,6 +16,7 @@ class NavConfig:
         site_dropdown: list[dict[str, str]] | None = None,
         dashboard_permission: str | None = None,
         settings_permission: str | None = None,
+        sidebar_bottom_links: list[dict[str, str]] | None = None,
     ):
         self.nav_groups = nav_groups or []
         self.sidebar_builder = sidebar_builder
@@ -23,6 +24,7 @@ class NavConfig:
         self.site_dropdown = site_dropdown or []
         self.dashboard_permission = dashboard_permission
         self.settings_permission = settings_permission
+        self.sidebar_bottom_links = sidebar_bottom_links or []
 
     def validate_nav_config(self) -> None:
         """Validate navigation configuration."""

@@ -180,6 +180,7 @@ class Admin:
         mobile_sidebar: str = "overlay",
         dashboard_permission: str | None = None,
         settings_permission: str | None = None,
+        sidebar_bottom_links: list[dict[str, str]] | None = None,
     ):
         self.registry = AdminRegistry()
         self._app: FastAPI | None = app
@@ -261,6 +262,7 @@ class Admin:
                     require_tags=require_tags,
                     dashboard_permission=dashboard_permission,
                     settings_permission=settings_permission,
+                    sidebar_bottom_links=sidebar_bottom_links,
                 ),
             )
 
@@ -283,6 +285,7 @@ class Admin:
                 dark_mode_default=config.ui.dark_mode_default,
                 dashboard_permission=config.nav.dashboard_permission,
                 settings_permission=config.nav.settings_permission,
+                sidebar_bottom_links=config.nav.sidebar_bottom_links,
             )
 
         self.config = config
