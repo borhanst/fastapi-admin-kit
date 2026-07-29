@@ -710,3 +710,60 @@ class TestM2MSave:
             tag_names = {t.name for t in art.tags}
         sync_eng.dispose()
         assert tag_names == {"Python", "FastAPI"}
+
+    def test_search_by_ids_param(self, m2m_admin_app):
+        """Regression test: ?ids=1 should return ONLY the record with ID 1, not all records."""
+        client = TestClient(m2m_admin_app)
+        cookie = create_session_cookie(1)
+        resp = client.get(
+            "/admin/search_tags/search",
+            params={"ids": "1"},
+            cookies={"admin_session": cookie},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["id"] == "1"
+        assert data[0]["label"] == "Python"
+
+    def test_search_by_empty_ids_param(self, m2m_admin_app):
+        """Regression test: ?ids= with no values should return empty list."""
+        client = TestClient(m2m_admin_app)
+        cookie = create_session_cookie(1)
+        resp = client.get(
+            "/admin/search_tags/search",
+            params={"ids": ""},
+            cookies={"admin_session": cookie},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data == []
+
+    def test_m2m_edit_form_initial_ids(self, m2m_admin_app, engine):
+        """Verify that opening edit view for an article with 1 tag initialises
+        initialIds with exactly 1 tag.
+        """
+        from sqlalchemy import create_engine as _ce
+        from sqlalchemy.orm import Session as _Sess
+
+        client = TestClient(m2m_admin_app)
+        cookie = create_session_cookie(1)
+
+        sync_eng = _ce(
+            f"sqlite:///{engine.url.database}",
+            connect_args={"check_same_thread": False},
+        )
+        with _Sess(sync_eng) as s:
+            from sqlalchemy import select as _sel
+
+            art = s.execute(_sel(_Article).where(_Article.title == "Intro to Python")).scalar_one()
+            art_id = art.id
+            tag_id = art.tags[0].id
+        sync_eng.dispose()
+
+        resp = client.get(
+            f"/admin/search_articles/{art_id}",
+            cookies={"admin_session": cookie},
+        )
+        assert resp.status_code == 200
+        assert f"multiRelation([&#34;{tag_id}&#34;]" in resp.text

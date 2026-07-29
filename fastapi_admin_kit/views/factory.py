@@ -413,6 +413,15 @@ class ViewFactory:
             obj = await session.get(registered.model, cast_pk_value(registered.model, id))
             if not obj:
                 raise HTTPException(status_code=404, detail="Not found")
+            from sqlalchemy import inspect as sa_inspect
+
+            try:
+                mapper = sa_inspect(registered.model)
+                for rel_key, rel_prop in mapper.relationships.items():
+                    if rel_prop.direction.name == "MANYTOMANY":
+                        await session.refresh(obj, [rel_key])
+            except Exception:
+                pass
             checker = await _resolve_permission_checker(request)
             if checker:
                 await checker.load_permissions(registered.table_name)

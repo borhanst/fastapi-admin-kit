@@ -999,6 +999,23 @@ class EditView(BaseView):
         await inject_sidebar_context(request, template_context)
         return template_context
 
+    async def _preload_m2m_relationships(self, obj: Any, request: Request) -> None:
+        """Preload many-to-many relationship collections on obj to avoid
+        MissingGreenlet in async context.
+        """
+        from sqlalchemy import inspect as sa_inspect
+
+        if obj is None:
+            return
+        try:
+            mapper = sa_inspect(type(obj))
+            session = get_db_session(request)
+            for rel_key, rel_prop in mapper.relationships.items():
+                if rel_prop.direction.name == "MANYTOMANY":
+                    await session.refresh(obj, [rel_key])
+        except Exception:
+            pass
+
     async def html_response(self, request: Request, id: Any = None) -> Response:
         obj = await self.query_provider.get_object(request, id)
         if not obj:
@@ -1009,6 +1026,9 @@ class EditView(BaseView):
             await checker.load_permissions(self.registered.table_name)
 
         perms = checker.permission_set(self.registered.table_name) if checker else None
+
+        if obj:
+            await self._preload_m2m_relationships(obj, request)
 
         if request.method == "GET":
             if perms and not perms.can_edit and perms.can_view:
@@ -1298,8 +1318,9 @@ class SearchView(BaseView):
         q: str = "",
         limit: int = 20,
         exclude_id: str = "",
+        ids: str = "",
     ) -> Any:
-        return await self._search(request, q, limit, exclude_id)
+        return await self._search(request, q, limit, exclude_id, ids)
 
     async def api_response(
         self,
@@ -1307,8 +1328,9 @@ class SearchView(BaseView):
         q: str = "",
         limit: int = 20,
         exclude_id: str = "",
+        ids: str = "",
     ) -> Any:
-        return await self._search(request, q, limit, exclude_id)
+        return await self._search(request, q, limit, exclude_id, ids)
 
     def _is_browser_request(self, request: Request) -> bool:
         accept = request.headers.get("accept", "")
@@ -1338,32 +1360,66 @@ class SearchView(BaseView):
             status_code=422 if error else 200,
         )
 
-    async def _search(self, request: Request, q: str, limit: int = 20, exclude_id: str = "") -> Any:
+    async def _search(
+        self,
+        request: Request,
+        q: str = "",
+        limit: int = 20,
+        exclude_id: str = "",
+        ids: str = "",
+    ) -> Any:
         from fastapi.responses import JSONResponse
         from sqlalchemy import select
 
         is_browser = self._is_browser_request(request)
+        if not ids:
+            ids = request.query_params.get("ids", "")
 
         try:
             session = get_db_session(request)
             model = self.registered.model
 
-            from fastapi_admin_kit.search_utils import apply_search_filter
-
-            search_fields = getattr(self.admin, "search_fields", None) or [
-                "name",
-                "title",
-            ]
-            base = apply_search_filter(request, select(model), model, search_fields, q)
-
-            if exclude_id:
-                pk_col = getattr(model, self.registered.pk_field, None)
-                if pk_col is not None:
+            if ids.strip():
+                id_list = [i.strip() for i in ids.split(",") if i.strip()]
+                pk_field = self.registered.pk_field or "id"
+                pk_col = getattr(model, pk_field, None)
+                if pk_col is not None and id_list:
                     from fastapi_admin_kit.inspection import cast_pk_value
 
-                    base = base.where(pk_col != cast_pk_value(model, exclude_id))
+                    casted_ids = []
+                    for i in id_list:
+                        try:
+                            casted_ids.append(cast_pk_value(model, i))
+                        except (ValueError, TypeError):
+                            pass
+                    if casted_ids:
+                        base = select(model).where(pk_col.in_(casted_ids))
+                    else:
+                        base = select(model).where(False)
+                else:
+                    base = select(model).where(False)
+            elif "ids" in request.query_params:
+                if is_browser:
+                    return self._render_search_page(request, q, results=[])
+                return JSONResponse([])
+            else:
+                from fastapi_admin_kit.search_utils import apply_search_filter
 
-            base = base.limit(limit)
+                search_fields = getattr(self.admin, "search_fields", None) or [
+                    "name",
+                    "title",
+                ]
+                base = apply_search_filter(request, select(model), model, search_fields, q)
+
+                if exclude_id:
+                    pk_col = getattr(model, self.registered.pk_field, None)
+                    if pk_col is not None:
+                        from fastapi_admin_kit.inspection import cast_pk_value
+
+                        base = base.where(pk_col != cast_pk_value(model, exclude_id))
+
+                base = base.limit(limit)
+
             result = session.execute(base)
             if hasattr(result, "__await__"):
                 result = await result
@@ -1371,7 +1427,7 @@ class SearchView(BaseView):
 
             results = []
             for row in rows:
-                pk = getattr(row, self.registered.pk_field)
+                pk = getattr(row, self.registered.pk_field or "id")
                 from fastapi_admin_kit.inspection import model_display_name
 
                 label = model_display_name(row)

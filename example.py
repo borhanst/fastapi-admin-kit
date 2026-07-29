@@ -557,7 +557,7 @@ class ArticleAdmin(ModelAdmin):
 
     list_display = ["id", "title", "tags", "created_at"]
     search_fields = ["title", "tags__name"]
-    list_filter = ["created_at"]
+    list_filter = ["tags"]
     ordering = ["-created_at"]
     verbose_name = "Article"
     verbose_name_plural = "Articles"
