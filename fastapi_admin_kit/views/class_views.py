@@ -429,7 +429,15 @@ class CreateView(BaseView):
             session = get_db_session(request)
             await session.rollback()
             raise
-        url = f"{request.app.state.admin_config['admin_path']}/{self.registered.table_name}/"
+
+        # Determine redirect target based on which save button was clicked
+        form_data = getattr(request, "_cached_form_data", None)
+        save_action = form_data.get("_save_action", "save") if form_data else "save"
+        admin_path = request.app.state.admin_config["admin_path"]
+        if save_action == "add_another":
+            url = f"{admin_path}/{self.registered.table_name}/create"
+        else:
+            url = f"{admin_path}/{self.registered.table_name}/"
         return RedirectResponse(url=url, status_code=303)
 
     async def _save_inline_objects(self, request: Request, parent_obj: Any) -> None:
@@ -824,7 +832,15 @@ class EditView(BaseView):
             session = get_db_session(request)
             await session.rollback()
             raise
-        url = f"{request.app.state.admin_config['admin_path']}/{self.registered.table_name}/"
+
+        # Determine redirect target based on which save button was clicked
+        form_data = getattr(request, "_cached_form_data", None)
+        save_action = form_data.get("_save_action", "save") if form_data else "save"
+        admin_path = request.app.state.admin_config["admin_path"]
+        if save_action == "add_another":
+            url = f"{admin_path}/{self.registered.table_name}/create"
+        else:
+            url = f"{admin_path}/{self.registered.table_name}/"
         return RedirectResponse(url=url, status_code=303)
 
     async def _save_inline_objects(self, request: Request, parent_obj: Any) -> None:
