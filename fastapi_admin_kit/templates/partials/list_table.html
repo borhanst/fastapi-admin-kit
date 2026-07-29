@@ -63,7 +63,11 @@
                 {% elif val is string or val is number %}
                   {% if col.icon %}<span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">{{ col.icon }}</span>{% endif %}{{ val }}
                 {% elif val is iterable and val is not string %}
-                  {{ model_display_name(val) }}
+                  {% set _ns = namespace(parts=[]) %}
+                  {% for _item in val %}
+                    {% set _ns.parts = _ns.parts + [model_display_name(_item)] %}
+                  {% endfor %}
+                  {{ _ns.parts | join(', ') if _ns.parts else '-' }}
                 {% else %}
                   {{ val | string }}
                 {% endif %}
@@ -82,7 +86,11 @@
                 {% elif val is string or val is number %}
                   {% if col.icon %}<span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">{{ col.icon }}</span>{% endif %}{{ val }}
                 {% elif val is iterable and val is not string %}
-                  {{ model_display_name(val) }}
+                  {% set _ns = namespace(parts=[]) %}
+                  {% for _item in val %}
+                    {% set _ns.parts = _ns.parts + [model_display_name(_item)] %}
+                  {% endfor %}
+                  {{ _ns.parts | join(', ') if _ns.parts else '-' }}
                 {% else %}
                   {{ val | string }}
                 {% endif %}
