@@ -687,15 +687,20 @@ class DefaultQueryProvider:
             col_name = order[0].lstrip("-")
             col = getattr(model, col_name, None) if hasattr(model, col_name) else None
             if col is not None:
-                if query_adapter is not None:
-                    if order[0].startswith("-"):
-                        base = query_adapter.order_by(base, f"-{col_name}")
-                    else:
-                        base = query_adapter.order_by(base, col_name)
-                else:
-                    from sqlalchemy import asc, desc
+                from sqlalchemy.orm import ColumnProperty
 
-                    base = base.order_by(desc(col) if order[0].startswith("-") else asc(col))
+                if isinstance(getattr(col, "property", None), ColumnProperty):
+                    if query_adapter is not None:
+                        from sqlalchemy import desc
+
+                        if order[0].startswith("-"):
+                            base = query_adapter.order_by(base, desc(col))
+                        else:
+                            base = query_adapter.order_by(base, col)
+                    else:
+                        from sqlalchemy import asc, desc
+
+                        base = base.order_by(desc(col) if order[0].startswith("-") else asc(col))
 
         per_page = registered.admin.per_page
 

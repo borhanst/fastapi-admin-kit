@@ -15,6 +15,9 @@
           {% endif %}
           {% for col in display_columns %}
           <th class="col-header">
+            {% if col.is_relation %}
+            <span class="col-header-label">{{ col.label }}</span>
+            {% else %}
             <a href="?ordering={% if ordering == col.name %}-{% endif %}{{ col.name }}"
                class="col-header-link{% if ordering == col.name or ordering == '-' ~ col.name %} active{% endif %}">
               {{ col.label }}
@@ -24,6 +27,7 @@
               {{ icon("chevron-down", size="16px", css_class="sort-icon sort-icon--desc") }}
               {% endif %}
             </a>
+            {% endif %}
           </th>
           {% endfor %}
           <th class="col-actions">Actions</th>
