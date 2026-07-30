@@ -48,7 +48,7 @@ def app():
 def admin_user(engine):
     from sqlalchemy.orm import sessionmaker
 
-    from fastapi_admin_kit.auth.models import Role, User
+    from fastapi_admin_kit.migrations.models import Role, User
 
     AdminBase.metadata.create_all(engine)
     session_local = sessionmaker(engine)

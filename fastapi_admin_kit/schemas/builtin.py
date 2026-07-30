@@ -105,6 +105,8 @@ PERMISSION_SCHEMA = Schema(
         Field("can_create", type="boolean", default=False),
         Field("can_edit", type="boolean", default=False),
         Field("can_delete", type="boolean", default=False),
+        Field("can_export", type="boolean", default=False),
+        Field("can_import", type="boolean", default=False),
     ],
     relations=[
         Relation(
@@ -113,6 +115,12 @@ PERMISSION_SCHEMA = Schema(
             type="many_to_many",
             through="admin_role_permissions",
             back_populates="permissions",
+        ),
+        Relation(
+            name="user_overrides",
+            target="admin_user_permissions",
+            type="one_to_many",
+            back_populates="permission",
         ),
     ],
 )
@@ -140,6 +148,12 @@ AUDIT_LOG_SCHEMA = Schema(
         Field("user_agent", type="text", nullable=True),
         Field("timestamp", type="datetime", server_default="now()"),
     ],
+    indexes=[
+        {"columns": ["model_name", "table_name"], "name": "idx_audit_model"},
+        {"columns": ["user_id"], "name": "idx_audit_user"},
+        {"columns": ["timestamp"], "name": "idx_audit_timestamp"},
+        {"columns": ["table_name", "object_id"], "name": "idx_audit_object"},
+    ],
     relations=[],
 )
 
@@ -161,4 +175,85 @@ LOGIN_ATTEMPT_SCHEMA = Schema(
         Field("timestamp", type="datetime", server_default="now()"),
     ],
     relations=[],
+)
+
+# ---------------------------------------------------------------------------
+# UserPermission schema
+# ---------------------------------------------------------------------------
+
+USER_PERMISSION_SCHEMA = Schema(
+    table_name="admin_user_permissions",
+    verbose_name="User Permission",
+    verbose_name_plural="User Permissions",
+    fields=[
+        Field("id", type="integer", primary_key=True),
+        Field("user_id", type="integer", nullable=False, index=True),
+        Field("permission_id", type="integer", nullable=False, index=True),
+    ],
+    relations=[
+        Relation(
+            name="user",
+            target="admin_users",
+            type="many_to_one",
+            back_populates="direct_permissions",
+        ),
+        Relation(
+            name="permission",
+            target="admin_permissions",
+            type="many_to_one",
+            back_populates="user_overrides",
+        ),
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# RefreshToken schema
+# ---------------------------------------------------------------------------
+
+REFRESH_TOKEN_SCHEMA = Schema(
+    table_name="admin_refresh_tokens",
+    verbose_name="Refresh Token",
+    verbose_name_plural="Refresh Tokens",
+    fields=[
+        Field("id", type="integer", primary_key=True),
+        Field("user_id", type="integer", nullable=False, index=True),
+        Field("token_hash", type="string", max_length=64, nullable=False, index=True),
+        Field("expires_at", type="datetime", nullable=False),
+        Field("created_at", type="datetime", server_default="now()"),
+        Field("revoked_at", type="datetime", nullable=True),
+    ],
+    relations=[
+        Relation(
+            name="user",
+            target="admin_users",
+            type="many_to_one",
+            back_populates="refresh_tokens",
+        ),
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# UserTOTP schema
+# ---------------------------------------------------------------------------
+
+USER_TOTP_SCHEMA = Schema(
+    table_name="admin_user_totp",
+    verbose_name="2FA Token",
+    verbose_name_plural="2FA Tokens",
+    fields=[
+        Field("id", type="integer", primary_key=True),
+        Field("user_id", type="integer", unique=True, nullable=False, index=True),
+        Field("secret_key", type="string", max_length=255, nullable=False),
+        Field("enabled", type="boolean", default=False),
+        Field("backup_codes", type="text", nullable=True),
+        Field("created_at", type="datetime", server_default="now()"),
+    ],
+    relations=[
+        Relation(
+            name="user",
+            target="admin_users",
+            type="many_to_one",
+            back_populates="totp",
+        ),
+    ],
 )

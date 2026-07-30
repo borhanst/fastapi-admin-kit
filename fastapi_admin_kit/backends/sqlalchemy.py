@@ -561,11 +561,13 @@ class SqlAlchemyDatabaseBackend:
             Column,
             DateTime,
             Float,
+            ForeignKey,
+            Index,
             Integer,
             String,
             Text,
         )
-        from sqlalchemy.dialects.postgresql import JSON as PG_JSON
+        from sqlalchemy.orm import relationship
         from sqlalchemy.sql import func
 
         from fastapi_admin_kit.schemas.schema import Schema as SchemaType
@@ -580,6 +582,23 @@ class SqlAlchemyDatabaseBackend:
 
             base = Base
 
+        # Cross-dialect JSON type
+        from sqlalchemy import types
+
+        class JSON(types.TypeDecorator):
+            impl = Text
+            cache_ok = True
+
+            def process_bind_param(self, value, dialect):
+                import json
+
+                return json.dumps(value) if value is not None else None
+
+            def process_result_value(self, value, dialect):
+                import json
+
+                return json.loads(value) if value is not None else None
+
         type_map: dict[str, type] = {
             "integer": Integer,
             "string": String,
@@ -587,7 +606,7 @@ class SqlAlchemyDatabaseBackend:
             "boolean": Boolean,
             "datetime": DateTime(timezone=True),
             "float": Float,
-            "json": PG_JSON,
+            "json": JSON,
         }
 
         columns: list[Column] = []
@@ -596,6 +615,12 @@ class SqlAlchemyDatabaseBackend:
             existing_table = base.metadata.tables.get(schema.table_name)
             if existing_table is not None:
                 existing_cols = {c.name: c for c in existing_table.columns}
+
+        # Collect many_to_one target tables to know which columns need ForeignKey
+        many_to_one_targets = {
+            rel.target: rel.name for rel in schema.relations if rel.type == "many_to_one"
+        }
+
         for f in schema.fields:
             sa_type = type_map.get(f.type, String)
 
@@ -624,18 +649,217 @@ class SqlAlchemyDatabaseBackend:
                 if existing_col is None or not existing_col.index:
                     kwargs["index"] = True
 
-            columns.append(Column(f.name, sa_type, **kwargs))
+            # Add ForeignKey for many_to_one relationship columns
+            # The FK column is typically named {target}_id where target is the table name
+            # But we need to handle cases like admin_users -> user_id (not admin_user_id)
+            fk_target = None
+            for target_table, rel_name in many_to_one_targets.items():
+                # Try common naming patterns for the FK column
+                # Strip common prefixes like "admin_" from table name
+                base_name = target_table
+                if base_name.startswith("admin_"):
+                    base_name = base_name[6:]  # Remove "admin_"
+
+                possible_names = [
+                    f"{base_name.rstrip('s')}_id",  # e.g., admin_users -> user_id
+                    f"{base_name}_id",  # e.g., admin_users -> users_id
+                    f"{target_table.rstrip('s')}_id",  # e.g., admin_users -> admin_user_id
+                    f"{target_table}_id",  # e.g., admin_users -> admin_users_id
+                ]
+                for possible_name in possible_names:
+                    if f.name == possible_name:
+                        fk_target = target_table
+                        break
+                if fk_target:
+                    break
+
+            # Build column with ForeignKey if needed
+            if fk_target:
+                from sqlalchemy import ForeignKey
+
+                # Use string-based FK to allow target table to not exist yet
+                columns.append(
+                    Column(f.name, sa_type, ForeignKey(f"{fk_target}.id", use_alter=True), **kwargs)
+                )
+            else:
+                columns.append(Column(f.name, sa_type, **kwargs))
+
+        # Build table args with indexes from schema
+        # SQLAlchemy expects __table_args__ as tuple where last element is dict for options
+        table_args_list: list[Any] = []
+
+        # Check if table already exists in metadata (to avoid recreating indexes)
+        existing_table = None
+        if base is not None and hasattr(base, "metadata"):
+            existing_table = base.metadata.tables.get(schema.table_name)
+
+        if hasattr(schema, "indexes") and schema.indexes and existing_table is None:
+            for idx_def in schema.indexes:
+                if isinstance(idx_def, dict):
+                    columns_list = idx_def.get("columns", [])
+                    name = idx_def.get("name")
+                    unique = idx_def.get("unique", False)
+                    if columns_list:
+                        table_args_list.append(Index(name, *columns_list, unique=unique))
+        table_args_list.append({"extend_existing": True})
+        table_args = tuple(table_args_list)
 
         # Build the model class dynamically
         table_name = schema.table_name
         model_attrs: dict[str, Any] = {
             "__tablename__": table_name,
-            "__table_args__": {"extend_existing": True},
+            "__table_args__": table_args,
         }
         for col in columns:
             model_attrs[col.key] = col
 
+        # Process relationships from schema (after model_attrs is defined)
+        for rel in schema.relations:
+            if rel.type == "many_to_many" and rel.through:
+                # Many-to-many relationship using a junction table
+                # Pass the table name as string - SQLAlchemy will resolve it at mapper config time
+                model_attrs[rel.name] = relationship(
+                    rel.target,
+                    secondary=rel.through,
+                    back_populates=rel.back_populates,
+                )
+            elif rel.type == "one_to_many":
+                # One-to-many: foreign key is on the target table
+                # Use same naming convention as many_to_one: strip "admin_" prefix and singularize
+                base_name = table_name
+                if base_name.startswith("admin_"):
+                    base_name = base_name[6:]  # Remove "admin_"
+                # Singularize: users -> user, roles -> role, etc.
+                if base_name.endswith("s"):
+                    base_name = base_name[:-1]
+                fk_col_name = f"{base_name}_id"
+                model_attrs[rel.name] = relationship(
+                    rel.target,
+                    back_populates=rel.back_populates,
+                    foreign_keys=f"[{rel.target}.{fk_col_name}]",
+                )
+            elif rel.type == "many_to_one":
+                # Many-to-one: foreign key is on this table
+                # Use smarter FK column naming that handles prefixes like "admin_"
+                target_table = rel.target
+                base_name = target_table
+                if base_name.startswith("admin_"):
+                    base_name = base_name[6:]  # Remove "admin_"
+
+                possible_names = [
+                    f"{base_name.rstrip('s')}_id",  # e.g., admin_users -> user_id
+                    f"{base_name}_id",  # e.g., admin_users -> users_id
+                    f"{target_table.rstrip('s')}_id",  # e.g., admin_users -> admin_user_id
+                    f"{target_table}_id",  # e.g., admin_users -> admin_users_id
+                ]
+                fk_col_name = None
+                for possible_name in possible_names:
+                    if possible_name in model_attrs:
+                        fk_col_name = possible_name
+                        break
+
+                if fk_col_name:
+                    model_attrs[rel.name] = relationship(
+                        rel.target,
+                        back_populates=rel.back_populates,
+                        foreign_keys=model_attrs[fk_col_name],
+                    )
+
         model_class = type(table_name, (base,), model_attrs)
+
+        # Add AuthModelMixin methods to User model if this is the User schema
+        if schema.table_name == "admin_users":
+            from fastapi_admin_kit.auth.password import password_manager
+
+            # Add role_ids property
+            @property
+            def role_ids(self) -> list[int]:
+                roles = getattr(self, "roles", None)
+                if roles is None:
+                    return []
+                return [r.id for r in roles]
+
+            model_class.role_ids = role_ids
+
+            # Add verify_password method
+            def verify_password(self, password: str) -> bool:
+                return password_manager.verify(password, self.hashed_password)
+
+            model_class.verify_password = verify_password
+
+            # Add hash_password classmethod
+            @classmethod
+            def hash_password(cls, password: str) -> str:
+                return password_manager.hash(password)
+
+            model_class.hash_password = hash_password
+
+            # Add set_hasher classmethod
+            @classmethod
+            def set_hasher(cls, hasher: type) -> None:
+                cls._hasher = hasher
+
+            model_class.set_hasher = set_hasher
+
+            # Initialize _hasher attribute
+            model_class._hasher = None
+
+            # Add has_perm method
+            async def has_perm(self, perm_name: str, session) -> bool:
+                if self.is_superuser:
+                    return True
+
+                from sqlalchemy import select
+
+                from fastapi_admin_kit.migrations.models import (
+                    Permission,
+                    UserPermission,
+                    admin_role_permissions,
+                )
+
+                # Parse perm_name -> (table_name, action)
+                if ":" in perm_name:
+                    table_name, action = perm_name.rsplit(":", 1)
+                else:
+                    parts = perm_name.rsplit("_", 1)
+                    if len(parts) != 2:
+                        return False
+                    table_name, action = parts
+
+                attr = f"can_{action}"
+                if attr not in ("can_view", "can_create", "can_edit", "can_delete"):
+                    return False
+
+                role_ids = self.role_ids
+                if not role_ids and not self.id:
+                    return False
+
+                if role_ids:
+                    result = await session.execute(
+                        select(Permission)
+                        .join(
+                            admin_role_permissions,
+                            Permission.id == admin_role_permissions.c.permission_id,
+                        )
+                        .where(admin_role_permissions.c.role_id.in_(role_ids))
+                    )
+                    for perm in result.scalars():
+                        if perm.table_name == table_name and getattr(perm, attr, False):
+                            return True
+
+                result = await session.execute(
+                    select(Permission)
+                    .join(UserPermission, UserPermission.permission_id == Permission.id)
+                    .where(UserPermission.user_id == self.id)
+                )
+                for perm in result.scalars():
+                    if perm.table_name == table_name and getattr(perm, attr, False):
+                        return True
+
+                return False
+
+            model_class.has_perm = has_perm
+
         return model_class
 
 

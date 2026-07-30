@@ -267,7 +267,12 @@ class Admin:
             )
 
         if database is None:
-            database = AdminDatabase(engine=engine, base=base, database_config=database_config)
+            database = AdminDatabase(
+                engine=engine,
+                base=base,
+                database_config=database_config,
+                use_alembic=config.behavior.use_alembic,
+            )
 
         if router is None:
             router = AdminRouter(
@@ -991,8 +996,8 @@ class Admin:
             RoleAdmin,
             UserAdmin,
         )
-        from fastapi_admin_kit.audit.models import AuditLog
-        from fastapi_admin_kit.auth.models import (
+        from fastapi_admin_kit.migrations.models import (
+            AuditLog,
             LoginAttempt,
             Permission,
             Role,

@@ -154,7 +154,7 @@ async def admin_app(app, engine):
     with Session(sync_eng) as session:
         from sqlalchemy import select as sa_select
 
-        from fastapi_admin_kit.auth.models import Role, User
+        from fastapi_admin_kit.migrations.models import Role, User
 
         result = session.execute(sa_select(Role).limit(1))
         role = result.scalar_one_or_none()
@@ -217,7 +217,7 @@ async def m2m_admin_app(app, engine):
     with Session(sync_eng) as session:
         from sqlalchemy import select as sa_select
 
-        from fastapi_admin_kit.auth.models import Role, User
+        from fastapi_admin_kit.migrations.models import Role, User
 
         result = session.execute(sa_select(Role).limit(1))
         role = result.scalar_one_or_none()

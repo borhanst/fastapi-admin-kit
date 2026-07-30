@@ -77,6 +77,8 @@ class Schema:
         table_name: Database table name.
         fields: List of field definitions.
         relations: List of relationship definitions.
+        indexes: List of index definitions (each a dict with 'columns' list
+            and optional 'unique', 'name').
         description: Human-readable model description.
         verbose_name: Display name for the model.
         verbose_name_plural: Plural display name.
@@ -85,6 +87,7 @@ class Schema:
     table_name: str
     fields: list[Field] = field(default_factory=list)
     relations: list[Relation] = field(default_factory=list)
+    indexes: list[dict] = field(default_factory=list)
     description: str | None = None
     verbose_name: str | None = None
     verbose_name_plural: str | None = None

@@ -17,9 +17,9 @@ from fastapi_admin_kit.audit.diff import compute_diff, serialize_value, snapshot
 from fastapi_admin_kit.audit.event_bus import AuditEventBus
 from fastapi_admin_kit.audit.events import AuditEvent
 from fastapi_admin_kit.audit.logger import AuditLogger
-from fastapi_admin_kit.audit.models import AuditLog
 from fastapi_admin_kit.audit.sqlalchemy_logger import SqlAlchemyAuditLogger
-from fastapi_admin_kit.auth.models import (  # noqa: F401 — ensure tables exist
+from fastapi_admin_kit.migrations.models import (  # noqa: F401 — ensure tables exist
+    AuditLog,
     Role,
     User,
 )

@@ -10,13 +10,13 @@ from sqlalchemy.pool import StaticPool
 
 from fastapi_admin_kit.auth.csrf import require_csrf_token
 from fastapi_admin_kit.auth.dependencies import require_superuser
-from fastapi_admin_kit.auth.models import (
+from fastapi_admin_kit.auth.session import SignedCookieSessionBackend
+from fastapi_admin_kit.db import SessionMiddleware
+from fastapi_admin_kit.migrations.models import (
     Permission,
     Role,
     admin_role_permissions,
 )
-from fastapi_admin_kit.auth.session import SignedCookieSessionBackend
-from fastapi_admin_kit.db import SessionMiddleware
 from fastapi_admin_kit.models.base import Base as AdminBase
 from fastapi_admin_kit.views.roles import (
     router as roles_router,

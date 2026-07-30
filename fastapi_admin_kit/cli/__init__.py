@@ -73,7 +73,7 @@ def main() -> None:
         handle_user_command(args)
     elif args.command in ("createpermissions", "createadminpermissions", "deletepermissions"):
         handle_permission_command(args)
-    elif args.command in ("migrate", "migrate-permissions"):
+    elif args.command in ("migrate", "migrate-permissions", "migrate-alembic", "init-alembic"):
         handle_migrate_command(args)
     elif args.command == "init":
         _init_project(args)

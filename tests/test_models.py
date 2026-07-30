@@ -4,13 +4,13 @@ import pytest
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import Session
 
-from fastapi_admin_kit.audit.models import AuditLog
-from fastapi_admin_kit.auth.models import (
+from fastapi_admin_kit.auth.protocol import AdminUserProtocol
+from fastapi_admin_kit.migrations.models import (
+    AuditLog,
     Permission,
     Role,
     User,
 )
-from fastapi_admin_kit.auth.protocol import AdminUserProtocol
 from fastapi_admin_kit.models import Base
 
 
@@ -221,7 +221,7 @@ def test_models_package_exports():
 
     assert Base is not None
 
-    from fastapi_admin_kit.auth.models import (
+    from fastapi_admin_kit.migrations.models import (
         Permission,
         Role,
         User,
@@ -233,6 +233,6 @@ def test_models_package_exports():
 
 
 def test_audit_log_exportable():
-    from fastapi_admin_kit.audit.models import AuditLog
+    from fastapi_admin_kit.migrations.models import AuditLog
 
     assert AuditLog is not None

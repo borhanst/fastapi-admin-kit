@@ -9,7 +9,7 @@ class TestLoginAttemptLogging:
     """Test login attempt recording."""
 
     def test_admin_login_attempt_model(self):
-        from fastapi_admin_kit.auth.models import LoginAttempt
+        from fastapi_admin_kit.migrations.models import LoginAttempt
 
         attempt = LoginAttempt(
             email="test@test.com",
@@ -22,7 +22,7 @@ class TestLoginAttemptLogging:
         assert attempt.ip_address == "127.0.0.1"
 
     def test_failed_attempt(self):
-        from fastapi_admin_kit.auth.models import LoginAttempt
+        from fastapi_admin_kit.migrations.models import LoginAttempt
 
         attempt = LoginAttempt(
             email="test@test.com",
@@ -37,7 +37,7 @@ class TestPasswordChangeAudit:
     """Test password change audit logging."""
 
     def test_password_changed_at_recorded(self):
-        from fastapi_admin_kit.auth.models import User
+        from fastapi_admin_kit.migrations.models import User
 
         user = User(
             email="test@test.com",
@@ -52,7 +52,7 @@ class TestRefreshTokenRevocation:
     """Test refresh token revocation on logout/password change."""
 
     def test_refresh_token_revocation(self):
-        from fastapi_admin_kit.auth.models import RefreshToken
+        from fastapi_admin_kit.migrations.models import RefreshToken
 
         token = RefreshToken(
             user_id=1,

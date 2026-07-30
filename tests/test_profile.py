@@ -12,7 +12,7 @@ class TestPasswordChangeFlow:
     def test_password_changed_at_set(self):
         """After password change, password_changed_at should be set."""
 
-        from fastapi_admin_kit.auth.models import User
+        from fastapi_admin_kit.migrations.models import User
 
         user = User(
             email="test@test.com",
@@ -24,7 +24,7 @@ class TestPasswordChangeFlow:
 
     def test_password_change_requires_current(self):
         """Password change requires current password verification."""
-        from fastapi_admin_kit.auth.models import User
+        from fastapi_admin_kit.migrations.models import User
 
         hashed = User.hash_password("currentpassword")
         user = User(
@@ -66,7 +66,7 @@ class TestProfileUpdate:
 
     def test_full_name_update(self):
         """Full name can be updated."""
-        from fastapi_admin_kit.auth.models import User
+        from fastapi_admin_kit.migrations.models import User
 
         user = User(
             email="test@test.com",

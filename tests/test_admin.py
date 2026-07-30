@@ -271,7 +271,7 @@ class TestSeedRoles:
     async def test_default_roles_seeded(self, engine, app):
         from sqlalchemy.orm import Session
 
-        from fastapi_admin_kit.auth.models import Role
+        from fastapi_admin_kit.migrations.models import Role
 
         admin = Admin(
             app=app,
@@ -295,7 +295,7 @@ class TestSeedRoles:
     async def test_roles_not_reseeded_by_default(self, engine, app):
         from sqlalchemy.orm import Session
 
-        from fastapi_admin_kit.auth.models import Role
+        from fastapi_admin_kit.migrations.models import Role
 
         # First setup — seeds roles
         admin1 = Admin(
@@ -332,7 +332,7 @@ class TestSeedRoles:
     async def test_roles_overwrite(self, engine, app):
         from sqlalchemy.orm import Session
 
-        from fastapi_admin_kit.auth.models import Role
+        from fastapi_admin_kit.migrations.models import Role
 
         # First setup
         admin1 = Admin(
@@ -375,7 +375,7 @@ class TestSeedRoles:
     async def test_custom_seed_roles_with_permissions(self, engine, app):
         from sqlalchemy.orm import Session
 
-        from fastapi_admin_kit.auth.models import Role
+        from fastapi_admin_kit.migrations.models import Role
         from fastapi_admin_kit.types import SeedRole
 
         admin = Admin(
@@ -551,7 +551,7 @@ class TestLifespan:
 class TestAuthModelValidation:
     def test_valid_auth_model(self):
         """A model with the right attrs should not raise."""
-        from fastapi_admin_kit.auth.models import User
+        from fastapi_admin_kit.migrations.models import User
 
         # User has id, email, is_active, is_superuser, role_id
         admin = Admin(auth_model=User)

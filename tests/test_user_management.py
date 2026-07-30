@@ -42,7 +42,7 @@ class TestSoftDelete:
 
     def test_soft_delete_sets_inactive(self):
         """Soft-delete sets is_active=False."""
-        from fastapi_admin_kit.auth.models import User
+        from fastapi_admin_kit.migrations.models import User
 
         user = User(
             email="test@test.com",

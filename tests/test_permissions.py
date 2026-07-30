@@ -4,12 +4,12 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from fastapi_admin_kit.auth.models import (
+from fastapi_admin_kit.auth.permissions import PermissionChecker
+from fastapi_admin_kit.migrations.models import (
     Permission,
     Role,
     User,
 )
-from fastapi_admin_kit.auth.permissions import PermissionChecker
 from fastapi_admin_kit.models import Base
 
 # ---------------------------------------------------------------------------
