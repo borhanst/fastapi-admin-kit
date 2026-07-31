@@ -13,9 +13,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from fastapi_admin_kit import Admin
-from fastapi_admin_kit.audit.models import AuditLog  # noqa: F401
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
-from fastapi_admin_kit.auth.models import Role, User
+from fastapi_admin_kit.migrations.models import (
+    AuditLog,  # noqa: F401
+    Role,
+    User,
+)
 from tests.conftest import SECRET_KEY, create_session_cookie, run_async
 from tests.test_registry import Category, Product
 
@@ -46,6 +49,10 @@ def client(engine):
         secret_key=SECRET_KEY,
         auth_backend=BuiltinAuthBackend(),
         auto_discover=False,
+        sidebar_bottom_links=[
+            {"label": "Settings", "url": "/admin/users/", "icon": "cog-6-tooth"},
+            {"label": "Help", "url": "https://docs.example.com"},
+        ],
     )
     asyncio.run(admin.setup(app))
 
@@ -189,6 +196,7 @@ def test_sidebar_bottom_section(client):
     # Check bottom section
     assert 'class="sidebar-bottom"' in response.text
     assert "Settings" in response.text
+    assert "Help" in response.text
 
 
 def test_topbar_user_dropdown(client):

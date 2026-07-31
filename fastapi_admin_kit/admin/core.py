@@ -267,7 +267,12 @@ class Admin:
             )
 
         if database is None:
-            database = AdminDatabase(engine=engine, base=base, database_config=database_config)
+            database = AdminDatabase(
+                engine=engine,
+                base=base,
+                database_config=database_config,
+                use_alembic=config.behavior.use_alembic,
+            )
 
         if router is None:
             router = AdminRouter(
@@ -541,7 +546,8 @@ class Admin:
         # 8.2 Apply skip_models — mark listed models to hide from admin
         skip_models = self.config.behavior.skip_models
         # Built-in internal models are always hidden from admin
-        default_skip = {"RefreshToken", "UserPermission", "UserTOTP"}
+        # Note: model class names match table names (e.g., admin_refresh_tokens)
+        default_skip = {"admin_refresh_tokens", "admin_user_permissions", "admin_user_totp"}
         all_skip = default_skip | skip_models
         skip_lower = {s.lower() for s in all_skip}
         for registered in self.registry.all():
@@ -991,8 +997,8 @@ class Admin:
             RoleAdmin,
             UserAdmin,
         )
-        from fastapi_admin_kit.audit.models import AuditLog
-        from fastapi_admin_kit.auth.models import (
+        from fastapi_admin_kit.migrations.models import (
+            AuditLog,
             LoginAttempt,
             Permission,
             Role,

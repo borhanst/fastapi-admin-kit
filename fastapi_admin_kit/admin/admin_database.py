@@ -33,10 +33,12 @@ class AdminDatabase:
         engine: Any | None = None,
         base: Any | None = None,
         database_config: DatabaseConfig | None = None,
+        use_alembic: bool = False,
     ):
         self.engine = engine
         self.base = base
         self.database_config = database_config
+        self.use_alembic = use_alembic
         self._backend = SqlAlchemyDatabaseBackend(
             admin_database=self, database_config=database_config
         )
@@ -48,16 +50,19 @@ class AdminDatabase:
         return self.engine
 
     async def _create_tables(self) -> None:
-        """Create all admin database tables (async-safe)."""
+        """Create all admin database tables (async-safe).
+
+        If ``use_alembic=True`` (production mode), this method does nothing
+        and expects Alembic to manage the schema via migrations.
+        """
+        if self.use_alembic:
+            logger.info("use_alembic=True: skipping create_all; schema managed by Alembic")
+            return
+
         from sqlalchemy.ext.asyncio import AsyncEngine
 
-        from fastapi_admin_kit.audit import (
-            models as _audit_models,  # noqa: F401
-        )
-
         # Import models to register them with metadata
-        from fastapi_admin_kit.auth import models as _auth_models  # noqa: F401
-        from fastapi_admin_kit.models.base import Base as AdminBase
+        from fastapi_admin_kit.migrations.models import Base as AdminBase
 
         if isinstance(self.engine, AsyncEngine):
             # Async engine - use run_sync
@@ -166,7 +171,7 @@ class AdminDatabase:
         from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
         from sqlalchemy.orm import Session, sessionmaker
 
-        from fastapi_admin_kit.auth.models import Permission, Role
+        from fastapi_admin_kit.migrations.models import Permission, Role
 
         is_async = isinstance(self.engine, AsyncEngine)
 

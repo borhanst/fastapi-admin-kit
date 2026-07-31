@@ -16,6 +16,7 @@ class BehaviorConfig:
         dashboard_callback: str | None = None,
         dashboard_components: list[Any] | None = None,
         skip_models: list[str] | None = None,
+        use_alembic: bool = False,
     ):
         self.auto_discover = auto_discover
         self.dashboard_stats = dashboard_stats or []
@@ -23,6 +24,7 @@ class BehaviorConfig:
         self.dashboard_callback = dashboard_callback
         self.dashboard_components = dashboard_components or []
         self.skip_models = set(skip_models) if skip_models else set()
+        self.use_alembic = use_alembic
 
     def validate_behavior_config(self) -> None:
         """Validate behavior configuration."""

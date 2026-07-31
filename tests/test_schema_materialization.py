@@ -373,8 +373,8 @@ class TestAdminAuthModelValidation:
         assert admin.auth_model is None
 
     def test_auth_config_validates_model(self):
-        from fastapi_admin_kit.auth.models import User
         from fastapi_admin_kit.config.auth import AuthConfig
+        from fastapi_admin_kit.migrations.models import User
 
         config = AuthConfig(auth_model=User)
         # Should not raise — User satisfies the protocol
@@ -409,9 +409,11 @@ class TestAdminAuthModelValidation:
         # Should pass because it has role_ids (even though None)
         # The validation checks hasattr, not the value
         config.validate_auth_model()
+        # The validation checks hasattr, not the value
+        config.validate_auth_model()
 
     def test_builtin_user_satisfies_protocol(self):
-        from fastapi_admin_kit.auth.models import User
+        from fastapi_admin_kit.migrations.models import User
 
         # User should have all protocol-required attributes
         assert hasattr(User, "id")
