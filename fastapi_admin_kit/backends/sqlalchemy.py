@@ -582,6 +582,15 @@ class SqlAlchemyDatabaseBackend:
 
             base = Base
 
+        # Reuse an already-materialized class for this table instead of creating
+        # a duplicate mapper. Duplicate mappers for the same table share a
+        # declarative registry entry, so lazy relationship/back_populates
+        # resolution can point at a stale copy and fail mapper configuration.
+        for mapper in list(base.registry.mappers):
+            table = mapper.local_table
+            if table is not None and table.name == schema.table_name:
+                return mapper.class_
+
         # Cross-dialect JSON type
         from sqlalchemy import types
 
