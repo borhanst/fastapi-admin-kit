@@ -49,6 +49,10 @@ def client(engine):
         secret_key=SECRET_KEY,
         auth_backend=BuiltinAuthBackend(),
         auto_discover=False,
+        sidebar_bottom_links=[
+            {"label": "Settings", "url": "/admin/users/", "icon": "cog-6-tooth"},
+            {"label": "Help", "url": "https://docs.example.com"},
+        ],
     )
     asyncio.run(admin.setup(app))
 
@@ -192,6 +196,7 @@ def test_sidebar_bottom_section(client):
     # Check bottom section
     assert 'class="sidebar-bottom"' in response.text
     assert "Settings" in response.text
+    assert "Help" in response.text
 
 
 def test_topbar_user_dropdown(client):
