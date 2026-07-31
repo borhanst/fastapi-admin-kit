@@ -5,6 +5,8 @@ from fastapi_admin_kit.admin.decorators import column
 from fastapi_admin_kit.auth.mixins import AuthModelMixin
 from fastapi_admin_kit.config import DatabaseConfig, DatabaseType
 from fastapi_admin_kit.exceptions import ConfigError
+from fastapi_admin_kit.export_import import CSVExport, CSVImport, ExportBase, ImportBase
+from fastapi_admin_kit.inline import InlineModelAdmin, StackedInline, TabularInline
 from fastapi_admin_kit.nav import (
     BuiltNavGroup,
     BuiltNavItem,
@@ -22,6 +24,7 @@ from fastapi_admin_kit.types import (
     FieldsetContext,
     FieldsetSpec,
     FormContext,
+    InlineFormsetData,
     PermissionSet,
     RelationMeta,
     SeedRole,
@@ -64,6 +67,11 @@ __all__ = [
     "FieldsetContext",
     "FieldsetSpec",
     "FormContext",
+    "InlineFormsetData",
+    # Inline admin
+    "InlineModelAdmin",
+    "StackedInline",
+    "TabularInline",
     # View classes
     "BaseView",
     "ListView",
@@ -74,5 +82,10 @@ __all__ = [
     "SearchView",
     # Per-model assets
     "AdminExtra",
+    # Export/Import
+    "ExportBase",
+    "ImportBase",
+    "CSVExport",
+    "CSVImport",
 ]
-__version__ = "0.2.1"
+__version__ = "0.3.2"

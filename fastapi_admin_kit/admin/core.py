@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from fastapi_admin_kit.auth.backend import AuthBackend
+    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyBackend
     from fastapi_admin_kit.nav import NavGroupConfig, SidebarBuilder
     from fastapi_admin_kit.storage.base import StorageBackend
     from fastapi_admin_kit.views import ModelAdmin
@@ -124,6 +125,7 @@ class Admin:
         database: AdminDatabase | None = None,
         router: AdminRouter | None = None,
         template: AdminTemplate | None = None,
+        backend: SqlAlchemyBackend | None = None,
         # Legacy kwargs for backward compatibility
         base: type | None = None,
         title: str = "FastAPI Admin Kit",
@@ -181,6 +183,7 @@ class Admin:
         # AI
         ai: Any = None,
         ai_enabled: bool = False,
+        sidebar_bottom_links: list[dict[str, str]] | None = None,
     ):
         self.registry = AdminRegistry()
         self._app: FastAPI | None = app
@@ -262,11 +265,17 @@ class Admin:
                     require_tags=require_tags,
                     dashboard_permission=dashboard_permission,
                     settings_permission=settings_permission,
+                    sidebar_bottom_links=sidebar_bottom_links,
                 ),
             )
 
         if database is None:
-            database = AdminDatabase(engine=engine, base=base, database_config=database_config)
+            database = AdminDatabase(
+                engine=engine,
+                base=base,
+                database_config=database_config,
+                use_alembic=config.behavior.use_alembic,
+            )
 
         if router is None:
             router = AdminRouter(
@@ -284,12 +293,23 @@ class Admin:
                 dark_mode_default=config.ui.dark_mode_default,
                 dashboard_permission=config.nav.dashboard_permission,
                 settings_permission=config.nav.settings_permission,
+                sidebar_bottom_links=config.nav.sidebar_bottom_links,
             )
 
         self.config = config
         self.database = database
         self.router = router
         self.template = template
+
+        # Backend: defaults to composed SqlAlchemyBackend
+        if backend is None:
+            from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyBackend
+
+            backend = SqlAlchemyBackend.from_admin_database(database)
+        self.backend = backend
+
+        # Inject backend's introspection adapter into the registry's ModelInspector
+        self.registry.inspector._adapter = self.backend.introspection
 
         # RBAC
         self.seed_roles = seed_roles if seed_roles is not None else DEFAULT_SEED_ROLES
@@ -537,7 +557,8 @@ class Admin:
         # 8.2 Apply skip_models — mark listed models to hide from admin
         skip_models = self.config.behavior.skip_models
         # Built-in internal models are always hidden from admin
-        default_skip = {"RefreshToken", "UserPermission", "UserTOTP"}
+        # Note: model class names match table names (e.g., admin_refresh_tokens)
+        default_skip = {"admin_refresh_tokens", "admin_user_permissions", "admin_user_totp"}
         all_skip = default_skip | skip_models
         skip_lower = {s.lower() for s in all_skip}
         for registered in self.registry.all():
@@ -546,8 +567,6 @@ class Admin:
                 registered.admin.skip_auto_routes = True
 
         # 8.3 Attach audit event listeners (after registry is populated)
-        from fastapi_admin_kit.audit.listener import attach_audit_listener
-
         engine = self.database.engine
         if engine is not None:
             from sqlalchemy.ext.asyncio import AsyncEngine
@@ -556,7 +575,12 @@ class Admin:
                 from fastapi_admin_kit.db import create_session_factory
 
                 session_factory = create_session_factory(engine)
-                attach_audit_listener(session_factory, self.registry)
+                from fastapi_admin_kit.backends.sqlalchemy import (
+                    SqlAlchemyAuditBackend,
+                )
+
+                audit_backend = SqlAlchemyAuditBackend()
+                audit_backend.attach_listeners(session_factory, self.registry)
 
         # 9. Validate require_tags
         if self.config.nav.require_tags:
@@ -722,6 +746,7 @@ class Admin:
             admin_instance=self,
             secret_key=self.router.secret_key,
             session_samesite=self.config.auth.session_samesite,
+            backend=self.backend,
         )
 
         # Store typed state as single attribute
@@ -740,6 +765,16 @@ class Admin:
         app.state.admin_jinja_env = state.jinja_env
         # Unified signing-key source for sessions, CSRF, and JWT (see AdminState).
         app.state.admin_secret_key = state.secret_key
+        # Multi-ORM backend: store composed backend and derive individual adapters
+        from fastapi_admin_kit.backends.sqlalchemy import (
+            SqlAlchemySessionAdapter,
+        )
+
+        app.state.admin_backend = self.backend
+        app.state.admin_session_backend_class = SqlAlchemySessionAdapter
+        app.state.admin_query_adapter = self.backend.query
+        app.state.admin_introspection_adapter = self.backend.introspection
+        app.state.admin_audit_backend = self.backend.audit
 
         # Wire the password hasher to the User model
         from fastapi_admin_kit.auth.models import User
@@ -845,6 +880,7 @@ class Admin:
             "bars-": "menu",
             "bars-3": "menu",
             "arrow-down-tray": "download",
+            "arrow-up-tray": "upload",
             "arrow-path": "refresh",
             "paper-airplane": "send",
             "exclamation-triangle": "warning",
@@ -986,8 +1022,8 @@ class Admin:
             RoleAdmin,
             UserAdmin,
         )
-        from fastapi_admin_kit.audit.models import AuditLog
-        from fastapi_admin_kit.auth.models import (
+        from fastapi_admin_kit.migrations.models import (
+            AuditLog,
             LoginAttempt,
             Permission,
             Role,
@@ -1102,21 +1138,21 @@ class Admin:
             admin_path=self.router.admin_path,
         )
 
-    def build_sidebar_context(
+    async def build_sidebar_context(
         self,
         request: Any,
         user: Any = None,
         permissions_map: dict | None = None,
     ) -> dict:
         """Build per-request sidebar context (RBAC filter + permissions map)."""
-        return self.template.build_sidebar_context(
+        return await self.template.build_sidebar_context(
             request, user=user, permissions_map=permissions_map
         )
 
-    def sidebar_template_kwargs(self, request: Any) -> dict[str, Any]:
+    async def sidebar_template_kwargs(self, request: Any) -> dict[str, Any]:
         """Thin wrapper — returns sidebar kwargs for TemplateResponse contexts."""
-        return self.template.sidebar_template_kwargs(request)
+        return await self.template.sidebar_template_kwargs(request)
 
-    def apply_sidebar_context(self, request: Any, user: Any, context: dict) -> dict:
+    async def apply_sidebar_context(self, request: Any, user: Any, context: dict) -> dict:
         """Inject nav_groups + permissions_map into a template context dict."""
-        return self.template.apply_sidebar_context(request, user, context)
+        return await self.template.apply_sidebar_context(request, user, context)

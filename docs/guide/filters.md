@@ -4,7 +4,8 @@ Filter list views with sidebar filters for text, boolean, relation, and enum fie
 
 ## Overview
 
-Filters appear in the sidebar of list views, allowing users to narrow down results. FastAPI Admin Kit includes four built-in filter types and a registry for custom filters.
+Filters appear in the sidebar of list views, allowing users to narrow down results. FastAPI Admin Kit includes five built-in filter types (including auto-generated RelationFilter for foreign keys) and a registry for custom filters.
+
 
 ## Built-in Filters
 
@@ -63,6 +64,18 @@ class ProductAdmin(ModelAdmin):
 @admin.register(Product)
 class ProductAdmin(ModelAdmin):
     list_filter = ["is_active", "category", "status"]
+```
+
+### Foreign Key Auto-Filtering
+
+**New Feature** — Foreign key fields automatically include RelationFilter:
+
+```python
+@admin.register(Product)
+class ProductAdmin(ModelAdmin):
+    # Automatically includes RelationFilter for 'category' and 'brand' FK
+    list_filter = ["is_active", "category", "brand"]
+    # category and brand will also appear as RelationFilter in the UI
 ```
 
 ### Horizontal Layout

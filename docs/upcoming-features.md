@@ -11,3 +11,4 @@ Features planned for future releases.
 - **Advanced Filters** — Date range, numeric range, and custom filter types
 - **Batch Operations** — Enhanced bulk actions with progress tracking
 - **Two-Factor Auth** — TOTP-based 2FA for admin users
+- **MongoDB Support** — Support MongoDB Out of the box

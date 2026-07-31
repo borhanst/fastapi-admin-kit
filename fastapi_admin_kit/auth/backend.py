@@ -5,28 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
-import bcrypt
-
 if TYPE_CHECKING:
     from fastapi_admin_kit.auth.protocol import AdminUserProtocol
-
-
-class _PasswordHasher:
-    """Thin wrapper around bcrypt for hash/verify."""
-
-    @staticmethod
-    def hash(password: str) -> str:
-        return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-
-    @staticmethod
-    def verify(password: str, hashed: str) -> bool:
-        try:
-            return bcrypt.checkpw(password.encode(), hashed.encode())
-        except (ValueError, TypeError):
-            return False
-
-
-pwd_context = _PasswordHasher()
 
 
 class AuthBackend(ABC):

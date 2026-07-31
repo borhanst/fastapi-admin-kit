@@ -12,10 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from fastapi_admin_kit import Admin
-from fastapi_admin_kit.audit.models import AuditLog  # noqa: F401 - ensure table is registered
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
 from fastapi_admin_kit.auth.csrf import generate_csrf_token
-from fastapi_admin_kit.auth.models import Role, User
+from fastapi_admin_kit.migrations.models import (
+    AuditLog,  # noqa: F401 - ensure table is registered
+    Role,
+    User,
+)
 from fastapi_admin_kit.models.base import Base as AdminBase
 from tests.conftest import SECRET_KEY, run_async
 from tests.test_registry import Category, Product

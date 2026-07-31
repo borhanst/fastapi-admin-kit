@@ -12,6 +12,8 @@ FastAPI Admin Kit supports three pagination strategies:
 | **Cursor** | Large datasets | Keyset pagination with opaque cursors |
 | **Dynamic** | Mixed workloads | Auto-switches based on total count |
 
+The pagination strategies are decoupled from SQLAlchemy via `QueryBackend` protocols, allowing different ORMs to customize query building.
+
 ## Offset Pagination
 
 Traditional page-number pagination using `OFFSET/LIMIT`. The default strategy.
@@ -23,6 +25,8 @@ from fastapi_admin_kit.pagination import OffsetPagination
 class ProductAdmin(ModelAdmin):
     pagination = OffsetPagination()
 ```
+
+**Backend Integration:** Queries built by the backend's `QueryBackend` adapter (e.g., `SqlAlchemyQueryAdapter`) support offset/limit strategies.
 
 **How it works:**
 
@@ -58,6 +62,8 @@ class ProductAdmin(ModelAdmin):
     pagination = CursorPagination(cursor_column="id")
 ```
 
+**Backend Integration:** Cursor queries use the backend's `QueryBackend` to build range queries (`WHERE id > cursor_value`), ensuring compatibility with different database systems.
+
 **Parameters:**
 
 | Parameter | Type | Default | Description |
@@ -88,7 +94,7 @@ mode: "cursor"
 
 ## Dynamic Pagination
 
-Automatically switches between offset and cursor based on total record count.
+Auto-switches between offset and cursor based on total record count.
 
 ```python
 from fastapi_admin_kit.pagination import DynamicPagination
@@ -98,6 +104,8 @@ class ProductAdmin(ModelAdmin):
     # Use offset for < 1000 records, cursor for >= 1000
     pagination = DynamicPagination(threshold=1000)
 ```
+
+**Backend Integration:** The dynamic pagination uses the backend's `QueryBackend` to build offset and cursor queries consistently across different ORMs.
 
 **Parameters:**
 

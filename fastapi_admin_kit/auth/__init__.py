@@ -17,14 +17,28 @@ from fastapi_admin_kit.auth.models import (
     User,
     UserPermission,
 )
+from fastapi_admin_kit.auth.password import (
+    PasswordManager,
+    password_manager,
+    validate_password_strength,
+)
+from fastapi_admin_kit.auth.protocol import (
+    AdminPermissionProtocol,
+    AdminRoleProtocol,
+    AdminUserProtocol,
+)
 from fastapi_admin_kit.auth.session import (
     SessionBackend,
     SignedCookieSessionBackend,
 )
 
 __all__ = [
+    "AdminPermissionProtocol",
+    "AdminRoleProtocol",
+    "AdminUserProtocol",
     "AuthModelMixin",
     "BcryptHasher",
+    "PasswordManager",
     "Permission",
     "PasswordHasher",
     "Role",
@@ -36,6 +50,8 @@ __all__ = [
     "SignedCookieSessionBackend",
     "auth_redirect_handler",
     "forbidden_handler",
+    "password_manager",
     "require_csrf_token",
     "set_csrf_cookie",
+    "validate_password_strength",
 ]

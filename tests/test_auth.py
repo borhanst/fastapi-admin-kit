@@ -8,11 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import Session
 
 from fastapi_admin_kit.auth.backend import AuthBackend, BuiltinAuthBackend
-from fastapi_admin_kit.auth.models import Role, User
 from fastapi_admin_kit.auth.session import (
     SessionBackend,
     SignedCookieSessionBackend,
 )
+from fastapi_admin_kit.migrations.models import Role, User
 from fastapi_admin_kit.models import Base
 
 # ---------------------------------------------------------------------------

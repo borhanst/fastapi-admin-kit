@@ -69,6 +69,8 @@ ai-gemini = [
     "pydantic-ai>=2.0.0",
     "google-genai>=1.0.0",
 ]
+excel = ["openpyxl>=3.1.0"]
+alembic = ["alembic>=1.13.0"]
 docs = [
     "mkdocs>=1.6.0",
     "mkdocs-material>=9.5.0",
@@ -113,6 +115,7 @@ exclude = [
     "*.db",
     ".*",
 ]
+
 
 [tool.ruff]
 line-length = 100

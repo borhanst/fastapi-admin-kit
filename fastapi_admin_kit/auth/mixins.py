@@ -61,23 +61,18 @@ class AuthModelMixin:
 
     def verify_password(self, password: str) -> bool:
         """Check if plaintext password matches the stored hash."""
-        hasher = self._get_hasher()
-        return hasher.verify(password, self.hashed_password)
+        from fastapi_admin_kit.auth.password import password_manager
+
+        return password_manager.verify(password, self.hashed_password)
 
     @classmethod
     def hash_password(cls, password: str) -> str:
         """Hash a plaintext password using the configured hasher."""
-        hasher = cls._get_hasher()
-        return hasher.hash(password)
-
-    @classmethod
-    def _get_hasher(cls) -> type:
-        """Return the configured hasher class, or default BcryptHasher."""
         if cls._hasher is not None:
-            return cls._hasher
-        from fastapi_admin_kit.auth.hasher import BcryptHasher
+            return cls._hasher.hash(password)
+        from fastapi_admin_kit.auth.password import password_manager
 
-        return BcryptHasher
+        return password_manager.hash(password)
 
     @classmethod
     def set_hasher(cls, hasher: type) -> None:
@@ -85,7 +80,11 @@ class AuthModelMixin:
         cls._hasher = hasher
 
     async def has_perm(self, perm_name: str, session: AsyncSession) -> bool:
-        """Check if this user has a permission by name (e.g. 'products_view').
+        """Check if this user has a permission by name.
+
+        Supports two formats:
+        - New format: ``"table_name:action"`` (e.g. ``"products:view"``)
+        - Legacy format: ``"table_name_action"`` (e.g. ``"products_view"``)
 
         Returns True if any assigned role grants this permission,
         or if a direct user permission grants it. Superusers always return True.
@@ -99,15 +98,17 @@ class AuthModelMixin:
             Permission,
             UserPermission,
             admin_role_permissions,
-            admin_user_roles,
         )
 
         # Parse perm_name -> (table_name, action)
-        # e.g. "products_view" -> ("products", "view")
-        parts = perm_name.rsplit("_", 1)
-        if len(parts) != 2:
-            return False
-        table_name, action = parts
+        # Prefer ":" separator (unambiguous), fall back to "_" for legacy
+        if ":" in perm_name:
+            table_name, action = perm_name.rsplit(":", 1)
+        else:
+            parts = perm_name.rsplit("_", 1)
+            if len(parts) != 2:
+                return False
+            table_name, action = parts
 
         attr = f"can_{action}"
         if attr not in ("can_view", "can_create", "can_edit", "can_delete"):
@@ -117,7 +118,7 @@ class AuthModelMixin:
         if not role_ids and not self.id:
             return False
 
-        # Check role-based permissions
+        # Check role-based permissions (use pre-computed role_ids, not redundant join)
         if role_ids:
             result = await session.execute(
                 select(Permission)
@@ -125,11 +126,7 @@ class AuthModelMixin:
                     admin_role_permissions,
                     Permission.id == admin_role_permissions.c.permission_id,
                 )
-                .join(
-                    admin_user_roles,
-                    admin_role_permissions.c.role_id == admin_user_roles.c.role_id,
-                )
-                .where(admin_user_roles.c.user_id == self.id)
+                .where(admin_role_permissions.c.role_id.in_(role_ids))
             )
             for perm in result.scalars():
                 if perm.table_name == table_name and getattr(perm, attr, False):

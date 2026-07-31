@@ -8,20 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import desc, func, select
 
 from fastapi_admin_kit.audit.models import AuditLog
-from fastapi_admin_kit.auth.dependencies import get_current_admin_user
+from fastapi_admin_kit.auth.dependencies import require_superuser
 from fastapi_admin_kit.auth.protocol import AdminUserProtocol
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.views.sidebar import inject_sidebar_context
 
 router = APIRouter()
-
-
-async def _require_superuser(
-    user: AdminUserProtocol = Depends(get_current_admin_user),
-) -> AdminUserProtocol:
-    if not getattr(user, "is_superuser", False):
-        raise HTTPException(status_code=403, detail="Superuser access required.")
-    return user
 
 
 @router.get("/audit-log")
@@ -34,7 +26,7 @@ async def audit_list_view(
     to_date: date | None = Query(None),
     object_id: str | None = Query(None),
     page: int = Query(1, ge=1),
-    _: AdminUserProtocol = Depends(_require_superuser),
+    _: AdminUserProtocol = Depends(require_superuser),
 ):
     """List audit log entries with filters."""
     templates = request.app.state.admin_jinja_env
@@ -116,7 +108,7 @@ async def audit_list_view(
 async def audit_detail_view(
     request: Request,
     entry_id: int,
-    _: AdminUserProtocol = Depends(_require_superuser),
+    _: AdminUserProtocol = Depends(require_superuser),
 ):
     """Show detailed audit entry with diff snapshot."""
     templates = request.app.state.admin_jinja_env

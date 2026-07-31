@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from fastapi_admin_kit.admin.decorators import column
-from fastapi_admin_kit.types import ExtraField, FieldMeta
+from fastapi_admin_kit.form.types import ExtraField, FieldMeta
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -22,13 +22,31 @@ class ModelAdmin:
 
     # List view config
     list_display: list[str] | None = None
-    list_filter: list[str] | None = None
+    list_filter: list[str | Any] | None = None
     search_fields: list[str] | None = None
     ordering: list[str] | None = None
     per_page: int = 20
     pagination: Any = None  # OffsetPagination | CursorPagination | DynamicPagination
     list_filter_options: dict[str, dict[str, Any]] = {}
     list_filter_horizontal: bool = False
+
+    @staticmethod
+    def get_ordering(request_params: dict, admin_ordering: list[str] | None) -> list[str]:
+        """Resolve ordering configuration based on request params and admin settings.
+
+        Priority (highest to lowest):
+        1. Query parameter (e.g., from URL ?ordering=name)
+        2. Admin class ordering (from ModelAdmin.ordering)
+        3. Empty list (no default ordering applied)
+
+        This prevents unwanted default sorting when ordering is not explicitly configured.
+        """
+        query_ordering = request_params.get("ordering", "")
+        if query_ordering:
+            return [query_ordering]
+        elif admin_ordering:
+            return admin_ordering
+        return []
 
     # Inline editing config
     inline_edit: bool = False
@@ -42,6 +60,10 @@ class ModelAdmin:
     actions_submit_line: list[str] = []
     actions_list_hide_default: bool = False
 
+    # Export/Import config
+    export_formats: dict[str, Any] | None = None
+    import_formats: dict[str, Any] | None = None
+
     # Form config
     fields: list[str] | None = None
     exclude: list[str] | None = None
@@ -50,6 +72,9 @@ class ModelAdmin:
     extra_fields: list[ExtraField] = []
     fieldsets: list[Any] = []  # FieldsetSpec accepted but not strictly enforced here
     field_placeholders: dict[str, str] = {}  # {field_name: placeholder_text}
+
+    # Inline admin config
+    inlines: list[Any] = []  # list of InlineModelAdmin subclasses
 
     # Conditional fields
     conditional_fields: dict[str, dict[str, Any]] = {}
@@ -96,8 +121,15 @@ class ModelAdmin:
     # ── Query hooks ──────────────────────────────────────────────────
 
     def get_queryset(self, session: Session, request: Any = None) -> Any:
-        """Override to filter records globally (e.g. soft-delete filter)."""
-        return session.query(self.model)  # type: ignore[attr-defined]
+        """Override to filter records globally (e.g. soft-delete filter).
+
+        Returns a SQLAlchemy ``select`` statement for the model.
+        Override and call ``super().get_queryset(session, request)`` to
+        chain additional ``.where()`` conditions.
+        """
+        from sqlalchemy import select
+
+        return select(self.model)  # type: ignore[attr-defined]
 
     def get_object(self, session: Session, id: Any) -> Any:
         """Override for custom PK lookup."""
@@ -164,7 +196,11 @@ class ModelAdmin:
         return data
 
     def save_model(
-        self, obj: Any, data: dict[str, Any], request: Any = None, is_create: bool = False
+        self,
+        obj: Any,
+        data: dict[str, Any],
+        request: Any = None,
+        is_create: bool = False,
     ) -> None:
         """Custom save logic. Override for full control over save flow.
 
@@ -363,7 +399,10 @@ class ModelAdmin:
     ) -> list[FieldMeta]:
         """Return FieldMeta list for the inline edit form."""
         all_fields = self.get_form_fields(
-            obj=obj, request=request, columns=columns, relationships=relationships
+            obj=obj,
+            request=request,
+            columns=columns,
+            relationships=relationships,
         )
         if self.inline_edit_fields is not None:
             allowed = set(self.inline_edit_fields)
@@ -386,3 +425,89 @@ class ModelAdmin:
 
     def has_delete_permission(self, request: Any = None) -> bool:
         return True
+
+    def has_export_permission(self, request: Any = None) -> bool:
+        return True
+
+    def has_import_permission(self, request: Any = None) -> bool:
+        return True
+
+    # ── Export/Import helpers ───────────────────────────────────────
+
+    def get_export_formats(self) -> dict[str, Any]:
+        """Get available export formats for this model.
+
+        Returns configured formats or defaults to CSV + Excel.
+        """
+        if self.export_formats:
+            return self.export_formats
+        from fastapi_admin_kit.export_import.registry import (
+            get_available_export_formats,
+        )
+
+        formats = {}
+        for name in get_available_export_formats():
+            formats[name] = None
+        return formats or {"csv": None}
+
+    def get_import_formats(self) -> dict[str, Any]:
+        """Get available import formats for this model.
+
+        Returns configured formats or defaults to CSV + Excel.
+        """
+        if self.import_formats:
+            return self.import_formats
+        from fastapi_admin_kit.export_import.registry import (
+            get_available_import_formats,
+        )
+
+        formats = {}
+        for name in get_available_import_formats():
+            formats[name] = None
+        return formats or {"csv": None}
+
+    def get_export_class(self, format_name: str) -> type | None:
+        """Get the export class for a given format.
+
+        Args:
+            format_name: Format name (e.g., "csv", "excel")
+
+        Returns:
+            The export class or None if not available
+        """
+        formats = self.get_export_formats()
+        if format_name not in formats:
+            return None
+
+        format_class = formats[format_name]
+        if format_class is None:
+            # Use default from registry
+            from fastapi_admin_kit.export_import.registry import (
+                get_export_class,
+            )
+
+            return get_export_class(format_name)
+        return format_class
+
+    def get_import_class(self, format_name: str) -> type | None:
+        """Get the import class for a given format.
+
+        Args:
+            format_name: Format name (e.g., "csv", "excel")
+
+        Returns:
+            The import class or None if not available
+        """
+        formats = self.get_import_formats()
+        if format_name not in formats:
+            return None
+
+        format_class = formats[format_name]
+        if format_class is None:
+            # Use default from registry
+            from fastapi_admin_kit.export_import.registry import (
+                get_import_class,
+            )
+
+            return get_import_class(format_name)
+        return format_class

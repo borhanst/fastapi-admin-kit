@@ -67,7 +67,9 @@ class TestAuthConfig:
             is_superuser = None
             roles = None
             hashed_password = ""
-            verify_password = lambda self, p: True
+
+            def verify_password(self, p: str) -> bool:
+                return True
 
         config = AuthConfig(auth_model=ValidAuthModel)
         config.validate_auth_model()  # Should not raise

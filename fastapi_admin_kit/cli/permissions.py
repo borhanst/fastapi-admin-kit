@@ -215,13 +215,13 @@ async def _create_admin_permissions(args: argparse.Namespace) -> None:
 
 
 async def _delete_permissions(args: argparse.Namespace) -> None:
-    """Delete all permissions and clear role-permission associations."""
+    """Delete all permissions and clear role-permission and user-permission associations."""
     from sqlalchemy import delete
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import NullPool
 
-    from fastapi_admin_kit.auth.models import Permission, admin_role_permissions
+    from fastapi_admin_kit.auth.models import Permission, UserPermission, admin_role_permissions
     from fastapi_admin_kit.models.base import Base
 
     from .user import _resolve_database_url
@@ -238,15 +238,16 @@ async def _delete_permissions(args: argparse.Namespace) -> None:
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as session:
-        # First clear role-permission associations
+        # Clear all associations first
         await session.execute(delete(admin_role_permissions))
+        await session.execute(delete(UserPermission))
         # Then delete all permissions
         await session.execute(delete(Permission))
         await session.commit()
 
     await engine.dispose()
 
-    print("Deleted all permissions (and role-permission associations).")
+    print("Deleted all permissions (and role-permission/user-permission associations).")
 
 
 def register_permission_commands(subparsers) -> None:

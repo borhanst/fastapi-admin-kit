@@ -10,38 +10,20 @@ from typing import Any
 
 from fastapi import Request
 from fastapi.responses import Response
-from starlette.datastructures import UploadFile
 
+from fastapi_admin_kit.auth.dependencies import (
+    resolve_permission_checker as _resolve_permission_checker,  # noqa: F401
+)
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.registry import RegisteredModel
 from fastapi_admin_kit.types import FieldMeta
 from fastapi_admin_kit.validation import FormValidator
-from fastapi_admin_kit.widgets.inputs import FileUploadWidget, ImageUploadWidget
-
-_FILE_WIDGET_TYPES = (FileUploadWidget, ImageUploadWidget)
-
-
-def _get_storage(request: Request):
-    """Get the storage backend from app.state, or None."""
-    return getattr(request.app.state, "admin_storage", None)
-
-
-async def _resolve_permission_checker(request: Request) -> Any:
-    """Resolve a PermissionChecker for the current request."""
-    from fastapi_admin_kit.auth.identity import get_current_user_from_cookie
-    from fastapi_admin_kit.auth.permissions import PermissionChecker
-
-    user = await get_current_user_from_cookie(request)
-    if user is None:
-        return None
-
-    async_session = get_db_session(request)
-    if async_session is None:
-        return None
-
-    snapshot = getattr(request.state, "admin_user_snapshot", None)
-    return PermissionChecker(session=async_session, user=user, user_snapshot=snapshot)
-
+from fastapi_admin_kit.views.file_handler import (
+    FILE_WIDGET_TYPES as _FILE_WIDGET_TYPES,
+)
+from fastapi_admin_kit.views.file_handler import (
+    handle_file_field as _handle_file_field,
+)
 
 # ---------------------------------------------------------------------------
 # HTML Renderers (SRP: only HTML template logic)
@@ -111,71 +93,6 @@ class DeleteAPIRenderer:
         return Response(status_code=204)
 
 
-# ---------------------------------------------------------------------------
-# Form Parsers (SRP: only form data parsing + validation)
-# ---------------------------------------------------------------------------
-
-
-async def _handle_file_field(
-    request: Request,
-    widget: Any,
-    field_meta: Any,
-    form_data: Any,
-    obj: Any | None,
-    action: str | None,
-    parsed: dict[str, Any],
-    errors: dict[str, list[str]],
-) -> None:
-    """Handle a file upload field during form submission."""
-    storage = _get_storage(request)
-    field_name = field_meta.name
-    raw = form_data.get(field_name)
-
-    if isinstance(raw, UploadFile) and raw.filename:
-        if widget.max_size_mb is not None:
-            content = await raw.read()
-            max_bytes = int(widget.max_size_mb * 1024 * 1024)
-            if len(content) > max_bytes:
-                errors[field_name] = [
-                    f"File size exceeds maximum allowed size ({widget.max_size_mb} MB)."
-                ]
-                await raw.seek(0)
-                return
-            await raw.seek(0)
-
-        if storage is None:
-            errors[field_name] = ["No storage backend configured."]
-            return
-
-        try:
-            path = await storage.save(raw, directory=field_meta.name)
-        except ValueError as exc:
-            errors[field_name] = [str(exc)]
-            return
-
-        if action == "replace" and obj is not None:
-            old_path = getattr(obj, field_name, None)
-            if old_path:
-                await storage.delete(old_path)
-
-        parsed[field_name] = path
-
-    elif action == "clear":
-        if storage is not None and obj is not None:
-            old_path = getattr(obj, field_name, None)
-            if old_path:
-                await storage.delete(old_path)
-        parsed[field_name] = None
-
-    elif action == "keep" or action is None:
-        if obj is not None:
-            parsed[field_name] = getattr(obj, field_name, None)
-
-    else:
-        if obj is not None:
-            parsed[field_name] = getattr(obj, field_name, None)
-
-
 class HTMLFormParser:
     """SRP: Parse multipart/form-data from HTML forms."""
 
@@ -187,6 +104,8 @@ class HTMLFormParser:
         self, request: Request, obj: Any | None = None
     ) -> tuple[dict[str, Any], dict[str, list[str]]]:
         form_data = await request.form()
+        # Cache form data on request for reuse by inline objects
+        request._cached_form_data = form_data
         parsed: dict[str, Any] = {}
         errors: dict[str, list[str]] = {}
 
@@ -269,146 +188,87 @@ class JSONBodyParser:
 
 
 class DefaultQueryProvider:
-    """SRP: Build and execute SQLAlchemy queries with filtering, search, pagination."""
+    """SRP: Build and execute queries with filtering, search, pagination.
+
+    Filter logic is delegated to the Filter system — this class orchestrates.
+    """
 
     def __init__(self, registered: RegisteredModel):
         self.registered = registered
 
-    def _get_eager_loads(self, model: Any, list_display: list[str]) -> list:
-        """Build eager load options for relationship columns."""
-        from sqlalchemy import inspect as sa_inspect
+    def _get_query_adapter(self, request: Request) -> Any:
+        return getattr(request.app.state, "admin_query_adapter", None)
+
+    def _get_introspection(self, request: Request) -> Any:
+        return getattr(request.app.state, "admin_introspection_adapter", None)
+
+    def _get_eager_loads(self, request: Request, model: Any, list_display: list[str]) -> list:
         from sqlalchemy.orm import joinedload
 
-        mapper = sa_inspect(model)
-        rel_names = {r.key for r in mapper.relationships}
-        options = []
-        for col_name in list_display:
-            if col_name in rel_names:
-                options.append(joinedload(getattr(model, col_name)))
-        return options
+        introspection = self._get_introspection(request)
+        if introspection is not None:
+            rel_names = introspection.get_relationship_names(model)
+        else:
+            from sqlalchemy import inspect as sa_inspect
 
-    def _get_field_type(self, model: Any, field_name: str) -> str:
-        """Detect the abstract field type for a model field."""
-        from sqlalchemy import inspect as sa_inspect
+            mapper = sa_inspect(model)
+            rel_names = {r.key for r in mapper.relationships}
+        return [joinedload(getattr(model, c)) for c in list_display if c in rel_names]
 
-        mapper = sa_inspect(model)
-        rel_names = {r.key for r in mapper.relationships}
+    def _build_filter_clauses(
+        self,
+        request: Request,
+        model: Any,
+        registered: RegisteredModel,
+    ) -> list:
+        """Build filter clauses via Filter.apply()."""
+        from fastapi_admin_kit.filters import Filter, FilterRegistry
 
-        if field_name in rel_names:
-            return "relation"
+        query_adapter = self._get_query_adapter(request)
+        introspection = self._get_introspection(request)
+        registry = FilterRegistry()
+        auto = registry.auto_generate(model, registered.columns, introspection)
 
-        for prop in mapper.column_attrs:
-            if prop.key == field_name:
-                col = prop.columns[0] if prop.columns else None
-                if col is None:
-                    break
-                type_name = col.type.__class__.__name__
-                if type_name == "Boolean":
-                    return "boolean"
-                if type_name == "DateTime":
-                    return "datetime"
-                if type_name == "Date":
-                    return "date"
-                if type_name == "Time":
-                    return "time"
-                if hasattr(col.type, "enums") and col.type.enums:
-                    return "enum"
-                if col.foreign_keys:
-                    return "relation"
-                return "text"
-        return "text"
+        filters: dict[str, Any] = {}
+        for item in registered.admin.list_filter or []:
+            if isinstance(item, str) and item in auto:
+                filters[item] = auto[item]
+            elif isinstance(item, Filter):
+                filters[item.field_name] = item
 
-    async def _get_filter_choices(
-        self, model: Any, field_name: str, session: Any = None
-    ) -> dict[str, Any]:
-        """Get filter field type and available choices for a field."""
-        from sqlalchemy import inspect as sa_inspect
-        from sqlalchemy import select
+        clauses: list = []
+        for field_name, filter_obj in filters.items():
+            eq = request.query_params.get(f"filter_{field_name}", "")
+            gte = request.query_params.get(f"filter_{field_name}__gte", "")
+            lte = request.query_params.get(f"filter_{field_name}__lte", "")
+            from_ = request.query_params.get(f"filter_{field_name}__from", "")
+            to_ = request.query_params.get(f"filter_{field_name}__to", "")
 
-        mapper = sa_inspect(model)
-        field_type = self._get_field_type(model, field_name)
-
-        if field_type == "relation":
-            rel_map = {r.key: r for r in mapper.relationships}
-            target_model = None
-            if field_name in rel_map:
-                target_model = rel_map[field_name].mapper.class_
+            has_range = bool(gte or lte or from_ or to_)
+            if has_range:
+                value: Any = {}
+                if gte:
+                    value["gte"] = gte
+                if lte:
+                    value["lte"] = lte
+                if from_:
+                    value["from"] = from_
+                if to_:
+                    value["to"] = to_
             else:
-                for rel in mapper.relationships:
-                    if rel.direction.name == "MANYTOONE":
-                        for prop in mapper.column_attrs:
-                            if prop.key == field_name:
-                                col = prop.columns[0] if prop.columns else None
-                                if col is not None:
-                                    for fk in col.foreign_keys:
-                                        if fk.column.table == rel.mapper.persist_selectable:
-                                            target_model = rel.mapper.class_
-                                            break
-                        if target_model is not None:
-                            break
+                value = eq
 
-            choices: list[tuple[str, str]] = [("", "All")]
-            if target_model is not None and session is not None:
-                try:
-                    order_col = getattr(target_model, "name", None) or getattr(
-                        target_model, "title", None
-                    )
-                    if order_col is not None:
-                        q = select(target_model).order_by(order_col).limit(100)
-                    else:
-                        pk = sa_inspect(target_model).primary_key[0]
-                        q = select(target_model).order_by(pk).limit(100)
-                    result = await session.execute(q)
-                    for obj in result.scalars():
-                        label = str(
-                            getattr(obj, "name", None)
-                            or getattr(obj, "title", None)
-                            or f"#{getattr(obj, 'id', '?')}"
-                        )
-                        choices.append((str(obj.id), label))
-                except Exception:
-                    pass
-            return {"field_type": field_type, "choices": choices}
+            has_value = (isinstance(value, dict) and any(value.values())) or (
+                isinstance(value, str) and value
+            )
+            if not has_value:
+                continue
 
-        if field_type == "boolean":
-            return {
-                "field_type": "boolean",
-                "choices": [("", "All"), ("1", "Yes"), ("0", "No")],
-            }
+            clause = filter_obj.apply(query_adapter, None, model, value)
+            if clause is not None:
+                clauses.append(clause)
 
-        if field_type == "enum":
-            for prop in mapper.column_attrs:
-                if prop.key == field_name:
-                    col = prop.columns[0] if prop.columns else None
-                    if col is not None and hasattr(col.type, "enums"):
-                        choices = [("", "All")]
-                        for val in col.type.enums:
-                            choices.append((val, val.replace("_", " ").title()))
-                        return {"field_type": field_type, "choices": choices}
-
-        if field_type in ("date", "datetime", "time"):
-            return {"field_type": field_type, "choices": [("", "All")]}
-
-        choices = [("", "All")]
-        for prop in mapper.column_attrs:
-            if prop.key == field_name:
-                col = prop.columns[0] if prop.columns else None
-                if col is not None and session is not None:
-                    try:
-                        q = (
-                            select(col)
-                            .where(col.isnot(None))
-                            .group_by(col)
-                            .order_by(col)
-                            .limit(100)
-                        )
-                        result = session.execute(q)
-                        for (val,) in result:
-                            label = str(val).replace("_", " ").title()
-                            choices.append((str(val), label))
-                    except Exception:
-                        pass
-        return {"field_type": "text", "choices": choices}
+        return clauses
 
     async def get_list(
         self, request: Request, q: str = "", page: int = 1
@@ -417,22 +277,29 @@ class DefaultQueryProvider:
 
         Returns (items, total, page, per_page).
         """
-        from sqlalchemy import and_, asc, desc, select
-
         from fastapi_admin_kit.search_utils import apply_search_filter
 
         session = get_db_session(request)
         registered = self.registered
         model = registered.model
-        base = select(model)
+
+        query_adapter = self._get_query_adapter(request)
+        if query_adapter is not None:
+            base = query_adapter.select(model)
+        else:
+            base = registered.admin.get_queryset(session, request)
 
         list_display = registered.admin.list_display or [
             c.name for c in registered.columns if c.name != "id"
         ]
 
-        eager_loads = self._get_eager_loads(model, list_display)
-        for opt in eager_loads:
-            base = base.options(opt)
+        eager_loads = self._get_eager_loads(request, model, list_display)
+        if query_adapter is not None:
+            for opt in eager_loads:
+                base = query_adapter.options(base, opt)
+        else:
+            for opt in eager_loads:
+                base = base.options(opt)
 
         if registered.admin.list_filter:
             filter_clauses = []
@@ -440,8 +307,28 @@ class DefaultQueryProvider:
                 param_key = f"filter_{filter_field}"
                 filter_value = request.query_params.get(param_key, "")
                 if filter_value and hasattr(model, filter_field):
-                    field_type = self._get_field_type(model, filter_field)
+                    field_type = self._get_field_type(request, model, filter_field)
                     col = getattr(model, filter_field)
+
+                    # If col is a relationship, resolve to its FK column
+                    from sqlalchemy.orm import RelationshipProperty
+
+                    if hasattr(col, "property") and isinstance(col.property, RelationshipProperty):
+                        fk_cols = list(col.property.local_columns)
+                        if fk_cols:
+                            col = getattr(model, fk_cols[0].key)
+                            # Cast filter value to the FK column's Python type
+                            pk_prop = fk_cols[0]
+                            from sqlalchemy import Integer
+
+                            col_type = type(pk_prop.type)
+                            if col_type in (Integer,):
+                                try:
+                                    filter_value = int(filter_value)
+                                except (ValueError, TypeError):
+                                    continue
+                        else:
+                            continue
 
                     if field_type == "boolean":
                         bool_val = filter_value == "1"
@@ -502,7 +389,7 @@ class DefaultQueryProvider:
 
                 if (from_val or to_val) and hasattr(model, filter_field):
                     col = getattr(model, filter_field)
-                    field_type = self._get_field_type(model, filter_field)
+                    field_type = self._get_field_type(request, model, filter_field)
                     if field_type == "date" and from_val:
                         try:
                             from datetime import date as _date
@@ -537,25 +424,45 @@ class DefaultQueryProvider:
                             pass
 
             if filter_clauses:
+                if query_adapter is not None:
+                    base = query_adapter.where(base, *filter_clauses)
+                else:
+                    from sqlalchemy import and_
+
                 base = base.where(and_(*filter_clauses))
 
         if q and registered.admin.search_fields:
-            base = apply_search_filter(base, model, registered.admin.search_fields, q)
+            base = apply_search_filter(request, base, model, registered.admin.search_fields, q)
 
         query_ordering = request.query_params.get("ordering", "")
-        if query_ordering:
-            order = [query_ordering]
-        else:
-            order = registered.admin.ordering or []
+        order = registered.admin.get_ordering(
+            {"ordering": query_ordering}, registered.admin.ordering
+        )
         if order:
             col_name = order[0].lstrip("-")
             col = getattr(model, col_name, None) if hasattr(model, col_name) else None
             if col is not None:
-                base = base.order_by(desc(col) if order[0].startswith("-") else asc(col))
+                from sqlalchemy.orm import ColumnProperty
+
+                if isinstance(getattr(col, "property", None), ColumnProperty):
+                    if query_adapter is not None:
+                        from sqlalchemy import desc
+
+                        if order[0].startswith("-"):
+                            base = query_adapter.order_by(base, desc(col))
+                        else:
+                            base = query_adapter.order_by(base, col)
+                    else:
+                        from sqlalchemy import asc, desc
+
+                        base = base.order_by(desc(col) if order[0].startswith("-") else asc(col))
 
         per_page = registered.admin.per_page
 
-        from fastapi_admin_kit.pagination import OffsetPagination, PaginationResult
+        from fastapi_admin_kit.pagination import (
+            OffsetPagination,
+            PaginationResult,
+        )
 
         pagination = getattr(registered.admin, "pagination", None) or OffsetPagination()
         pk_col = getattr(model, self.registered.pk_field) if self.registered.pk_field else None
@@ -568,6 +475,7 @@ class DefaultQueryProvider:
             before=request.query_params.get("before"),
             pk_col=pk_col,
             model=model,
+            query_adapter=query_adapter,
         )
 
         return (
@@ -582,21 +490,55 @@ class DefaultQueryProvider:
 
     async def get_object(self, request: Request, id: Any) -> Any | None:
         """Return a single object by primary key, eagerly loading M2M relationships."""
-        from sqlalchemy import inspect as sa_inspect
-        from sqlalchemy.orm import selectinload
-
-        session = get_db_session(request)
-        mapper = sa_inspect(self.registered.model)
-        options = []
-        for rel in mapper.relationships:
-            if rel.direction.name == "MANYTOMANY":
-                options.append(selectinload(getattr(self.registered.model, rel.key)))
         from fastapi_admin_kit.inspection import cast_pk_value
 
-        int_id = cast_pk_value(self.registered.model, id)
-        if options:
-            from sqlalchemy import select
+        session = get_db_session(request)
+        introspection = self._get_introspection(request)
+        query_adapter = self._get_query_adapter(request)
 
+        if introspection is not None:
+            mapper_rel_names = introspection.get_relationship_names(self.registered.model)
+        else:
+            from sqlalchemy import inspect as sa_inspect
+
+            mapper = sa_inspect(self.registered.model)
+            mapper_rel_names = {r.key for r in mapper.relationships}
+
+        m2m_rel_names = set()
+        for rel_name in mapper_rel_names:
+            if introspection is not None:
+                rel = introspection.get_relationship(self.registered.model, rel_name)
+            else:
+                from sqlalchemy import inspect as sa_inspect
+
+                mapper = sa_inspect(self.registered.model)
+                rel = mapper.relationships.get(rel_name)
+            if rel is not None and rel.direction.name == "MANYTOMANY":
+                m2m_rel_names.add(rel_name)
+
+        int_id = cast_pk_value(self.registered.model, id)
+
+        if m2m_rel_names and query_adapter is not None:
+            from sqlalchemy.orm import selectinload
+
+            options = [selectinload(getattr(self.registered.model, rn)) for rn in m2m_rel_names]
+            stmt = query_adapter.select(self.registered.model)
+            for opt in options:
+                stmt = query_adapter.options(stmt, opt)
+            stmt = query_adapter.where(
+                stmt,
+                getattr(self.registered.model, self.registered.pk_field) == int_id,
+            )
+            result = await session.execute(stmt)
+            return result.scalar_one_or_none()
+        elif m2m_rel_names:
+            from sqlalchemy import inspect as sa_inspect
+            from sqlalchemy import select
+            from sqlalchemy.orm import selectinload
+
+            mapper = sa_inspect(self.registered.model)
+            m2m_rels = [r for r in mapper.relationships if r.direction.name == "MANYTOMANY"]
+            options = [selectinload(getattr(self.registered.model, r.key)) for r in m2m_rels]
             stmt = (
                 select(self.registered.model)
                 .options(*options)

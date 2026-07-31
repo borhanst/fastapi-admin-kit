@@ -89,9 +89,32 @@ admin = Admin(
     engine=engine,           # existing: pass pre-created engine
     # OR
     database_config=db_config,  # new: pass config instead
+    backend=None,            # Optional: SqlAlchemyBackend or custom backend for multi-ORM support
     secret_key="your-secret-key",
     # ... other options
 )
+```
+
+### Backend Parameter
+
+The `backend` parameter accepts any backend that implements the 5 protocol interfaces:
+
+- **Default:** `SqlAlchemyBackend` with all adapters (introspection, session, query, audit, database)
+- **Custom:** Any backend implementing `IntrospectionBackend, SessionBackend, QueryBackend, AuditBackend, DatabaseBackend` protocols
+- **Use Case:** Switch from SQL to MongoDB, Django ORM, or other data sources without changing admin UI code
+
+```python
+from fastapi_admin_kit import Admin
+from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyBackend
+
+# Default behavior (backward compatible)
+admin1 = Admin(app=app, engine=engine)
+
+# Explicit default backend (same as default)
+admin2 = Admin(app=app, engine=engine, backend=SqlAlchemyBackend())
+
+# Custom backend
+admin3 = Admin(app=app, engine=engine, backend=MyCustomMongoBackend())
 ```
 
 ## Configuration Options
@@ -172,6 +195,12 @@ admin = Admin(
 |--------|------|---------|-------------|
 | `storage` | `StorageBackend` | `None` | File storage backend (S3, local) |
 | `uploads_url` | `str` | `"/uploads"` | URL prefix for uploaded files |
+
+### Backend
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `backend` | `Any` | `SqlAlchemyBackend` | Backend instance implementing all 5 protocol interfaces (IntrospectionBackend, SessionBackend, QueryBackend, AuditBackend, DatabaseBackend). Use to switch ORMs or plug in custom data sources.
 
 ### Security
 

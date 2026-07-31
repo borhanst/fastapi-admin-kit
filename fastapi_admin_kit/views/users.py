@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import or_, select
 
-from fastapi_admin_kit.auth.dependencies import get_current_admin_user
+from fastapi_admin_kit.auth.dependencies import require_superuser
 from fastapi_admin_kit.auth.models import Role
 from fastapi_admin_kit.auth.protocol import AdminUserProtocol
 from fastapi_admin_kit.db import get_db_session
@@ -14,20 +14,12 @@ from fastapi_admin_kit.db import get_db_session
 router = APIRouter()
 
 
-async def _require_superuser(
-    user: AdminUserProtocol = Depends(get_current_admin_user),
-) -> AdminUserProtocol:
-    if not getattr(user, "is_superuser", False):
-        raise HTTPException(status_code=403, detail="Superuser access required.")
-    return user
-
-
 @router.get("/users/roles/search")
 async def roles_search(
     request: Request,
     q: str = Query("", description="Search query"),
     ids: str = Query("", description="Comma-separated role IDs to load"),
-    _: AdminUserProtocol = Depends(_require_superuser),
+    _: AdminUserProtocol = Depends(require_superuser),
 ):
     """Search roles for the multi-relation picker. Supports ?q= and ?ids=."""
     session = get_db_session(request)
@@ -56,7 +48,7 @@ async def roles_search(
 # @router.get("/users", response_class=HTMLResponse)
 # async def user_list_view(
 #     request: Request,
-#     _: AdminUserProtocol = Depends(_require_superuser),
+#     _: AdminUserProtocol = Depends(require_superuser),
 # ):
 #     """List admin users (superuser only)."""
 #     templates = request.app.state.admin_jinja_env
@@ -82,7 +74,7 @@ async def roles_search(
 # @router.get("/users/create", response_class=HTMLResponse)
 # async def user_create_view(
 #     request: Request,
-#     _: AdminUserProtocol = Depends(_require_superuser),
+#     _: AdminUserProtocol = Depends(require_superuser),
 # ):
 #     """Show user create form."""
 #     templates = request.app.state.admin_jinja_env
@@ -107,7 +99,7 @@ async def roles_search(
 # @router.post("/users/create")
 # async def user_create_post(
 #     request: Request,
-#     _: AdminUserProtocol = Depends(_require_superuser),
+#     _: AdminUserProtocol = Depends(require_superuser),
 #     _csrf: bool = Depends(require_csrf_token),
 # ):
 #     """Handle user creation."""
@@ -192,7 +184,7 @@ async def roles_search(
 # async def user_edit_view(
 #     request: Request,
 #     user_id: int,
-#     _: AdminUserProtocol = Depends(_require_superuser),
+#     _: AdminUserProtocol = Depends(require_superuser),
 # ):
 #     """Show user edit form."""
 #     templates = request.app.state.admin_jinja_env
@@ -227,7 +219,7 @@ async def roles_search(
 # async def user_edit_post(
 #     request: Request,
 #     user_id: int,
-#     current_user: AdminUserProtocol = Depends(_require_superuser),
+#     current_user: AdminUserProtocol = Depends(require_superuser),
 #     _csrf: bool = Depends(require_csrf_token),
 # ):
 #     """Handle user edit."""
@@ -319,7 +311,7 @@ async def roles_search(
 # async def user_delete_post(
 #     request: Request,
 #     user_id: int,
-#     current_user: AdminUserProtocol = Depends(_require_superuser),
+#     current_user: AdminUserProtocol = Depends(require_superuser),
 #     _csrf: bool = Depends(require_csrf_token),
 # ):
 #     """Soft-delete user (set is_active=False)."""

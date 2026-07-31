@@ -95,6 +95,20 @@
     </div>
     {% endif %}
 
+    {# Inline formsets #}
+    {% if inline_formsets is defined and inline_formsets %}
+    {% for formset in inline_formsets %}
+    <div class="fieldset">
+      {% if formset.inline_type == "tabular" %}
+        {% include "partials/inline_tabular.html" %}
+      {% else %}
+        {% include "partials/inline_stacked.html" %}
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <input type="hidden" name="_save_action" x-ref="saveActionInput" value="save">
     <div class="sticky bottom-0 flex items-center justify-between p-4" style="background: var(--surface-base); border: 1px solid var(--surface-border); border-radius: var(--radius-lg);">
       <div class="text-sm" style="color: var(--text-secondary);" x-show="unsaved" x-transition>
         You have unsaved changes
@@ -104,8 +118,16 @@
            class="btn btn-secondary">
           Cancel
         </a>
+        {% if permissions.can_create %}
         <button type="submit"
-                @click="unsaved = false"
+                @click="$refs.saveActionInput.value = 'add_another'; unsaved = false"
+                class="btn btn-secondary"
+                title="Save and immediately create another record">
+          Save and Add Another
+        </button>
+        {% endif %}
+        <button type="submit"
+                @click="$refs.saveActionInput.value = 'save'; unsaved = false"
                 class="btn btn-primary">
           {% if obj %}Save Changes{% else %}Create {{ registered.verbose_name }}{% endif %}
         </button>

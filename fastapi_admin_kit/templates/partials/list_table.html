@@ -15,6 +15,9 @@
           {% endif %}
           {% for col in display_columns %}
           <th class="col-header">
+            {% if col.is_relation %}
+            <span class="col-header-label">{{ col.label }}</span>
+            {% else %}
             <a href="?ordering={% if ordering == col.name %}-{% endif %}{{ col.name }}"
                class="col-header-link{% if ordering == col.name or ordering == '-' ~ col.name %} active{% endif %}">
               {{ col.label }}
@@ -24,6 +27,7 @@
               {{ icon("chevron-down", size="16px", css_class="sort-icon sort-icon--desc") }}
               {% endif %}
             </a>
+            {% endif %}
           </th>
           {% endfor %}
           <th class="col-actions">Actions</th>
@@ -59,7 +63,11 @@
                 {% elif val is string or val is number %}
                   {% if col.icon %}<span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">{{ col.icon }}</span>{% endif %}{{ val }}
                 {% elif val is iterable and val is not string %}
-                  {{ model_display_name(val) }}
+                  {% set _ns = namespace(parts=[]) %}
+                  {% for _item in val %}
+                    {% set _ns.parts = _ns.parts + [model_display_name(_item)] %}
+                  {% endfor %}
+                  {{ _ns.parts | join(', ') if _ns.parts else '-' }}
                 {% else %}
                   {{ val | string }}
                 {% endif %}
@@ -78,7 +86,11 @@
                 {% elif val is string or val is number %}
                   {% if col.icon %}<span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">{{ col.icon }}</span>{% endif %}{{ val }}
                 {% elif val is iterable and val is not string %}
-                  {{ model_display_name(val) }}
+                  {% set _ns = namespace(parts=[]) %}
+                  {% for _item in val %}
+                    {% set _ns.parts = _ns.parts + [model_display_name(_item)] %}
+                  {% endfor %}
+                  {{ _ns.parts | join(', ') if _ns.parts else '-' }}
                 {% else %}
                   {{ val | string }}
                 {% endif %}

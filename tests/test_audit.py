@@ -17,9 +17,9 @@ from fastapi_admin_kit.audit.diff import compute_diff, serialize_value, snapshot
 from fastapi_admin_kit.audit.event_bus import AuditEventBus
 from fastapi_admin_kit.audit.events import AuditEvent
 from fastapi_admin_kit.audit.logger import AuditLogger
-from fastapi_admin_kit.audit.models import AuditLog
 from fastapi_admin_kit.audit.sqlalchemy_logger import SqlAlchemyAuditLogger
-from fastapi_admin_kit.auth.models import (  # noqa: F401 — ensure tables exist
+from fastapi_admin_kit.migrations.models import (  # noqa: F401 — ensure tables exist
+    AuditLog,
     Role,
     User,
 )
@@ -275,6 +275,12 @@ class TestAuditLoggerInterface:
 
             def log_delete(self, event):
                 self.events.append(("DELETE", event))
+
+            def log_export(self, event):
+                self.events.append(("EXPORT", event))
+
+            def log_import(self, event):
+                self.events.append(("IMPORT", event))
 
         logger = MemLogger()
         ev = AuditEvent(event_type="CREATE", model_name="M", table_name="t", object_id="1")

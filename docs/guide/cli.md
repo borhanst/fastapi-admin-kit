@@ -110,7 +110,7 @@ fak deletepermissions User Product
 
 ### migrate
 
-Add missing columns or drop obsolete columns from tables:
+Add missing columns or drop obsolete columns from tables (dev mode only):
 
 ```bash
 fak migrate User Product
@@ -121,6 +121,52 @@ fak-admin migrate User Product
 |--------|-------------|
 | `tables` | Class or table names (required) |
 | `-d, --database-url` | Database URL |
+
+### migrate-alembic
+
+Run Alembic migrations (production mode):
+
+```bash
+# Run all pending migrations (equivalent to alembic upgrade head)
+fak migrate-alembic
+
+# Run to specific revision
+fak migrate-alembic <revision>
+
+# Use custom app path to find alembic.ini
+fak migrate-alembic --app myapp:app
+```
+
+| Option | Description |
+|--------|-------------|
+| `revision` | Target revision (default: `head`) |
+| `-a, --app` | App module path (e.g., `myapp:app`) to locate alembic.ini |
+
+### init-alembic
+
+Initialize Alembic configuration for migrations:
+
+```bash
+# New project with auto-generated initial migration
+fak init-alembic --app myapp:app --auto-migrate
+
+# Existing project with database (creates baseline migration)
+fak init-alembic --app myapp:app --baseline
+
+# Force overwrite existing alembic config
+fak init-alembic --app myapp:app --force
+
+# Custom database URL
+fak init-alembic --app myapp:app -d "postgresql+asyncpg://user:pass@localhost/db"
+```
+
+| Option | Description |
+|--------|-------------|
+| `-a, --app` | App module path (e.g., `myapp:app`) to locate project root |
+| `-d, --database-url` | Database URL to write to alembic.ini |
+| `--auto-migrate` | Auto-generate initial migration for admin models |
+| `--baseline` | Create baseline migration for existing database (stamps head) |
+| `--force` | Overwrite existing alembic.ini and alembic/ directory |
 
 ### migrate-permissions
 

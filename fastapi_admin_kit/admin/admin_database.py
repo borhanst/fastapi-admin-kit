@@ -6,6 +6,7 @@ import logging
 import re
 from typing import Any
 
+from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyDatabaseBackend
 from fastapi_admin_kit.config.database import DatabaseConfig
 
 logger = logging.getLogger(__name__)
@@ -21,37 +22,47 @@ def _validate_identifier(name: str, kind: str = "table") -> str:
 
 
 class AdminDatabase:
-    """Handles database setup, table creation, and role seeding."""
+    """Handles database setup, table creation, and role seeding.
+
+    Delegates engine creation, table creation, and auto-migration to
+    :class:`SqlAlchemyDatabaseBackend`.
+    """
 
     def __init__(
         self,
         engine: Any | None = None,
         base: Any | None = None,
         database_config: DatabaseConfig | None = None,
+        use_alembic: bool = False,
     ):
         self.engine = engine
         self.base = base
         self.database_config = database_config
+        self.use_alembic = use_alembic
+        self._backend = SqlAlchemyDatabaseBackend(
+            admin_database=self, database_config=database_config
+        )
 
     def _ensure_engine(self) -> Any:
-        """
-        Create the async engine from ``database_config`` if no engine is set.
-        """
+        """Create the async engine from ``database_config`` if no engine is set."""
         if self.engine is None and self.database_config is not None:
             self.engine = self.database_config.create_engine()
         return self.engine
 
     async def _create_tables(self) -> None:
-        """Create all admin database tables (async-safe)."""
+        """Create all admin database tables (async-safe).
+
+        If ``use_alembic=True`` (production mode), this method does nothing
+        and expects Alembic to manage the schema via migrations.
+        """
+        if self.use_alembic:
+            logger.info("use_alembic=True: skipping create_all; schema managed by Alembic")
+            return
+
         from sqlalchemy.ext.asyncio import AsyncEngine
 
-        from fastapi_admin_kit.audit import (
-            models as _audit_models,  # noqa: F401
-        )
-
         # Import models to register them with metadata
-        from fastapi_admin_kit.auth import models as _auth_models  # noqa: F401
-        from fastapi_admin_kit.models.base import Base as AdminBase
+        from fastapi_admin_kit.migrations.models import Base as AdminBase
 
         if isinstance(self.engine, AsyncEngine):
             # Async engine - use run_sync
@@ -108,9 +119,7 @@ class AdminDatabase:
                         conn.execute(sql)
 
     def _auto_migrate(self, sync_conn: Any, metadata: Any) -> None:
-        """
-        Add missing columns to existing tables (sync, called via run_sync).
-        """
+        """Add missing columns to existing tables (sync, called via run_sync)."""
         from sqlalchemy import inspect as sa_inspect
         from sqlalchemy import text
 
@@ -162,7 +171,7 @@ class AdminDatabase:
         from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
         from sqlalchemy.orm import Session, sessionmaker
 
-        from fastapi_admin_kit.auth.models import Permission, Role
+        from fastapi_admin_kit.migrations.models import Permission, Role
 
         is_async = isinstance(self.engine, AsyncEngine)
 

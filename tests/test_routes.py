@@ -16,7 +16,7 @@ from sqlalchemy.pool import StaticPool
 from fastapi_admin_kit import Admin
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
 from fastapi_admin_kit.auth.csrf import generate_csrf_token
-from fastapi_admin_kit.auth.models import Role, User
+from fastapi_admin_kit.migrations.models import Role, User
 from fastapi_admin_kit.models.base import Base as AdminBase
 from tests.conftest import SECRET_KEY, create_session_cookie, run_async
 from tests.test_registry import Product
@@ -174,7 +174,7 @@ def test_role_create_saves_junction_full_app(client, admin_user):
     """Regression: role create must persist admin_role_permissions (end-to-end)."""
     from sqlalchemy import select
 
-    from fastapi_admin_kit.auth.models import (
+    from fastapi_admin_kit.migrations.models import (
         Permission,
         Role,
         admin_role_permissions,
