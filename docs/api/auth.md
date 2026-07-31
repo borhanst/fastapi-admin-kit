@@ -20,9 +20,14 @@
 
 ## Models
 
+The built-in admin models are materialized at runtime from the schemas in
+`fastapi_admin_kit.schemas.builtin`. They live in `fastapi_admin_kit.migrations.models`
+(the deprecated `fastapi_admin_kit.auth.models` module re-exports the same classes
+and will be removed in v3.0).
+
 ### User
 
-::: fastapi_admin_kit.auth.models.User
+::: fastapi_admin_kit.migrations.models.User
     options:
       show_source: true
       show_root_heading: true
@@ -31,7 +36,7 @@
 
 ### Role
 
-::: fastapi_admin_kit.auth.models.Role
+::: fastapi_admin_kit.migrations.models.Role
     options:
       show_source: true
       show_root_heading: true
@@ -40,7 +45,7 @@
 
 ### Permission
 
-::: fastapi_admin_kit.auth.models.Permission
+::: fastapi_admin_kit.migrations.models.Permission
     options:
       show_source: true
       show_root_heading: true
@@ -49,7 +54,7 @@
 
 ### UserPermission
 
-::: fastapi_admin_kit.auth.models.UserPermission
+::: fastapi_admin_kit.migrations.models.UserPermission
     options:
       show_source: true
       show_root_heading: true
