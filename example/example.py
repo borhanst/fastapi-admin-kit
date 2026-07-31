@@ -2,6 +2,7 @@
 
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import bcrypt
 from fastapi import FastAPI
@@ -629,7 +630,8 @@ async def custom_dashboard_data(request, session):
 # ============================================================================
 
 # Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./test_debug.db")
+EXAMPLE_DIR = Path(__file__).resolve().parent
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite+aiosqlite:///{EXAMPLE_DIR / 'test_debug.db'}")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
 
 # Option A: Create engine manually (traditional approach)
@@ -638,7 +640,7 @@ async_session_maker = sessionmaker(engine, class_=AsyncSession, expire_on_commit
 
 # Option B: Use DatabaseConfig — pass url= (auto-normalizes to async driver)
 #   from fastapi_admin_kit import DatabaseConfig
-#   db_config = DatabaseConfig(url="sqlite:///./test_debug.db")  # → sqlite+aiosqlite:///...
+#   db_config = DatabaseConfig(url="sqlite:///example/test_debug.db")  # → sqlite+aiosqlite:///...
 #   engine = db_config.create_engine()
 #
 # Option C: Use DatabaseConfig with structured fields + DatabaseType enum

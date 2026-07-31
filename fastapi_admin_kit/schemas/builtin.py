@@ -257,3 +257,86 @@ USER_TOTP_SCHEMA = Schema(
         ),
     ],
 )
+
+# ---------------------------------------------------------------------------
+# AI usage / conversation schemas
+#
+# Mirrors the AuditLog "log pattern": user_id/user_email are stored as
+# plain indexed columns (no FK) so the tables keep working when a project
+# overrides the user schema via ``auth_model=``.
+# ---------------------------------------------------------------------------
+
+AI_USAGE_LOG_SCHEMA = Schema(
+    table_name="admin_ai_usage_log",
+    verbose_name="AI Usage Log",
+    verbose_name_plural="AI Usage Logs",
+    fields=[
+        Field("id", type="integer", primary_key=True, auto_increment=True),
+        Field("agent_name", type="string", max_length=100, nullable=False),
+        Field("model", type="string", max_length=255, nullable=False),
+        Field("user_id", type="integer", nullable=True),
+        Field("user_email", type="string", max_length=255, nullable=True),
+        Field("request_tokens", type="integer", default=0),
+        Field("response_tokens", type="integer", default=0),
+        Field("total_tokens", type="integer", default=0),
+        Field("cost", type="numeric", default=0),
+        Field("tool_calls", type="json", nullable=True),
+        Field("success", type="boolean", default=True),
+        Field("error", type="text", nullable=True),
+        Field("latency_ms", type="integer", nullable=True),
+        Field("timestamp", type="datetime", server_default="now()"),
+    ],
+    indexes=[
+        {"columns": ["agent_name", "timestamp"], "name": "idx_ai_usage_agent"},
+        {"columns": ["user_id"], "name": "idx_ai_usage_user"},
+    ],
+    relations=[],
+)
+
+AI_CONVERSATION_SCHEMA = Schema(
+    table_name="admin_ai_conversations",
+    verbose_name="AI Conversation",
+    verbose_name_plural="AI Conversations",
+    fields=[
+        Field("id", type="string", primary_key=True, max_length=36),
+        Field("agent_name", type="string", max_length=100, nullable=False),
+        Field("user_id", type="integer", nullable=True),
+        Field("user_email", type="string", max_length=255, nullable=True),
+        Field("title", type="string", max_length=255, nullable=True),
+        Field("status", type="string", max_length=20, default="active"),
+        Field("message_history", type="json", nullable=True),
+        Field("total_tokens", type="integer", default=0),
+        Field("total_cost", type="numeric", default=0),
+        Field("turn_count", type="integer", default=0),
+        Field("started_at", type="datetime", server_default="now()"),
+        Field("last_message_at", type="datetime", nullable=True),
+    ],
+    indexes=[
+        {"columns": ["user_id", "last_message_at"], "name": "idx_ai_conv_user"},
+    ],
+    relations=[],
+)
+
+AI_MESSAGE_SCHEMA = Schema(
+    table_name="admin_ai_messages",
+    verbose_name="AI Message",
+    verbose_name_plural="AI Messages",
+    fields=[
+        Field("id", type="integer", primary_key=True, auto_increment=True),
+        Field("conversation_id", type="string", max_length=36, nullable=False),
+        Field("role", type="string", max_length=20, nullable=False),
+        Field("content", type="text", nullable=True),
+        Field("tool_name", type="string", max_length=100, nullable=True),
+        Field("tool_args", type="json", nullable=True),
+        Field("tool_result", type="json", nullable=True),
+        Field("tokens", type="integer", nullable=True),
+        Field("latency_ms", type="integer", nullable=True),
+        Field("error", type="text", nullable=True),
+        Field("is_error", type="boolean", default=False),
+        Field("created_at", type="datetime", server_default="now()"),
+    ],
+    indexes=[
+        {"columns": ["conversation_id", "created_at"], "name": "idx_ai_msg_conv"},
+    ],
+    relations=[],
+)

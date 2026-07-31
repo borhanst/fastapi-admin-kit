@@ -463,6 +463,43 @@ class TestAutoDiscover:
         assert "test_products" not in table_names
         assert "test_categories" not in table_names
 
+    async def test_ai_enabled_registers_ai_models(self, engine, app):
+        from fastapi_admin_kit.ai.config import AIConfig
+
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            auto_discover=False,
+            ai_enabled=True,
+            ai=AIConfig(dashboard_enabled=True),
+        )
+        await admin.setup()
+
+        registered = admin.all_registered()
+        by_table = {r.table_name: r for r in registered}
+        assert "admin_ai_conversations" in by_table
+        assert "admin_ai_messages" in by_table
+        assert "admin_ai_usage_log" in by_table
+        assert by_table["admin_ai_conversations"].admin.tag == "ai"
+        assert by_table["admin_ai_messages"].admin.tag == "ai"
+        assert by_table["admin_ai_usage_log"].admin.tag == "ai"
+
+    async def test_ai_disabled_does_not_register_ai_models(self, engine, app):
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            auto_discover=False,
+        )
+        await admin.setup()
+
+        registered = admin.all_registered()
+        table_names = {r.table_name for r in registered}
+        assert "admin_ai_conversations" not in table_names
+        assert "admin_ai_messages" not in table_names
+        assert "admin_ai_usage_log" not in table_names
+
 
 # ---------------------------------------------------------------------------
 # 9.7 — Register decorator pattern

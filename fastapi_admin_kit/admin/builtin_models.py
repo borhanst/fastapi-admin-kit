@@ -271,3 +271,64 @@ class LoginAttemptAdmin(ModelAdmin):
     verbose_name_plural = "Login Attempts"
     list_display = ["id", "email", "ip_address", "success", "note", "timestamp"]
     search_fields = ["email", "ip_address"]
+
+
+class AIConversationAdmin(ModelAdmin):
+    tag = "ai"
+    icon = "chat"
+    verbose_name = "AI Conversation"
+    verbose_name_plural = "AI Conversations"
+    list_display = [
+        "id",
+        "title",
+        "agent_name",
+        "user_email",
+        "turn_count",
+        "total_tokens",
+        "last_message_at",
+    ]
+    search_fields = ["title", "user_email", "agent_name"]
+    list_filter = ["status", "agent_name"]
+    ordering = ["-last_message_at"]
+    readonly_fields = ["message_history"]
+
+
+class AIMessageAdmin(ModelAdmin):
+    tag = "ai"
+    icon = "forum"
+    verbose_name = "AI Message"
+    verbose_name_plural = "AI Messages"
+    list_display = [
+        "id",
+        "conversation_id",
+        "role",
+        "tool_name",
+        "tokens",
+        "is_error",
+        "created_at",
+    ]
+    search_fields = ["content", "tool_name", "conversation_id"]
+    list_filter = ["role", "is_error"]
+    ordering = ["-created_at"]
+    readonly_fields = ["content", "tool_args", "tool_result", "error"]
+
+
+class AIUsageLogAdmin(ModelAdmin):
+    tag = "ai"
+    icon = "monitoring"
+    verbose_name = "AI Usage Log"
+    verbose_name_plural = "AI Usage Logs"
+    list_display = [
+        "id",
+        "agent_name",
+        "model",
+        "user_email",
+        "total_tokens",
+        "cost",
+        "success",
+        "timestamp",
+    ]
+    search_fields = ["agent_name", "model", "user_email"]
+    list_filter = ["success", "agent_name", "model"]
+    ordering = ["-timestamp"]
+    readonly_fields = ["tool_calls", "error"]

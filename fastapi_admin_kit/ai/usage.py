@@ -1,106 +1,24 @@
-"""Usage tracking — UsageInfo, AIUsageWriter, AIUsageLog model."""
+"""Usage tracking — UsageInfo, AIUsageWriter, AIUsageLog model.
+
+The AI models (``AIUsageLog``, ``AIConversation``, ``AIMessage``) are
+defined as schemas in ``schemas/builtin.py`` and materialized in
+``migrations.models`` so they share the same schema-first pipeline as the
+rest of the admin models (User, AuditLog, etc.). They are re-exported here
+for backward compatibility.
+"""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import (
-    JSON,
-    Boolean,
-    Column,
-    DateTime,
-    ForeignKey,
-    Index,
-    Integer,
-    Numeric,
-    String,
-    Text,
-)
-from sqlalchemy.sql import func
-
-from fastapi_admin_kit.models.base import Base
+from fastapi_admin_kit.migrations.models import AIConversation, AIMessage, AIUsageLog
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from fastapi_admin_kit.auth.protocol import AdminUserProtocol
 
-
-class AIUsageLog(Base):
-    """SQLAlchemy model for AI usage logging."""
-
-    __tablename__ = "admin_ai_usage_log"
-    __table_args__ = (
-        Index("idx_ai_usage_agent", "agent_name", "timestamp"),
-        Index("idx_ai_usage_user", "user_id"),
-    )
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    agent_name = Column(String(100), nullable=False)
-    model = Column(String(255), nullable=False)
-    user_id = Column(
-        Integer,
-        ForeignKey("admin_users.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    user_email = Column(String(255))
-    request_tokens = Column(Integer, default=0)
-    response_tokens = Column(Integer, default=0)
-    total_tokens = Column(Integer, default=0)
-    cost = Column(Numeric(12, 6), default=0)
-    tool_calls = Column(JSON)
-    success = Column(Boolean, default=True)
-    error = Column(Text)
-    latency_ms = Column(Integer)
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
-
-
-class AIConversation(Base):
-    """SQLAlchemy model for AI conversations."""
-
-    __tablename__ = "admin_ai_conversations"
-    __table_args__ = (Index("idx_ai_conv_user", "user_id", "last_message_at"),)
-
-    id = Column(String(36), primary_key=True)
-    agent_name = Column(String(100), nullable=False)
-    user_id = Column(
-        Integer,
-        ForeignKey("admin_users.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    user_email = Column(String(255))
-    title = Column(String(255))
-    status = Column(String(20), default="active")
-    message_history = Column(JSON)
-    total_tokens = Column(Integer, default=0)
-    total_cost = Column(Numeric(12, 6), default=0)
-    turn_count = Column(Integer, default=0)
-    started_at = Column(DateTime(timezone=True), server_default=func.now())
-    last_message_at = Column(DateTime(timezone=True))
-
-
-class AIMessage(Base):
-    """SQLAlchemy model for AI conversation messages."""
-
-    __tablename__ = "admin_ai_messages"
-    __table_args__ = (Index("idx_ai_msg_conv", "conversation_id", "created_at"),)
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    conversation_id = Column(
-        String(36),
-        ForeignKey("admin_ai_conversations.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    role = Column(String(20), nullable=False)
-    content = Column(Text)
-    tool_name = Column(String(100))
-    tool_args = Column(JSON)
-    tool_result = Column(JSON)
-    tokens = Column(Integer)
-    latency_ms = Column(Integer)
-    error = Column(Text)
-    is_error = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+__all__ = ["AIUsageLog", "AIConversation", "AIMessage", "AIUsageWriter"]
 
 
 class AIUsageWriter:
@@ -151,8 +69,6 @@ class AIUsageWriter:
         from sqlalchemy import case as sqlcase
         from sqlalchemy import func as sqlfunc
         from sqlalchemy import select
-
-        from fastapi_admin_kit.ai.usage import AIUsageLog
 
         days_map = {"day": 1, "week": 7, "month": 30}
         days = days_map.get(period, 1)

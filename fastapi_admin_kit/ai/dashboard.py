@@ -108,6 +108,7 @@ async def _resolve_checker(request: Request, user: AdminUserProtocol) -> Permiss
 @router.get("/chat")
 async def ai_chat_page(request: Request) -> jinja2.TemplateResponse:
     """Full-page AI chat interface."""
+    await _resolve_user(request)
     admin = _get_admin(request)
     jinja = _get_jinja(request)
 
@@ -115,13 +116,14 @@ async def ai_chat_page(request: Request) -> jinja2.TemplateResponse:
         "title": "AI Chat",
         "admin_path": admin.admin_path if admin else "/admin",
     }
-    context.update(admin.sidebar_template_kwargs(request) if admin else {})
+    context.update(await admin.sidebar_template_kwargs(request) if admin else {})
     return jinja.TemplateResponse(request, "pages/ai/chat.html", context)
 
 
 @router.get("/logs")
 async def ai_logs_page(request: Request) -> jinja2.TemplateResponse:
     """Full-page AI logs viewer."""
+    await _resolve_user(request)
     admin = _get_admin(request)
     jinja = _get_jinja(request)
 
@@ -129,13 +131,14 @@ async def ai_logs_page(request: Request) -> jinja2.TemplateResponse:
         "title": "AI Logs",
         "admin_path": admin.admin_path if admin else "/admin",
     }
-    context.update(admin.sidebar_template_kwargs(request) if admin else {})
+    context.update(await admin.sidebar_template_kwargs(request) if admin else {})
     return jinja.TemplateResponse(request, "pages/ai/logs.html", context)
 
 
 @router.get("/dashboard")
 async def ai_dashboard(request: Request) -> jinja2.TemplateResponse:
     """AI operations dashboard showing costs, logs, and tool calls."""
+    await _resolve_user(request)
     from fastapi_admin_kit.db import get_db_session
 
     agents = _get_ai_agents(request)
@@ -161,7 +164,7 @@ async def ai_dashboard(request: Request) -> jinja2.TemplateResponse:
         "agent_stats": stats,
         "admin_path": admin.admin_path if admin else "/admin",
     }
-    context.update(admin.sidebar_template_kwargs(request) if admin else {})
+    context.update(await admin.sidebar_template_kwargs(request) if admin else {})
     return jinja.TemplateResponse(request, "pages/ai/dashboard.html", context)
 
 
@@ -277,6 +280,7 @@ async def get_ai_costs(
 @router.get("/tools")
 async def ai_tools_page(request: Request) -> jinja2.TemplateResponse:
     """Full-page AI tools viewer."""
+    await _resolve_user(request)
     admin = _get_admin(request)
     jinja = _get_jinja(request)
 
@@ -284,7 +288,7 @@ async def ai_tools_page(request: Request) -> jinja2.TemplateResponse:
         "title": "AI Tools",
         "admin_path": admin.admin_path if admin else "/admin",
     }
-    context.update(admin.sidebar_template_kwargs(request) if admin else {})
+    context.update(await admin.sidebar_template_kwargs(request) if admin else {})
     return jinja.TemplateResponse(request, "pages/ai/tools.html", context)
 
 
@@ -391,6 +395,7 @@ async def execute_tool_endpoint(
 @router.get("/agents")
 async def ai_agents_page(request: Request) -> jinja2.TemplateResponse:
     """Full-page AI agents viewer."""
+    await _resolve_user(request)
     admin = _get_admin(request)
     jinja = _get_jinja(request)
 
@@ -398,7 +403,7 @@ async def ai_agents_page(request: Request) -> jinja2.TemplateResponse:
         "title": "AI Agents",
         "admin_path": admin.admin_path if admin else "/admin",
     }
-    context.update(admin.sidebar_template_kwargs(request) if admin else {})
+    context.update(await admin.sidebar_template_kwargs(request) if admin else {})
     return jinja.TemplateResponse(request, "pages/ai/agents.html", context)
 
 

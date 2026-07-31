@@ -564,6 +564,7 @@ class SqlAlchemyDatabaseBackend:
             ForeignKey,
             Index,
             Integer,
+            Numeric,
             String,
             Text,
         )
@@ -615,6 +616,7 @@ class SqlAlchemyDatabaseBackend:
             "boolean": Boolean,
             "datetime": DateTime(timezone=True),
             "float": Float,
+            "numeric": Numeric,
             "json": JSON,
         }
 
@@ -781,6 +783,13 @@ class SqlAlchemyDatabaseBackend:
                     )
 
         model_class = type(table_name, (base,), model_attrs)
+
+        # Expose the schema's display names so the admin registry can derive
+        # verbose_name / verbose_name_plural without a hand-written ModelAdmin.
+        if schema.verbose_name:
+            model_class.verbose_name = schema.verbose_name
+        if schema.verbose_name_plural:
+            model_class.verbose_name_plural = schema.verbose_name_plural
 
         # Add AuthModelMixin methods to User model if this is the User schema
         if schema.table_name == "admin_users":

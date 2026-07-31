@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any
@@ -21,6 +23,105 @@ if TYPE_CHECKING:
     from fastapi_admin_kit.ai.config import AIAgentConfig
     from fastapi_admin_kit.ai.tools import Tool
     from fastapi_admin_kit.ai.usage import AIUsageWriter
+
+
+_LITERAL_CALL_RE = re.compile(r"<function=(\w+)")
+
+
+def _parse_literal_json_object(text: str) -> tuple[dict[str, Any] | None, int]:
+    """Parse a JSON object at the start of ``text``.
+
+    Returns ``(parsed_dict, end_index)`` or ``(None, 0)`` when no complete
+    JSON object is present. Handles nested braces and strings.
+    """
+    stripped = text.lstrip()
+    if not stripped.startswith("{"):
+        return None, 0
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for i, ch in enumerate(stripped):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(stripped[: i + 1]), i + 1
+                except json.JSONDecodeError:
+                    return None, 0
+    return None, 0
+
+
+def _parse_literal_function_calls(
+    text: str,
+) -> list[tuple[str, dict[str, Any], int]]:
+    """Extract literal ``<function=name {json}>`` calls from model output.
+
+    Some models (e.g. Llama via Groq) occasionally emit tool calls as plain
+    text instead of using native tool calling. Returns ``(name, args, end)``
+    tuples where ``end`` is the index just past the call (args + optional
+    closing tag) so callers can replace the whole expression.
+    """
+    calls: list[tuple[str, dict[str, Any], int]] = []
+    for match in _LITERAL_CALL_RE.finditer(text):
+        name = match.group(1)
+        after_name = text[match.end() :]
+        # Skip optional `>` between name and JSON (e.g. `<function=get_ticket> {…}`)
+        after_name = after_name.lstrip(">").lstrip()
+        args, offset = _parse_literal_json_object(after_name)
+        stripped_len = len(text[match.end() :]) - len(after_name)
+        end = match.end() + stripped_len + offset
+        if offset == 0:
+            closing = re.match(r"\s*</function>", text[end:])
+            if closing:
+                end += closing.end()
+        calls.append((name, args or {}, end))
+    return calls
+
+
+def _format_literal_call_result(result: Any) -> str:
+    """Render a tool result as readable text for the chat reply."""
+    try:
+        return json.dumps(result, indent=2, default=str, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return str(result)
+
+
+def _replace_literal_calls_with_results(
+    text: str,
+    results: list[tuple[str, dict[str, Any], Any, bool]],
+    ends: list[int],
+) -> str:
+    """Replace each literal call in ``text`` with its executed result."""
+    if not results:
+        return text
+
+    rendered: list[str] = []
+    last = 0
+    for idx, match in enumerate(_LITERAL_CALL_RE.finditer(text)):
+        if idx >= len(results):
+            break
+        name, _args, result, is_error = results[idx]
+        rendered.append(text[last : match.start()])
+        if is_error:
+            rendered.append(f"[Tool {name} failed: {result}]")
+        else:
+            rendered.append(_format_literal_call_result(result))
+        last = max(ends[idx], match.end())
+    rendered.append(text[last:])
+    return "".join(rendered)
 
 
 def _extract_tool_calls(result: AgentRunResult[Any]) -> list[ToolCallRecord]:
@@ -196,7 +297,8 @@ class PydanticAIAgent(AIAgent):
     ) -> ChatResult:
         if self._agent is None:
             raise RuntimeError(
-                "pydantic-ai is not installed. Install with: pip install pydantic-ai"
+                """pydantic-ai is not installed. Install with:
+                pip install pydantic-ai"""
             )
 
         start = time.perf_counter()
@@ -211,6 +313,114 @@ class PydanticAIAgent(AIAgent):
         usage = result.usage
         cost = self._compute_cost(usage)
         tool_calls = _extract_tool_calls(result)
+
+        output = result.output
+        if isinstance(output, str):
+            literal_calls = _parse_literal_function_calls(output)
+            if literal_calls:
+                executed: list[tuple[str, dict[str, Any], Any, bool]] = []
+                for name, args, _end in literal_calls:
+                    is_error = False
+                    try:
+                        tool_result = await self.execute_tool(name, args, deps)
+                    except Exception as e:  # noqa: BLE001
+                        tool_result = str(e)
+                        is_error = True
+                    executed.append((name, args, tool_result, is_error))
+                    tool_calls.append(
+                        ToolCallRecord(
+                            name=name,
+                            args=args,
+                            result=tool_result,
+                            is_error=is_error,
+                        )
+                    )
+
+                # Second LLM pass: send tool results back to the model for a
+                # natural-language summary instead of inserting raw JSON.
+
+                from pydantic_ai.messages import (
+                    ModelRequest,
+                    ModelResponse,
+                    TextPart,
+                    ToolReturnPart,
+                )
+
+                second_history: list[Any] = list(result.all_messages())
+
+                for idx, (name, _args, tool_result, is_error) in enumerate(executed):
+                    content = (
+                        _format_literal_call_result(tool_result)
+                        if not is_error
+                        else f"[Tool {name} failed: {tool_result}]"
+                    )
+                    second_history.append(
+                        ModelRequest(
+                            parts=[
+                                ToolReturnPart(
+                                    tool_name=name,
+                                    content=content,
+                                    tool_call_id=f"literal-{idx}",
+                                    outcome="success" if not is_error else "failed",
+                                )
+                            ]
+                        )
+                    )
+
+                second_history.append(
+                    ModelResponse(
+                        parts=[TextPart(content=output)],
+                    )
+                )
+
+                second_history.append(
+                    ModelRequest(
+                        parts=[
+                            ToolReturnPart(
+                                tool_name="__continue",
+                                content="""Please provide a clear
+                                natural-language
+                                answer based on the tool results above.""",
+                                outcome="success",
+                            )
+                        ],
+                    )
+                )
+
+                second_result: Any = None
+                try:
+                    second_result = await self._agent.run(
+                        message="",
+                        deps=deps,
+                        message_history=second_history,
+                    )
+                    output = second_result.output
+                    if isinstance(output, str):
+                        literal_calls2 = _parse_literal_function_calls(output)
+                        if literal_calls2:
+                            for name2, args2, _end2 in literal_calls2:
+                                try:
+                                    tool_result2 = await self.execute_tool(name2, args2, deps)
+                                except Exception as e:  # noqa: BLE001
+                                    tool_result2 = str(e)
+                                output = output.replace(
+                                    f"<function={name2}",
+                                    f"""[Tool {name2} result:
+                                    {_format_literal_call_result(tool_result2)}]""",
+                                )
+                except Exception:  # noqa: BLE001
+                    if second_result is None:
+                        output = _replace_literal_calls_with_results(
+                            output,
+                            executed,
+                            [end for _name, _args, end in literal_calls],
+                        )
+
+                if second_result is not None:
+                    second_usage = second_result.usage
+                    second_cost = self._compute_cost(second_usage)
+                    cost += second_cost
+                    usage = second_usage
 
         input_tokens = getattr(usage, "input_tokens", None) or 0
         output_tokens = getattr(usage, "output_tokens", None) or 0
@@ -238,7 +448,7 @@ class PydanticAIAgent(AIAgent):
         )
 
         return ChatResult(
-            output=result.output,
+            output=output,
             usage=UsageInfo(
                 request_tokens=input_tokens,
                 response_tokens=output_tokens,
@@ -267,11 +477,26 @@ class PydanticAIAgent(AIAgent):
             raise ValueError(f"Tool '{tool_name}' not found.")
 
         if tool.uses_context:
-            from pydantic_ai import RunContext
+            from pydantic_ai import RunContext, RunUsage
 
-            ctx = RunContext(deps=deps, retry=0, tool_name=tool_name)
-            return await tool.handler(ctx, **params)
-        return await tool.handler(**params)
+            ctx = RunContext(deps=deps, usage=RunUsage(), tool_name=tool_name)
+            try:
+                return await tool.handler(ctx, **params)
+            except TypeError as e:
+                # pydantic-ai 2.21.0 may pass all args as keywords;
+                # if handler expects ctx positionally, try positional call.
+                if "missing 1 required positional argument" in str(e):
+                    positional_params = list(params.values())
+                    return await tool.handler(ctx, *positional_params)
+                raise
+        else:
+            try:
+                return await tool.handler(**params)
+            except TypeError as e:
+                if "missing 1 required positional argument" in str(e):
+                    positional_params = list(params.values())
+                    return await tool.handler(*positional_params)
+                raise
 
     def get_tools(self) -> list[dict[str, Any]]:
         return [t.to_schema() for t in self._config.tools]

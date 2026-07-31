@@ -1030,6 +1030,18 @@ class Admin:
             User,
         )
 
+        if self._ai_enabled:
+            from fastapi_admin_kit.admin.builtin_models import (
+                AIConversationAdmin,
+                AIMessageAdmin,
+                AIUsageLogAdmin,
+            )
+            from fastapi_admin_kit.migrations.models import (
+                AIConversation,
+                AIMessage,
+                AIUsageLog,
+            )
+
         builtin_models = [
             (User, UserAdmin),
             (Role, RoleAdmin),
@@ -1044,6 +1056,16 @@ class Admin:
         for model, admin_class in builtin_models:
             if model.__tablename__ not in self.registry._models:
                 self.registry.register(model, admin_class)
+
+        if self._ai_enabled:
+            ai_builtin_models = [
+                (AIConversation, AIConversationAdmin),
+                (AIMessage, AIMessageAdmin),
+                (AIUsageLog, AIUsageLogAdmin),
+            ]
+            for model, admin_class in ai_builtin_models:
+                if model.__tablename__ not in self.registry._models:
+                    self.registry.register(model, admin_class)
 
     # ------------------------------------------------------------------
     # AI Setup

@@ -17,6 +17,9 @@ from sqlalchemy import Column, ForeignKey, Integer, Table
 from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyDatabaseBackend
 from fastapi_admin_kit.models.base import Base
 from fastapi_admin_kit.schemas.builtin import (
+    AI_CONVERSATION_SCHEMA,
+    AI_MESSAGE_SCHEMA,
+    AI_USAGE_LOG_SCHEMA,
     AUDIT_LOG_SCHEMA,
     LOGIN_ATTEMPT_SCHEMA,
     PERMISSION_SCHEMA,
@@ -83,6 +86,11 @@ Permission = _backend.materialize(PERMISSION_SCHEMA, base=Base)
 AuditLog = _backend.materialize(AUDIT_LOG_SCHEMA, base=Base)
 LoginAttempt = _backend.materialize(LOGIN_ATTEMPT_SCHEMA, base=Base)
 
+# AI models
+AIUsageLog = _backend.materialize(AI_USAGE_LOG_SCHEMA, base=Base)
+AIConversation = _backend.materialize(AI_CONVERSATION_SCHEMA, base=Base)
+AIMessage = _backend.materialize(AI_MESSAGE_SCHEMA, base=Base)
+
 # Junction tables are now available via metadata
 admin_user_roles = Base.metadata.tables.get("admin_user_roles")
 admin_role_permissions = Base.metadata.tables.get("admin_role_permissions")
@@ -98,6 +106,9 @@ __all__ = [
     "UserTOTP",
     "AuditLog",
     "LoginAttempt",
+    "AIUsageLog",
+    "AIConversation",
+    "AIMessage",
     "admin_user_roles",
     "admin_role_permissions",
 ]
