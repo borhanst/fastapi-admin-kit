@@ -73,8 +73,10 @@ RefreshToken = _backend.materialize(REFRESH_TOKEN_SCHEMA, base=Base)
 UserTOTP = _backend.materialize(USER_TOTP_SCHEMA, base=Base)
 
 # Then parent tables with relationships to children
-User = _backend.materialize(USER_SCHEMA, base=Base)
+# Order matters for many-to-many back_populates relationships
+# Role must be materialized before User so the reverse relationship is available
 Role = _backend.materialize(ROLE_SCHEMA, base=Base)
+User = _backend.materialize(USER_SCHEMA, base=Base)
 Permission = _backend.materialize(PERMISSION_SCHEMA, base=Base)
 
 # Audit models

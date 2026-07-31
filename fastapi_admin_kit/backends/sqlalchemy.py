@@ -717,10 +717,16 @@ class SqlAlchemyDatabaseBackend:
         for rel in schema.relations:
             if rel.type == "many_to_many" and rel.through:
                 # Many-to-many relationship using a junction table
-                # Pass the table name as string - SQLAlchemy will resolve it at mapper config time
+                # Resolve the through table from metadata if it's a string and available
+                secondary = rel.through
+                if isinstance(secondary, str) and base is not None and hasattr(base, "metadata"):
+                    table = base.metadata.tables.get(secondary)
+                    if table is not None:
+                        secondary = table
+                # Pass the table (or string name) - SQLAlchemy will resolve it at mapper config time
                 model_attrs[rel.name] = relationship(
                     rel.target,
-                    secondary=rel.through,
+                    secondary=secondary,
                     back_populates=rel.back_populates,
                 )
             elif rel.type == "one_to_many":
