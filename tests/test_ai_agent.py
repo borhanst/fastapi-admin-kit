@@ -344,3 +344,237 @@ class TestSecondLLMPass:
         assert isinstance(result.output, str)
         assert "count" in result.output  # result IS present for the LLM
         assert "tickets" in result.output
+
+
+# ─── Prompt providers ───
+
+
+class TestPromptProviders:
+    def _make_deps(self, **overrides):
+        from fastapi_admin_kit.ai.deps import AdminDeps
+
+        base = dict(
+            session=MagicMock(),
+            admin_user=MagicMock(),
+            request=MagicMock(),
+            registry=MagicMock(),
+            permission_checker=MagicMock(),
+        )
+        base.update(overrides)
+        return AdminDeps(**base)
+
+    def _ctx(self, deps):
+        from pydantic_ai import RunContext
+        from pydantic_ai.usage import RunUsage
+
+        return RunContext(deps=deps, model=MagicMock(), usage=RunUsage())
+
+    def test_guardrails_present(self):
+        from fastapi_admin_kit.ai.prompts import guardrails
+
+        text = guardrails(self._ctx(self._make_deps()))
+        assert "PII" in text
+        assert "house numbers" in text
+        assert "credentials" in text
+        assert "<function=" in text or "function" in text
+
+    def test_guardrails_disabled_flag(self):
+        cfg = AIAgentConfig(
+            name="t",
+            model="openai:gpt-4o",
+            enable_default_guardrails=False,
+        )
+        assert cfg.enable_default_guardrails is False
+
+    def test_page_context_returns_none_without_url(self):
+        from fastapi_admin_kit.ai.prompts import page_context
+
+        deps = self._make_deps(page_url=None)
+        assert page_context(self._ctx(deps)) is None
+
+    def test_page_context_describes_table_and_record(self):
+        from fastapi_admin_kit.ai.prompts import page_context
+
+        col = MagicMock()
+        col.name = "id"
+        col.type = MagicMock()
+        col.type.__str__ = lambda self: "INTEGER"
+
+        registered = MagicMock()
+        registered.verbose_name = "Products"
+        registered.columns = [col]
+
+        registry = MagicMock()
+        registry.get.return_value = registered
+
+        admin_config = {"admin_path": "/admin"}
+        request = MagicMock()
+        request.app.state.admin_config = admin_config
+
+        deps = self._make_deps(page_url="/admin/products/42", registry=registry, request=request)
+        text = page_context(self._ctx(deps))
+        assert text is not None
+        assert "Products" in text
+        assert "products" in text
+        assert "ID: 42" in text
+
+    def test_page_context_ignores_foreign_pages(self):
+        from fastapi_admin_kit.ai.prompts import page_context
+
+        admin_config = {"admin_path": "/admin"}
+        request = MagicMock()
+        request.app.state.admin_config = admin_config
+
+        deps = self._make_deps(page_url="/other/whatever", request=request)
+        assert page_context(self._ctx(deps)) is None
+
+    async def test_user_context_lists_permitted_tables(self):
+        from unittest.mock import AsyncMock
+
+        from fastapi_admin_kit.ai.prompts import user_context
+
+        checker = MagicMock()
+        checker.has_permission = AsyncMock(side_effect=lambda t, a: t == "products")
+
+        reg = MagicMock()
+        p = MagicMock()
+        p.table_name = "products"
+        c = MagicMock()
+        c.table_name = "customers"
+        reg.all.return_value = [p, c]
+
+        user = MagicMock()
+        user.name = "Alice"
+        user.email = "alice@example.com"
+        user.is_superuser = False
+
+        deps = self._make_deps(
+            admin_user=user,
+            registry=reg,
+            permission_checker=checker,
+        )
+        text = await user_context(self._ctx(deps))
+        assert "Alice" in text
+        assert "products" in text
+        assert "customers" not in text
+
+    async def test_user_context_superuser_lists_all(self):
+        from fastapi_admin_kit.ai.prompts import user_context
+
+        reg = MagicMock()
+        p = MagicMock()
+        p.table_name = "products"
+        reg.all.return_value = [p]
+
+        user = MagicMock()
+        user.name = "Admin"
+        user.is_superuser = True
+
+        deps = self._make_deps(admin_user=user, registry=reg)
+        text = await user_context(self._ctx(deps))
+        assert "Superuser" in text
+        assert "products" in text
+
+
+# ─── Config → Agent wiring ───
+
+
+class TestAgentWiring:
+    def _config(self, **overrides):
+        kwargs = dict(name="t", model="openai:gpt-4o")
+        kwargs.update(overrides)
+        return AIAgentConfig(**kwargs)
+
+    def test_new_fields_default(self):
+        cfg = self._config()
+        assert cfg.system_prompt_providers == []
+        assert cfg.enable_default_guardrails is True
+        assert cfg.metadata is None
+        assert cfg.model_settings is None
+        assert cfg.usage_limits is None
+        assert cfg.max_concurrency is None
+
+    def test_agent_receives_new_kwargs(self):
+        from unittest.mock import AsyncMock, patch
+
+        from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
+            PydanticAIAgent,
+        )
+
+        def meta(ctx):
+            return {"agent": "t"}
+
+        usage_limits = MagicMock()
+        cfg = self._config(
+            metadata=meta,
+            model_settings={"temperature": 0.0},
+            usage_limits=usage_limits,
+            max_concurrency=3,
+        )
+
+        with patch("pydantic_ai.Agent") as mock_agent:
+            mock_agent.return_value = MagicMock()
+            agent = PydanticAIAgent.__new__(PydanticAIAgent)
+            agent._config = cfg
+            agent._usage_writer = AsyncMock()
+            agent._bind_tools = lambda tools: None
+            agent._register_instructions = lambda: None
+            agent._build_model = lambda c: "openai:gpt-4o"
+            PydanticAIAgent.__init__(agent, cfg, AsyncMock(), AsyncMock())
+
+        kwargs = mock_agent.call_args.kwargs
+        assert kwargs["model_settings"] == {"temperature": 0.0}
+        assert kwargs["metadata"] is meta
+        assert kwargs["max_concurrency"] == 3
+
+    def test_run_receives_usage_limits_and_metadata(self):
+        from unittest.mock import AsyncMock
+
+        agent, _ = self._make_agent()
+        usage_limits = MagicMock()
+        agent._config.usage_limits = usage_limits
+        agent._config.metadata = lambda ctx: {"agent": "t"}
+
+        fake_agent = MagicMock()
+        fake_result = MagicMock()
+        fake_result.output = "hello"
+        fake_result.usage = MagicMock(input_tokens=10, output_tokens=5)
+        fake_result.all_messages.return_value = []
+        fake_result.new_messages.return_value = []
+        fake_result.conversation_id = None
+        fake_agent.run = AsyncMock(return_value=fake_result)
+        agent._agent = fake_agent
+
+        deps = MagicMock()
+        deps.admin_user = MagicMock()
+        deps.debug = False
+        deps.session = MagicMock()
+
+        import asyncio
+
+        asyncio.run(agent.chat("hi", deps))
+
+        call_kwargs = fake_agent.run.call_args.kwargs
+        assert call_kwargs["usage_limits"] is usage_limits
+        assert callable(call_kwargs["metadata"])
+
+    def _make_agent(self):
+        from unittest.mock import AsyncMock
+
+        from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
+            PydanticAIAgent,
+        )
+
+        usage_writer = MagicMock()
+        usage_writer.write = AsyncMock()
+        config = AIAgentConfig(
+            name="default",
+            model="openai:gpt-4o",
+            tools=[],
+            retries=1,
+        )
+        agent = PydanticAIAgent.__new__(PydanticAIAgent)
+        agent._config = config
+        agent._usage_writer = usage_writer
+        agent.name = "default"
+        return agent, usage_writer

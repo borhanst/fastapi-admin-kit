@@ -163,6 +163,126 @@ def _extract_tool_calls(result: AgentRunResult[Any]) -> list[ToolCallRecord]:
     return records
 
 
+async def _resolve_literal_calls(
+    agent: PydanticAIAgent,
+    output: str,
+    result: AgentRunResult[Any],
+    deps: AdminDeps,
+    tool_calls: list[ToolCallRecord],
+    cost: float,
+    usage: Any,
+) -> tuple[str, Any, float, list[ToolCallRecord]]:
+    """Handle legacy literal ``<function=name {json}>`` output.
+
+    Some models (e.g. Llama via Groq) emit tool calls as plain text instead of
+    using native tool calling. This executes each parsed call directly, then
+    runs a second LLM pass so the reply is natural language rather than raw
+    JSON. Returns ``(output, usage, cost, tool_calls)``.
+    """
+    executed: list[tuple[str, dict[str, Any], Any, bool]] = []
+    for name, args, _end in _parse_literal_function_calls(output):
+        is_error = False
+        try:
+            tool_result = await agent.execute_tool(name, args, deps)
+        except Exception as e:  # noqa: BLE001
+            tool_result = error_detail(e, debug=deps.debug)
+            is_error = True
+        executed.append((name, args, tool_result, is_error))
+        tool_calls.append(
+            ToolCallRecord(
+                name=name,
+                args=args,
+                result=tool_result,
+                is_error=is_error,
+            )
+        )
+
+    # Second LLM pass: send tool results back to the model for a
+    # natural-language summary instead of inserting raw JSON.
+    from pydantic_ai.messages import (
+        ModelRequest,
+        ModelResponse,
+        TextPart,
+        UserPromptPart,
+    )
+
+    # Strip the literal <function=...> calls from the assistant reply
+    # so the model doesn't echo them back in the second pass.
+    rendered_output = _replace_literal_calls_with_results(
+        output,
+        executed,
+        [end for _name, _args, end in _parse_literal_function_calls(output)],
+    )
+    cleaned_output = _strip_literal_function_calls(rendered_output)
+
+    second_history: list[Any] = list(result.all_messages())
+    # The final assistant ModelResponse still contains the raw literal call
+    # text; replace its text with the cleaned reply so we don't feed the raw
+    # <function=...> back to the model.
+    if second_history and isinstance(second_history[-1], ModelResponse):
+        last = second_history[-1]
+        second_history[-1] = ModelResponse(
+            parts=[
+                (TextPart(content=cleaned_output) if isinstance(p, TextPart) else p)
+                for p in last.parts
+            ]
+        )
+
+    results_text = "\n\n".join(
+        (
+            f"Tool {name} returned:\n"
+            + (
+                _format_literal_call_result(tool_result)
+                if not is_error
+                else f"[Tool {name} failed: {tool_result}]"
+            )
+        )
+        for name, _args, tool_result, is_error in executed
+    )
+    second_history.append(
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=(
+                        "Below are the results of the tool calls that "
+                        "were made. Please answer the user's question in "
+                        "clear, plain natural language based on these "
+                        "results. Do NOT output any tool calls or JSON.\n\n"
+                        f"{results_text}"
+                    )
+                )
+            ]
+        )
+    )
+
+    if agent._agent is None:
+        return cleaned_output, usage, cost, tool_calls
+
+    second_result: Any = None
+    try:
+        second_result = await agent._agent.run(
+            user_prompt="",
+            deps=deps,
+            message_history=second_history,
+            usage_limits=agent._config.usage_limits,
+            metadata=agent._config.metadata,
+        )
+        output = second_result.output
+        if isinstance(output, str):
+            output = _strip_literal_function_calls(output)
+    except Exception:  # noqa: BLE001
+        if second_result is None:
+            output = cleaned_output
+
+    if second_result is not None:
+        second_usage = second_result.usage
+        second_cost = agent._compute_cost(second_usage)
+        cost += second_cost
+        usage = second_usage
+
+    return output, usage, cost, tool_calls
+
+
 class PydanticAIAgent(AIAgent):
     """Phase 1 implementation using Pydantic AI."""
 
@@ -184,13 +304,21 @@ class PydanticAIAgent(AIAgent):
             model = self._model
             system_prompt = self._build_system_prompt(config)
 
-            self._agent: Agent[AdminDeps, Any] | None = Agent(
-                model,
+            agent_kwargs: dict[str, Any] = dict(
+                model=model,
                 deps_type=AdminDeps,
                 output_type=config.result_type or str,
                 system_prompt=system_prompt,
                 retries=config.retries,
             )
+            if config.model_settings is not None:
+                agent_kwargs["model_settings"] = config.model_settings
+            if config.metadata is not None:
+                agent_kwargs["metadata"] = config.metadata
+            if config.max_concurrency is not None:
+                agent_kwargs["max_concurrency"] = config.max_concurrency
+
+            self._agent: Agent[AdminDeps, Any] | None = Agent(**agent_kwargs)
             self._bind_tools(config.tools)
             self._register_instructions()
         except ImportError:
@@ -262,51 +390,28 @@ class PydanticAIAgent(AIAgent):
                 self._agent.tool_plain(t.handler)
 
     def _register_instructions(self) -> None:
+        """Register per-run instruction providers.
+
+        Defaults (guardrails, page context, user context) compose with any
+        user-supplied ``system_prompt_providers``. All receive the per-run
+        ``RunContext`` so they can read the current ``AdminDeps``.
+        """
         if self._agent is None:
             return
-        from pydantic_ai import RunContext
 
-        @self._agent.instructions
-        def _page_context(ctx: RunContext[AdminDeps]) -> str:
-            page_url = ctx.deps.page_url
-            if not page_url:
-                return ""
+        from fastapi_admin_kit.ai.prompts import (
+            guardrails,
+            page_context,
+            user_context,
+        )
 
-            admin_path = "/"
-            try:
-                admin_path = ctx.deps.request.app.state.admin_config.get("admin_path", "/admin")
-            except Exception:
-                pass
+        if self._config.enable_default_guardrails:
+            self._agent.instructions(guardrails)
+        self._agent.instructions(page_context)
+        self._agent.instructions(user_context)
 
-            path = page_url.rstrip("/")
-            if not path.startswith(admin_path):
-                return ""
-            relative = path[len(admin_path) :].strip("/")
-            if not relative:
-                return ""
-
-            parts = relative.split("/")
-            table_name = parts[0]
-            registered = ctx.deps.registry.get(table_name)
-            if registered is None:
-                return ""
-
-            col_names = [c.name for c in registered.columns]
-            col_types = {c.name: str(c.type) for c in registered.columns}
-            cols_desc = ", ".join(f"{name} ({col_types.get(name, '?')})" for name in col_names)
-
-            context = (
-                f"The user is currently on the {registered.verbose_name} page "
-                f"(table: {table_name}). "
-                f"Available columns: {cols_desc}. "
-                f"Use these exact table and column names when querying."
-            )
-
-            if len(parts) > 1 and parts[1]:
-                record_id = parts[1]
-                context += f" The user is viewing record with ID: {record_id}."
-
-            return context
+        for provider in self._config.system_prompt_providers:
+            self._agent.instructions(provider)
 
     async def chat(
         self,
@@ -327,6 +432,8 @@ class PydanticAIAgent(AIAgent):
             deps=deps,
             message_history=message_history,
             conversation_id=conversation_id,
+            usage_limits=self._config.usage_limits,
+            metadata=self._config.metadata,
         )
         latency_ms = int((time.perf_counter() - start) * 1000)
 
@@ -338,101 +445,9 @@ class PydanticAIAgent(AIAgent):
         if isinstance(output, str):
             literal_calls = _parse_literal_function_calls(output)
             if literal_calls:
-                executed: list[tuple[str, dict[str, Any], Any, bool]] = []
-                for name, args, _end in literal_calls:
-                    is_error = False
-                    try:
-                        tool_result = await self.execute_tool(name, args, deps)
-                    except Exception as e:  # noqa: BLE001
-                        tool_result = error_detail(e, debug=deps.debug)
-                        is_error = True
-                    executed.append((name, args, tool_result, is_error))
-                    tool_calls.append(
-                        ToolCallRecord(
-                            name=name,
-                            args=args,
-                            result=tool_result,
-                            is_error=is_error,
-                        )
-                    )
-
-                # Second LLM pass: send tool results back to the model for a
-                # natural-language summary instead of inserting raw JSON.
-                from pydantic_ai.messages import (
-                    ModelRequest,
-                    ModelResponse,
-                    TextPart,
-                    UserPromptPart,
+                output, usage, cost, tool_calls = await _resolve_literal_calls(
+                    self, output, result, deps, tool_calls, cost, usage
                 )
-
-                # Strip the literal <function=...> calls from the assistant reply
-                # so the model doesn't echo them back in the second pass.
-                rendered_output = _replace_literal_calls_with_results(
-                    output,
-                    executed,
-                    [end for _name, _args, end in literal_calls],
-                )
-                cleaned_output = _strip_literal_function_calls(rendered_output)
-
-                second_history: list[Any] = list(result.all_messages())
-                # The final assistant ModelResponse still contains the raw
-                # literal call text; replace its text with the cleaned reply so
-                # we don't feed the raw <function=...> back to the model.
-                if second_history and isinstance(second_history[-1], ModelResponse):
-                    last = second_history[-1]
-                    second_history[-1] = ModelResponse(
-                        parts=[
-                            (TextPart(content=cleaned_output) if isinstance(p, TextPart) else p)
-                            for p in last.parts
-                        ]
-                    )
-
-                results_text = "\n\n".join(
-                    (
-                        f"Tool {name} returned:\n"
-                        + (
-                            _format_literal_call_result(tool_result)
-                            if not is_error
-                            else f"[Tool {name} failed: {tool_result}]"
-                        )
-                    )
-                    for name, _args, tool_result, is_error in executed
-                )
-                second_history.append(
-                    ModelRequest(
-                        parts=[
-                            UserPromptPart(
-                                content=(
-                                    "Below are the results of the tool calls that "
-                                    "were made. Please answer the user's question in "
-                                    "clear, plain natural language based on these "
-                                    "results. Do NOT output any tool calls or JSON.\n\n"
-                                    f"{results_text}"
-                                )
-                            )
-                        ]
-                    )
-                )
-
-                second_result: Any = None
-                try:
-                    second_result = await self._agent.run(
-                        user_prompt="",
-                        deps=deps,
-                        message_history=second_history,
-                    )
-                    output = second_result.output
-                    if isinstance(output, str):
-                        output = _strip_literal_function_calls(output)
-                except Exception:  # noqa: BLE001
-                    if second_result is None:
-                        output = cleaned_output
-
-                if second_result is not None:
-                    second_usage = second_result.usage
-                    second_cost = self._compute_cost(second_usage)
-                    cost += second_cost
-                    usage = second_usage
 
         input_tokens = getattr(usage, "input_tokens", None) or 0
         output_tokens = getattr(usage, "output_tokens", None) or 0
@@ -481,7 +496,13 @@ class PydanticAIAgent(AIAgent):
         if self._agent is None:
             raise RuntimeError("pydantic-ai is not installed.")
 
-        return self._agent.run_stream(message, deps=deps, message_history=message_history)
+        return self._agent.run_stream(
+            message,
+            deps=deps,
+            message_history=message_history,
+            usage_limits=self._config.usage_limits,
+            metadata=self._config.metadata,
+        )
 
     async def execute_tool(self, tool_name: str, params: dict[str, Any], deps: AdminDeps) -> Any:
         tool = self._config.get_tool(tool_name)

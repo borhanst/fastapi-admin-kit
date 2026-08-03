@@ -6,6 +6,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from fastapi_admin_kit.ai.agent import (
+        MetadataProvider,
+        ModelSettingsProvider,
+        PromptProvider,
+    )
     from fastapi_admin_kit.ai.tools import Tool
 
 
@@ -15,17 +20,28 @@ class AIAgentConfig:
 
     ``tools`` accepts a mixed list of tool names (strings) and Tool objects.
     Strings are resolved against the global :data:`tool_registry` at init time.
+
+    ``system_prompt`` is a static prompt string. ``system_prompt_providers``
+    are dynamic, per-run instruction providers (functions from ``RunContext``
+    to text) registered after the static prompt; they receive the current
+    ``AdminDeps`` so they can contextualise the run.
     """
 
     name: str
     model: str
     system_prompt: str = ""
+    system_prompt_providers: list[PromptProvider] = field(default_factory=list)
+    enable_default_guardrails: bool = True
     api_key: str | None = None
     result_type: type | None = None
     tools: list[str | Tool] = field(default_factory=list)
     retries: int = 3
     cost_per_1k_input_tokens: float = 0.0
     cost_per_1k_output_tokens: float = 0.0
+    metadata: MetadataProvider | None = None
+    model_settings: ModelSettingsProvider | object | None = None
+    usage_limits: object | None = None
+    max_concurrency: int | None = None
 
     _resolved_tools: list[Tool] = field(default_factory=list, init=False, repr=False)
 

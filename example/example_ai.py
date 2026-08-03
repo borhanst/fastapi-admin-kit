@@ -560,6 +560,24 @@ async def create_ticket(
 #   Anthropic: "anthropic:claude-3-5-sonnet-latest"
 # ============================================================================
 
+
+def _extra_agent_context(ctx: RunContext[AdminDeps]) -> str:
+    """Example dynamic instruction provider: a note plus the current date."""
+    from datetime import date
+
+    return f"Today's UTC date is {date.today().isoformat()}. Acts from this date when relevant."
+
+
+def _agent_metadata(ctx: RunContext[AdminDeps]) -> dict[str, object]:
+    """Tag each run with tenant + user for traceability."""
+    user = ctx.deps.admin_user
+    return {
+        "tenant": "example-ecommerce",
+        "user_id": getattr(user, "id", None),
+        "user_email": getattr(user, "email", None),
+    }
+
+
 ai_config = AIConfig(
     agents=[
         AIAgentConfig(
@@ -577,6 +595,15 @@ ai_config = AIConfig(
                 "When page context is provided (e.g., 'viewing record with ID: X'), "
                 "use that ID automatically in your tool calls without asking.\n\n"
             ),
+            # Dynamic per-run instructions. Each is a function receiving
+            # RunContext[AdminDeps]; default guardrails, page context, and the
+            # current user's permissions are injected automatically unless
+            # enable_default_guardrails is disabled.
+            system_prompt_providers=[
+                _extra_agent_context,
+            ],
+            metadata=_agent_metadata,
+            max_concurrency=5,
             cost_per_1k_input_tokens=0.00059,
             cost_per_1k_output_tokens=0.00079,
             tools=[

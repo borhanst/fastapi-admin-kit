@@ -3,15 +3,29 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from pydantic_ai import RunContext
     from pydantic_ai.messages import ModelMessage
+    from pydantic_ai.settings import ModelSettings
     from pydantic_ai.usage import RunUsage
 
     from fastapi_admin_kit.ai.deps import AdminDeps
+
+#: A dynamic system-prompt / instruction provider. Receives the per-run
+#: ``RunContext`` (which exposes :class:`AdminDeps`) and returns the prompt
+#: text to append, or ``None`` to contribute nothing.
+PromptProvider = Callable[["RunContext[AdminDeps]"], str | None]
+
+#: Resolves per-run metadata (e.g. ``{"agent": ..., "user_id": ...}``) from
+#: the current run context.
+MetadataProvider = Callable[["RunContext[AdminDeps]"], dict[str, object]]
+
+#: Resolves per-request model settings from the current run context.
+ModelSettingsProvider = Callable[["RunContext[AdminDeps]"], "ModelSettings"]
 
 
 @dataclass
