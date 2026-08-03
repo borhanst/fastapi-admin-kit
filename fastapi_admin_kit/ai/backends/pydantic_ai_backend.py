@@ -161,7 +161,8 @@ class PydanticAIAgent(AIAgent):
         try:
             from pydantic_ai import Agent
 
-            model = self._build_model(config)
+            self._model = self._build_model(config)
+            model = self._model
             system_prompt = self._build_system_prompt(config)
 
             self._agent: Agent[AdminDeps, Any] | None = Agent(
@@ -479,7 +480,7 @@ class PydanticAIAgent(AIAgent):
         if tool.uses_context:
             from pydantic_ai import RunContext, RunUsage
 
-            ctx = RunContext(deps=deps, usage=RunUsage(), tool_name=tool_name)
+            ctx = RunContext(deps=deps, usage=RunUsage(), tool_name=tool_name, model=self._model)
             try:
                 return await tool.handler(ctx, **params)
             except TypeError as e:
