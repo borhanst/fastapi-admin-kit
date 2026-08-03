@@ -26,6 +26,7 @@ def _deserialize_messages(raw: list[dict]) -> list:
         ModelRequest,
         ModelResponse,
         TextPart,
+        ThinkingPart,
         ToolCallPart,
         ToolReturnPart,
         UserPromptPart,
@@ -34,6 +35,7 @@ def _deserialize_messages(raw: list[dict]) -> list:
     part_map = {
         "user-prompt": UserPromptPart,
         "text": TextPart,
+        "thinking": ThinkingPart,
         "tool-call": ToolCallPart,
         "tool-return": ToolReturnPart,
     }
@@ -45,7 +47,7 @@ def _deserialize_messages(raw: list[dict]) -> list:
         if cls and _dc.is_dataclass(cls):
             fields = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
             return cls(**fields)
-        return d
+        return None
 
     messages = []
     for item in raw:
@@ -54,7 +56,7 @@ def _deserialize_messages(raw: list[dict]) -> list:
         kind = item.get("kind", "request")
         data = dict(item)
         if "parts" in data and isinstance(data["parts"], list):
-            data["parts"] = [_build_part(p) for p in data["parts"]]
+            data["parts"] = [p for p in (_build_part(p) for p in data["parts"]) if p is not None]
         if kind == "request":
             fields = {k: v for k, v in data.items() if k in ModelRequest.__dataclass_fields__}
             messages.append(ModelRequest(**fields))

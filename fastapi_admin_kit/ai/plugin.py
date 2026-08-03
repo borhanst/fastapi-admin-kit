@@ -27,10 +27,22 @@ class AIPlugin:
 
     def get_nav_items(self) -> list[dict[str, str]]:
         return [
-            {"label": "AI Dashboard", "url": "/admin/ai/dashboard", "icon": "sparkles"},
-            {"label": "AI Agents", "url": "/admin/ai/agents", "icon": "smart_toy"},
+            {
+                "label": "AI Dashboard",
+                "url": "/admin/ai/dashboard",
+                "icon": "sparkles",
+            },
+            {
+                "label": "AI Agents",
+                "url": "/admin/ai/agents",
+                "icon": "smart_toy",
+            },
             {"label": "AI Tools", "url": "/admin/ai/tools", "icon": "build"},
-            {"label": "AI Logs", "url": "/admin/ai/logs", "icon": "receipt_long"},
+            {
+                "label": "AI Logs",
+                "url": "/admin/ai/logs",
+                "icon": "receipt_long",
+            },
         ]
 
     def get_dashboard_widgets(self) -> list[dict[str, str]]:
@@ -57,3 +69,4 @@ class AIPlugin:
 
         admin._app.state.ai_agents = ai_agents  # type: ignore[attr-defined]
         admin._app.state.ai_config = self  # type: ignore[attr-defined]
+        admin._app.state.ai_debug = bool(getattr(admin, "is_development", False))  # type: ignore[attr-defined]

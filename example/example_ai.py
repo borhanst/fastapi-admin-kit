@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
-from pathlib import Path
+
 import bcrypt
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -46,7 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from fastapi_admin_kit import Admin, ModelAdmin
-from fastapi_admin_kit.ai import AIAgentConfig, AIConfig, tool
+from fastapi_admin_kit.ai import AIAgentConfig, AIConfig, error_detail, tool
 from fastapi_admin_kit.ai.deps import AdminDeps
 from fastapi_admin_kit.ai.usage import AIUsageLog  # noqa: F401
 from fastapi_admin_kit.audit.models import AuditLog  # noqa: F401
@@ -194,7 +194,7 @@ async def search_products(
             ],
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": error_detail(e, debug=getattr(ctx.deps, "debug", False))}
 
 
 @tool(
@@ -223,7 +223,7 @@ async def get_product(
             "is_active": product.is_active,
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": error_detail(e, debug=getattr(ctx.deps, "debug", False))}
 
 
 @tool(
@@ -258,7 +258,7 @@ async def update_product_stock(
             "new_stock": new_stock,
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": error_detail(e, debug=getattr(ctx.deps, "debug", False))}
 
 
 @tool(
@@ -302,7 +302,7 @@ async def get_customer_summary(
             "total_revenue": sum(c.total_spent for c in customers),
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": error_detail(e, debug=getattr(ctx.deps, "debug", False))}
 
 
 @tool(
@@ -338,7 +338,7 @@ async def update_customer_tier(
             "new_tier": new_tier,
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": error_detail(e, debug=getattr(ctx.deps, "debug", False))}
 
 
 @tool(
@@ -371,7 +371,7 @@ async def get_revenue_summary(
             "by_tier": by_tier,
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": error_detail(e, debug=getattr(ctx.deps, "debug", False))}
 
 
 @tool(
@@ -407,7 +407,7 @@ async def get_support_stats(
             "resolution_rate": rate,
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": error_detail(e, debug=getattr(ctx.deps, "debug", False))}
 
 
 @tool(
@@ -443,7 +443,7 @@ async def search_tickets(
             ],
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": error_detail(e, debug=getattr(ctx.deps, "debug", False))}
 
 
 @tool(
@@ -473,7 +473,7 @@ async def get_ticket(
             "created_at": str(ticket.created_at) if ticket.created_at else None,
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": error_detail(e, debug=getattr(ctx.deps, "debug", False))}
 
 
 @tool(
@@ -508,7 +508,7 @@ async def update_ticket_status(
             "new_status": status,
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": error_detail(e, debug=getattr(ctx.deps, "debug", False))}
 
 
 @tool(
@@ -547,7 +547,7 @@ async def create_ticket(
             "priority": ticket.priority,
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": error_detail(e, debug=getattr(ctx.deps, "debug", False))}
 
 
 # ============================================================================
@@ -566,6 +566,7 @@ ai_config = AIConfig(
             name="default",
             model="groq:llama-3.3-70b-versatile",
             api_key=os.environ.get("GROQ_API_KEY"),
+            retries=3,
             system_prompt=(
                 "You are a helpful admin assistant for an e-commerce admin panel. "
                 "You MUST use your tools to answer questions. "
@@ -602,9 +603,12 @@ ai_config = AIConfig(
 # ============================================================================
 # Database Setup
 # ============================================================================
-EXAMPLE_DIR = Path(__file__).resolve().parent
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite+aiosqlite:///{EXAMPLE_DIR / 'test_debug.db'}")
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", "sqlite+aiosqlite:///./example_ai.db"
+)
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production-at-least-32chars")
+
 engine = create_async_engine(DATABASE_URL, echo=False)
 async_session_maker = sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
@@ -765,6 +769,7 @@ admin = Admin(
     # AI
     ai_enabled=True,
     ai=ai_config,
+    is_development=True,
     # Theme
     theme=ThemeConfig(preset="paper", primary_color="#6366F1"),
     # Navigation

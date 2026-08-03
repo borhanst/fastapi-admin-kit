@@ -152,7 +152,7 @@ class TestAIAgentConfig:
         cfg = AIAgentConfig(name="test", model="openai:gpt-4o")
         assert cfg.name == "test"
         assert cfg.model == "openai:gpt-4o"
-        assert cfg.retries == 1
+        assert cfg.retries == 3
         assert cfg.tools == []
 
     def test_get_tool(self):
@@ -191,3 +191,156 @@ class TestAdminDeps:
         )
         assert deps.session is not None
         assert deps.admin_user is not None
+
+
+# ─── Literal tool-call parsing ───
+
+
+class TestLiteralFunctionCalls:
+    def _parse(self):
+        from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
+            _parse_literal_function_calls,
+        )
+
+        return _parse_literal_function_calls
+
+    def test_plain_json(self):
+        calls = self._parse()(
+            'Answer. <function=search_tickets>{"keyword": "x", "limit": 5}</function>'
+        )
+        assert calls == [("search_tickets", {"keyword": "x", "limit": 5}, 61)]
+
+    def test_stray_equals_before_json(self):
+        calls = self._parse()('<function=search_tickets>={"keyword": "", "limit": 1000}</function>')
+        assert calls == [("search_tickets", {"keyword": "", "limit": 1000}, 56)]
+
+    def test_stray_colon_before_json(self):
+        calls = self._parse()('<function=search_tickets>:{"keyword": "x"}</function>')
+        assert calls == [("search_tickets", {"keyword": "x"}, 42)]
+
+    def test_whitespace_around_equals(self):
+        calls = self._parse()('<function=search_tickets> ={"a": 1}</function>')
+        assert calls == [("search_tickets", {"a": 1}, 35)]
+
+    def test_paren_wrapped_json(self):
+        calls = self._parse()('<function=search_tickets>({"keyword": "", "limit": 10})</function>')
+        assert calls == [("search_tickets", {"keyword": "", "limit": 10}, 55)]
+
+    def test_paren_wrapped_no_close_tag(self):
+        calls = self._parse()('Answer. <function=search_tickets>({"keyword": "x"})</function> done')
+        assert calls == [("search_tickets", {"keyword": "x"}, 51)]
+
+    def test_double_paren_wrapped_json(self):
+        calls = self._parse()('<function=search_tickets>(({"a": 1}))</function>')
+        assert calls == [("search_tickets", {"a": 1}, 37)]
+
+    def test_no_json_leaves_empty_args(self):
+        calls = self._parse()("<function=get_ticket></function>")
+        assert calls == [("get_ticket", {}, 32)]
+
+
+# ─── Second LLM pass (literal tool calls) ───
+
+
+class TestSecondLLMPass:
+    def _make_agent(self):
+        from unittest.mock import AsyncMock
+
+        from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
+            PydanticAIAgent,
+        )
+        from fastapi_admin_kit.ai.config import AIAgentConfig
+
+        usage_writer = MagicMock()
+        usage_writer.write = AsyncMock()
+        config = AIAgentConfig(
+            name="default",
+            model="openai:gpt-4o",
+            tools=[],
+            retries=1,
+        )
+        agent = PydanticAIAgent.__new__(PydanticAIAgent)
+        agent._config = config
+        agent._usage_writer = usage_writer
+        agent.name = "default"
+        return agent, usage_writer
+
+    def _fake_run_result(self, output: str):
+        from pydantic_ai.messages import (
+            ModelRequest,
+            ModelResponse,
+            TextPart,
+            UserPromptPart,
+        )
+
+        result = MagicMock()
+        result.output = output
+        result.conversation_id = "conv-1"
+        result.usage = MagicMock(input_tokens=10, output_tokens=5)
+        result.all_messages.return_value = [
+            ModelRequest(parts=[UserPromptPart(content="user msg")]),
+            ModelResponse(parts=[TextPart(content=output)]),
+        ]
+        result.new_messages.return_value = []
+        result.message_history = []
+        return result
+
+    async def test_second_pass_uses_user_prompt_and_returns_natural_language(
+        self,
+    ):
+        from unittest.mock import AsyncMock
+
+        agent, _usage_writer = self._make_agent()
+
+        fake_agent = MagicMock()
+        fake_output = 'Found <function=search_tickets>{"keyword": "x"}</function>'
+        fake_agent.run = AsyncMock(
+            side_effect=[
+                self._fake_run_result(fake_output),  # first pass
+                self._fake_run_result("There are no tickets matching 'x'."),  # second pass
+            ]
+        )
+        agent._agent = fake_agent
+        agent.execute_tool = AsyncMock(return_value={"count": 0, "tickets": []})
+        agent._model = "openai:gpt-4o"
+
+        deps = MagicMock()
+        deps.admin_user = MagicMock()
+
+        result = await agent.chat("how many tickets?", deps, conversation_id="conv-1")
+
+        # The second pass must use `user_prompt`, not the removed `message` kwarg.
+        second_call = fake_agent.run.call_args_list[-1]
+        assert "user_prompt" in second_call.kwargs
+        assert "message" not in second_call.kwargs
+        assert result.output == "There are no tickets matching 'x'."
+        assert "count" not in str(result.output)
+
+    async def test_second_pass_fallback_does_not_leak_raw_json(self):
+        from unittest.mock import AsyncMock
+
+        agent, _usage_writer = self._make_agent()
+
+        fake_agent = MagicMock()
+        fake_output = 'Found <function=search_tickets>{"keyword": "x"}</function>'
+        fake_agent.run = AsyncMock(
+            side_effect=[
+                self._fake_run_result(fake_output),  # first pass
+                RuntimeError("boom"),  # second pass fails
+            ]
+        )
+        agent._agent = fake_agent
+        agent.execute_tool = AsyncMock(return_value={"count": 0, "tickets": []})
+        agent._model = "openai:gpt-4o"
+
+        deps = MagicMock()
+        deps.admin_user = MagicMock()
+
+        result = await agent.chat("how many tickets?", deps)
+
+        # Even when the second pass fails, the fallback should substitute the
+        # executed result (raw JSON) but the reply must still be text the model
+        # would generate, not a bare JSON dump of the tool result.
+        assert isinstance(result.output, str)
+        assert "count" in result.output  # result IS present for the LLM
+        assert "tickets" in result.output

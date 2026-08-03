@@ -183,6 +183,7 @@ class Admin:
         # AI
         ai: Any = None,
         ai_enabled: bool = False,
+        is_development: bool = False,
         sidebar_bottom_links: list[dict[str, str]] | None = None,
     ):
         self.registry = AdminRegistry()
@@ -325,6 +326,7 @@ class Admin:
             ai = AIConfig()
         self._ai_config = ai
         self._ai_enabled = ai_enabled
+        self.is_development = is_development
 
         # Internal state (populated during setup)
         self._session_backend: Any = None

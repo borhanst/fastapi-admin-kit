@@ -25,6 +25,7 @@ class AdminDeps:
     registry: AdminRegistry
     permission_checker: PermissionChecker
     page_url: str | None = None
+    debug: bool = False
 
 
 async def get_admin_deps(request: Request) -> AdminDeps:
@@ -39,10 +40,13 @@ async def get_admin_deps(request: Request) -> AdminDeps:
     admin_user = await get_current_admin_user(request)
     permission_checker = await get_permission_checker(request, admin_user, db_session)
 
+    debug = bool(getattr(request.app.state, "ai_debug", False))
+
     return AdminDeps(
         session=db_session,
         admin_user=admin_user,
         request=request,
         registry=request.app.state.admin_registry,
         permission_checker=permission_checker,
+        debug=debug,
     )

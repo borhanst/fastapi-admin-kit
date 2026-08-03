@@ -23,7 +23,7 @@ class AIAgentConfig:
     api_key: str | None = None
     result_type: type | None = None
     tools: list[str | Tool] = field(default_factory=list)
-    retries: int = 1
+    retries: int = 3
     cost_per_1k_input_tokens: float = 0.0
     cost_per_1k_output_tokens: float = 0.0
 
