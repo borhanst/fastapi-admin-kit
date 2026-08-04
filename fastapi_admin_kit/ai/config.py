@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from fastapi_admin_kit.ai.agent import (
@@ -12,6 +12,11 @@ if TYPE_CHECKING:
         PromptProvider,
     )
     from fastapi_admin_kit.ai.tools import Tool
+
+
+#: Backend identifiers understood by the AI backend registry. ``"auto"``
+#: resolves to the first available backend (see ``docs/agents/``).
+AIBackendName = Literal["pydantic_ai", "langchain", "auto"]
 
 
 @dataclass
@@ -29,6 +34,7 @@ class AIAgentConfig:
 
     name: str
     model: str
+    backend: AIBackendName = "auto"
     system_prompt: str = ""
     system_prompt_providers: list[PromptProvider] = field(default_factory=list)
     enable_default_guardrails: bool = True

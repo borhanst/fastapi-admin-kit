@@ -155,6 +155,15 @@ class TestAIAgentConfig:
         assert cfg.model == "openai:gpt-4o"
         assert cfg.retries == 3
         assert cfg.tools == []
+        assert cfg.backend == "auto"
+
+    def test_config_backend_explicit(self):
+        cfg = AIAgentConfig(name="test", model="m", backend="pydantic_ai")
+        assert cfg.backend == "pydantic_ai"
+
+    def test_config_backend_langchain(self):
+        cfg = AIAgentConfig(name="test", model="m", backend="langchain")
+        assert cfg.backend == "langchain"
 
     def test_get_tool(self):
         async def h():
