@@ -10,12 +10,9 @@ be unit-tested without invoking a model.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pydantic_ai import RunContext
 
-if TYPE_CHECKING:
-    from pydantic_ai import RunContext
-
-    from fastapi_admin_kit.ai.deps import AdminDeps
+from fastapi_admin_kit.ai.deps import AdminDeps
 
 #: Default security guardrails injected into every agent run unless disabled.
 GUARDRAILS_TEXT = (

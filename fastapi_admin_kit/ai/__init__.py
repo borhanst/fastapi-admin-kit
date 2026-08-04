@@ -8,6 +8,7 @@ from fastapi_admin_kit.ai.agent import (
 )
 from fastapi_admin_kit.ai.config import AIAgentConfig, AIConfig
 from fastapi_admin_kit.ai.errors import error_detail
+from fastapi_admin_kit.ai.model_agent import ModelAIAgent
 from fastapi_admin_kit.ai.tools import Tool, ToolRegistry, tool, tool_registry
 
 __all__ = [
@@ -15,6 +16,7 @@ __all__ = [
     "AIAgentConfig",
     "AIConfig",
     "ChatResult",
+    "ModelAIAgent",
     "Tool",
     "ToolCallRecord",
     "ToolRegistry",

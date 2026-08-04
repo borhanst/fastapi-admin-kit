@@ -736,7 +736,7 @@ function aiChat() {
 
     async loadAgents() {
       try {
-        const resp = await fetch(window.__ADMIN_PATH__ + '/ai/agents');
+        const resp = await fetch(window.__ADMIN_PATH__ + '/ai/agents/api');
         this.agents = await resp.json();
         if (this.agents.length && !this.agents.find(a => a.name === this.selectedAgent)) {
           this.selectedAgent = this.agents[0].name;

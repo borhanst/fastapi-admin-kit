@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
+from datetime import date, datetime
+from datetime import time as dt_time
 from functools import wraps
 from typing import TYPE_CHECKING, Any
 
@@ -15,6 +17,45 @@ if TYPE_CHECKING:
     from fastapi_admin_kit.ai.deps import AdminDeps
     from fastapi_admin_kit.ai.usage import AIConversation
     from fastapi_admin_kit.auth.protocol import AdminUserProtocol
+
+
+def _json_safe(value: Any) -> Any:
+    """Return a JSON-serializable copy of ``value``.
+
+    Recursively converts pydantic models (e.g. the ``QueryResult`` returned by
+    ``query_database``), datetimes, and other non-primitive objects into plain
+    JSON-friendly structures so they can be stored in a JSON column.
+    """
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+
+    if isinstance(value, list | tuple | set):
+        return [_json_safe(v) for v in value]
+
+    # Pydantic models — includes QueryResult, ReportSpec, ORM-like objects.
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        try:
+            return _json_safe(model_dump())
+        except Exception:  # noqa: BLE001
+            pass
+
+    # datetime / date / time and other objects with reasonable str() forms.
+    if isinstance(value, datetime | date | dt_time) or value.__class__.__module__.startswith(
+        "datetime"
+    ):
+        return value.isoformat()
+
+    if hasattr(value, "__dict__"):
+        try:
+            return _json_safe(vars(value))
+        except TypeError:
+            pass
+
+    return str(value)
 
 
 class ConversationRecorder:
@@ -82,8 +123,8 @@ class ConversationRecorder:
                 conversation_id=conv.id,
                 role="tool",
                 tool_name=getattr(call, "name", None),
-                tool_args=getattr(call, "args", None),
-                tool_result=getattr(call, "result", None),
+                tool_args=_json_safe(getattr(call, "args", None)),
+                tool_result=_json_safe(getattr(call, "result", None)),
                 content=str(getattr(call, "result", "")),
                 is_error=getattr(call, "is_error", False),
                 latency_ms=int((time.perf_counter() - start) * 1000),

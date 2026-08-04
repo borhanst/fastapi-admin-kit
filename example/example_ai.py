@@ -46,7 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from fastapi_admin_kit import Admin, ModelAdmin
-from fastapi_admin_kit.ai import AIAgentConfig, AIConfig, error_detail, tool
+from fastapi_admin_kit.ai import AIAgentConfig, AIConfig, ModelAIAgent, error_detail, tool
 from fastapi_admin_kit.ai.deps import AdminDeps
 from fastapi_admin_kit.ai.usage import AIUsageLog  # noqa: F401
 from fastapi_admin_kit.audit.models import AuditLog  # noqa: F401
@@ -551,6 +551,64 @@ async def create_ticket(
 
 
 # ============================================================================
+# ModelAIAgent subclasses
+#
+# These auto-generate CRUD tools from SQLAlchemy models.
+# allow_write=False (default) → query-only; no write tools are registered.
+# allow_write=True            → write tools are also registered; every write
+#                               is traced to the admin audit log.
+# ============================================================================
+
+
+class ProductQueryAgent(ModelAIAgent):
+    """Read-only agent for the products table.
+
+    Registers a single ``query_products`` tool.  The LLM can filter by any
+    column (name, price, stock, is_active …) but cannot mutate data.
+    """
+    model = Product
+    allow_write = False   # ← read-only; this is also the default
+    can_view = True
+    can_create = False
+    can_edit = False
+    can_delete = False
+
+
+class CustomerQueryAgent(ModelAIAgent):
+    """Read-only agent for the customers table.
+
+    Registers ``query_customers`` for filtering by name, email, tier etc.
+    """
+    model = Customer
+    allow_write = False
+    can_view = True
+    can_create = False
+    can_edit = False
+    can_delete = False
+
+
+class TicketWriteAgent(ModelAIAgent):
+    """Write-enabled agent for the tickets table.
+
+    Registers:
+      - ``query_tickets``  — filter/list tickets (always included)
+      - ``create_tickets`` — open a new ticket (audit-logged)
+      - ``update_tickets`` — change status/priority etc. (audit-logged)
+
+    Deletion is intentionally disabled (``can_delete=False``).
+    Every create/update is written to the admin audit log so admins can
+    trace which AI action made a change and on whose behalf.
+    """
+    model = Ticket
+    allow_write = True    # ← enables create + update tools
+    can_view = True
+    can_create = True
+    can_edit = True
+    can_delete = False    # never let the AI delete tickets
+    exclude_fields = ["id", "created_at"]  # strip auto-managed fields
+
+
+# ============================================================================
 # AI Configuration
 #
 # Supported model strings:
@@ -577,7 +635,8 @@ def _agent_metadata(ctx: RunContext[AdminDeps]) -> dict[str, object]:
         "user_email": getattr(user, "email", None),
     }
 
-
+product_tools = ProductQueryAgent.build_tools()
+ticket_tools = TicketWriteAgent.build_tools()
 ai_config = AIConfig(
     agents=[
         AIAgentConfig(
@@ -606,20 +665,48 @@ ai_config = AIConfig(
             max_concurrency=5,
             cost_per_1k_input_tokens=0.00059,
             cost_per_1k_output_tokens=0.00079,
-            tools=[
-                "search_products",
-                "get_product",
-                "update_product_stock",
-                "get_customer_summary",
-                "update_customer_tier",
-                "get_revenue_summary",
-                "get_support_stats",
-                "search_tickets",
-                "get_ticket",
-                "update_ticket_status",
-                "create_ticket",
-            ],
+            tools=product_tools+ticket_tools,
         ),
+        # ----------------------------------------------------------------
+        # ModelAIAgent-based configs
+        # Each to_agent_config() call calls build_tools() internally,
+        # respecting allow_write and the can_* flags.
+        # ----------------------------------------------------------------
+        # ProductQueryAgent.to_agent_config(
+        #     name="product-query",
+        #     model="groq:llama-3.3-70b-versatile",
+        #     api_key=os.environ.get("GROQ_API_KEY"),
+        #     system_prompt=(
+        #         "You are a product catalog assistant. "
+        #         "Use query_products to look up products by name, price range, "
+        #         "stock level, or active status. You cannot modify any data."
+        #     ),
+        #     retries=3,
+        # ),
+        # CustomerQueryAgent.to_agent_config(
+        #     name="customer-query",
+        #     model="groq:llama-3.3-70b-versatile",
+        #     api_key=os.environ.get("GROQ_API_KEY"),
+        #     system_prompt=(
+        #         "You are a CRM assistant. "
+        #         "Use query_customers to look up customers by name, email, or tier. "
+        #         "You cannot modify any data."
+        #     ),
+        #     retries=3,
+        # ),
+        # TicketWriteAgent.to_agent_config(
+        #     name="ticket-agent",
+        #     model="groq:llama-3.3-70b-versatile",
+        #     api_key=os.environ.get("GROQ_API_KEY"),
+        #     system_prompt=(
+        #         "You are a support ticket agent. "
+        #         "Use query_tickets to read tickets, create_tickets to open new ones, "
+        #         "and update_tickets to change status or priority. "
+        #         "All writes are audit-logged automatically. "
+        #         "Never delete tickets."
+        #     ),
+        #     retries=3,
+        # ),
     ],
     default_agent="default",
     dashboard_enabled=True,

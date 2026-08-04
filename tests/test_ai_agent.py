@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from fastapi_admin_kit.ai.agent import ChatResult, ToolCallRecord, UsageInfo
 from fastapi_admin_kit.ai.config import AIAgentConfig, AIConfig
 from fastapi_admin_kit.ai.deps import AdminDeps
+from fastapi_admin_kit.ai.model_agent import ModelAIAgent
 from fastapi_admin_kit.ai.tools import Tool, ToolRegistry, tool, tool_registry
 
 # ─── UsageInfo ───
@@ -474,6 +475,89 @@ class TestPromptProviders:
         text = await user_context(self._ctx(deps))
         assert "Superuser" in text
         assert "products" in text
+
+
+# ─── ModelAIAgent ───
+
+
+class _FakeModel:
+    __tablename__ = "ai_tests_products"
+
+
+class TestModelAIAgent:
+    class ProductAgent(ModelAIAgent):
+        """Read-only by default (allow_write=False)."""
+
+        model = _FakeModel
+
+    class ProductWriteAgent(ModelAIAgent):
+        model = _FakeModel
+        allow_write = True
+
+    class ProductPartialAgent(ModelAIAgent):
+        model = _FakeModel
+        allow_write = True
+        can_create = False
+        can_delete = True
+
+    class NoViewAgent(ModelAIAgent):
+        model = _FakeModel
+        can_view = False
+
+    def test_default_is_read_only(self):
+        tools = self.ProductAgent.build_tools()
+        names = [t.name for t in tools]
+        assert names == ["query_ai_tests_products"]
+        assert "create_ai_tests_products" not in names
+        assert "update_ai_tests_products" not in names
+        assert "delete_ai_tests_products" not in names
+
+    def test_write_gated_listed_but_individually_off(self):
+        tools = self.ProductWriteAgent.build_tools()
+        names = [t.name for t in tools]
+        assert "query_ai_tests_products" in names
+        assert "create_ai_tests_products" in names
+        assert "update_ai_tests_products" in names
+        assert "delete_ai_tests_products" not in names  # can_delete defaults False
+
+    def test_granular_flags_gate_write_tools(self):
+        tools = self.ProductPartialAgent.build_tools()
+        names = [t.name for t in tools]
+        assert "create_ai_tests_products" not in names
+        assert "update_ai_tests_products" in names
+        assert "delete_ai_tests_products" in names
+
+    def test_write_description_mentions_audit(self):
+        tools = self.ProductWriteAgent.build_tools()
+        for name in ("create_ai_tests_products", "update_ai_tests_products"):
+            desc = next(t.description for t in tools if t.name == name)
+            assert "audit" in desc.lower()
+
+    def test_can_view_false_yields_no_query(self):
+        tools = self.NoViewAgent.build_tools()
+        assert [t.name for t in tools] == []
+
+    def test_to_agent_config_links_tools(self):
+        cfg = self.ProductWriteAgent.to_agent_config(name="prod-agent", model="openai:gpt-4o")
+        assert cfg.name == "prod-agent"
+        assert cfg.model == "openai:gpt-4o"
+        names = {t.name for t in cfg.tools}
+        expected = {
+            "query_ai_tests_products",
+            "create_ai_tests_products",
+            "update_ai_tests_products",
+        }
+        assert expected <= names
+
+    def test_to_agent_config_forwards_extra_kwargs(self):
+        cfg = self.ProductWriteAgent.to_agent_config(
+            name="prod-agent",
+            model="openai:gpt-4o",
+            api_key="sk-test",
+            retries=5,
+        )
+        assert cfg.api_key == "sk-test"
+        assert cfg.retries == 5
 
 
 # ─── Config → Agent wiring ───

@@ -39,7 +39,14 @@
           </div>
         </div>
       </div>
-      <div style="display: flex; align-items: center; gap: 4px;">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <template x-if="agents.length > 1">
+          <select class="ai-chat-agent-select" x-model="selectedAgent">
+            <template x-for="agent in agents" :key="agent.name">
+              <option :value="agent.name" x-text="agent.name"></option>
+            </template>
+          </select>
+        </template>
         <button @click="goFullScreen()" class="ai-chat-panel-action" title="Open full page">
           <span class="material-symbols-outlined">open_in_new</span>
         </button>
@@ -209,6 +216,24 @@
     color: var(--text-tertiary);
     display: flex;
     align-items: center;
+  }
+
+  .ai-chat-agent-select {
+    padding: 3px 8px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-md);
+    background: var(--surface-base);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+    font-family: var(--font-body);
+    cursor: pointer;
+    outline: none;
+    max-width: 130px;
+    height: 28px;
+  }
+
+  .ai-chat-agent-select:focus {
+    border-color: var(--primary-500);
   }
 
   .ai-chat-panel-action {
@@ -431,13 +456,16 @@ function aiChatWidget() {
     userInput: '',
     isTyping: false,
     conversationId: null,
+    selectedAgent: 'default',
+    agents: [],
 
     get isHidden() {
       const path = window.location.pathname;
       return path.includes('/ai/chat') || path.endsWith('/login');
     },
 
-    init() {
+    async init() {
+      await this.loadAgents();
       this.$nextTick(() => {
         if (this.$refs.panelInput) {
           this.$refs.panelInput.addEventListener('input', () => {
@@ -446,6 +474,18 @@ function aiChatWidget() {
           });
         }
       });
+    },
+
+    async loadAgents() {
+      try {
+        const resp = await fetch(window.__ADMIN_PATH__ + '/ai/agents/api');
+        this.agents = await resp.json();
+        if (this.agents.length && !this.agents.find(a => a.name === this.selectedAgent)) {
+          this.selectedAgent = this.agents[0].name;
+        }
+      } catch (e) {
+        this.agents = [{ name: 'default', model: 'unknown', tools: 0 }];
+      }
     },
 
     toggle() {
@@ -480,7 +520,7 @@ function aiChatWidget() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: text,
-            agent: 'default',
+            agent: this.selectedAgent,
             conversation_id: this.conversationId,
             page_url: window.location.pathname
           })

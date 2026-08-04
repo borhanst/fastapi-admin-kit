@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
@@ -16,6 +17,8 @@ from fastapi_admin_kit.ai.agent import (
 )
 from fastapi_admin_kit.ai.deps import AdminDeps
 from fastapi_admin_kit.ai.errors import error_detail
+
+logger = logging.getLogger("fastapi_admin_kit.ai")
 
 if TYPE_CHECKING:
     from pydantic_ai import Agent
@@ -103,8 +106,10 @@ def _parse_literal_function_calls(
 
 def _format_literal_call_result(result: Any) -> str:
     """Render a tool result as readable text for the chat reply."""
+    from fastapi.encoders import jsonable_encoder
+
     try:
-        return json.dumps(result, indent=2, default=str, ensure_ascii=False)
+        return json.dumps(jsonable_encoder(result), indent=2, default=str, ensure_ascii=False)
     except (TypeError, ValueError):
         return str(result)
 
@@ -385,9 +390,17 @@ class PydanticAIAgent(AIAgent):
             return
         for t in tools:
             if t.uses_context:
-                self._agent.tool(t.handler)
+                self._agent.tool(
+                    t.handler,
+                    name=t.name,
+                    description=t.description,
+                )
             else:
-                self._agent.tool_plain(t.handler)
+                self._agent.tool_plain(
+                    t.handler,
+                    name=t.name,
+                    description=t.description,
+                )
 
     def _register_instructions(self) -> None:
         """Register per-run instruction providers.
@@ -426,6 +439,18 @@ class PydanticAIAgent(AIAgent):
                 pip install pydantic-ai"""
             )
 
+        user_repr = getattr(deps.admin_user, "email", None) or getattr(
+            deps.admin_user, "id", "anonymous"
+        )
+        logger.info(
+            "[AI Agent '%s'] Starting chat run | Model: %s | User: %s | Page: %s | Message: %r",
+            self.name,
+            self._config.model,
+            user_repr,
+            deps.page_url or "N/A",
+            message[:100] + "..." if len(message) > 100 else message,
+        )
+
         start = time.perf_counter()
         result = await self._agent.run(
             message,
@@ -452,6 +477,31 @@ class PydanticAIAgent(AIAgent):
         input_tokens = getattr(usage, "input_tokens", None) or 0
         output_tokens = getattr(usage, "output_tokens", None) or 0
         total_tokens = input_tokens + output_tokens
+
+        # Log details of each tool call
+        for tc in tool_calls:
+            status = "ERROR" if tc.is_error else "OK"
+            logger.info(
+                "[AI Agent '%s'] Tool Call [%s] | Tool: %s | Model: %s | Args: %s",
+                self.name,
+                status,
+                tc.name,
+                self._config.model,
+                tc.args,
+            )
+
+        logger.info(
+            "[AI Agent '%s'] Run Completed | Model: %s | Latency: %d ms | "
+            "Tokens: %d (in: %d, out: %d) | Cost: $%.6f | Tool Calls: %d",
+            self.name,
+            self._config.model,
+            latency_ms,
+            total_tokens,
+            input_tokens,
+            output_tokens,
+            cost,
+            len(tool_calls),
+        )
 
         await self._usage_writer.write(
             agent_name=self._config.name,
@@ -507,34 +557,55 @@ class PydanticAIAgent(AIAgent):
     async def execute_tool(self, tool_name: str, params: dict[str, Any], deps: AdminDeps) -> Any:
         tool = self._config.get_tool(tool_name)
         if tool is None:
+            logger.warning(
+                "[AI Agent '%s'] Tool execution failed: tool '%s' not found.",
+                self.name,
+                tool_name,
+            )
             raise ValueError(f"Tool '{tool_name}' not found.")
 
-        if tool.uses_context:
-            from pydantic_ai import RunContext, RunUsage
+        logger.info(
+            "[AI Agent '%s'] Executing Tool '%s' | Model: %s | Params: %s",
+            self.name,
+            tool_name,
+            self._config.model,
+            params,
+        )
 
-            ctx = RunContext(
-                deps=deps,
-                usage=RunUsage(),
-                tool_name=tool_name,
-                model=self._model,
-            )
-            try:
-                return await tool.handler(ctx, **params)
-            except TypeError as e:
-                # pydantic-ai 2.21.0 may pass all args as keywords;
-                # if handler expects ctx positionally, try positional call.
-                if "missing 1 required positional argument" in str(e):
-                    positional_params = list(params.values())
-                    return await tool.handler(ctx, *positional_params)
-                raise
-        else:
-            try:
-                return await tool.handler(**params)
-            except TypeError as e:
-                if "missing 1 required positional argument" in str(e):
-                    positional_params = list(params.values())
-                    return await tool.handler(*positional_params)
-                raise
+        try:
+            if tool.uses_context:
+                from pydantic_ai import RunContext, RunUsage
+
+                ctx = RunContext(
+                    deps=deps,
+                    usage=RunUsage(),
+                    tool_name=tool_name,
+                    model=self._model,
+                )
+                try:
+                    res = await tool.handler(ctx, **params)
+                except TypeError as e:
+                    # pydantic-ai 2.21.0 may pass all args as keywords;
+                    # if handler expects ctx positionally, try positional call.
+                    if "missing 1 required positional argument" in str(e):
+                        positional_params = list(params.values())
+                        res = await tool.handler(ctx, *positional_params)
+                    else:
+                        raise
+            else:
+                try:
+                    res = await tool.handler(**params)
+                except TypeError as e:
+                    if "missing 1 required positional argument" in str(e):
+                        positional_params = list(params.values())
+                        res = await tool.handler(*positional_params)
+                    else:
+                        raise
+            logger.info("[AI Agent '%s'] Tool '%s' executed successfully.", self.name, tool_name)
+            return res
+        except Exception as err:
+            logger.error("[AI Agent '%s'] Tool '%s' failed: %s", self.name, tool_name, err)
+            raise
 
     def get_tools(self) -> list[dict[str, Any]]:
         return [t.to_schema() for t in self._config.tools]

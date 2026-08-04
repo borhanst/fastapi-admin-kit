@@ -296,21 +296,31 @@ async def ai_tools_page(request: Request) -> jinja2.TemplateResponse:
 
 @router.get("/tools/api")
 async def get_ai_tools(request: Request) -> JSONResponse:
-    """Get list of available AI tools."""
-    from fastapi_admin_kit.ai.tools import tool_registry
+    """Get the tools currently bound to configured AI agents.
 
-    tools = tool_registry.all()
-    return JSONResponse(
-        [
-            {
-                "name": t.name,
-                "description": t.description,
-                "category": t.category,
-                "uses_context": t.uses_context,
-            }
-            for t in tools
-        ]
-    )
+    Tools are gathered from the resolved tool list of every configured agent
+    (``ai_config.agents``) and deduplicated by name.  Unregistered globals and
+    tools no longer referenced by any agent are excluded, so the page reflects
+    exactly what is available to the agents.
+    """
+    plugin = getattr(request.app.state, "ai_config", None)
+    agents = getattr(plugin, "agents", None) or []
+
+    seen: dict[str, dict[str, object]] = {}
+    for cfg in agents:
+        resolved = getattr(cfg, "_resolved_tools", None) or []
+        for t in resolved:
+            seen.setdefault(
+                t.name,
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "category": t.category,
+                    "uses_context": t.uses_context,
+                },
+            )
+
+    return JSONResponse(list(seen.values()))
 
 
 @router.post("/tools/{tool_name}/execute")
@@ -369,7 +379,9 @@ async def execute_tool_endpoint(
             session=session,
         )
 
-        return JSONResponse({"success": True, "result": result})
+        from fastapi.encoders import jsonable_encoder
+
+        return JSONResponse({"success": True, "result": jsonable_encoder(result)})
     except Exception as e:
         latency_ms = int((time.perf_counter() - start) * 1000)
 
@@ -493,6 +505,9 @@ async def ai_chat(request: Request) -> JSONResponse:
                 return {k: _sanitize(val) for k, val in v.items()}
             if isinstance(v, list):
                 return [_sanitize(item) for item in v]
+            model_dump = getattr(v, "model_dump", None)
+            if callable(model_dump):
+                return _sanitize(model_dump())
             return v
 
         new_messages = [_safe_dict(m) for m in result.new_messages]
@@ -563,8 +578,8 @@ async def ai_chat(request: Request) -> JSONResponse:
                         conversation_id=conversation_id,
                         role="tool",
                         tool_name=getattr(tc, "name", None),
-                        tool_args=getattr(tc, "args", None),
-                        tool_result=getattr(tc, "result", None),
+                        tool_args=_sanitize(getattr(tc, "args", None)),
+                        tool_result=_sanitize(getattr(tc, "result", None)),
                         content=str(getattr(tc, "result", "")),
                         is_error=getattr(tc, "is_error", False),
                     )
@@ -578,8 +593,8 @@ async def ai_chat(request: Request) -> JSONResponse:
             tool_calls_data.append(
                 {
                     "name": getattr(tc, "name", ""),
-                    "args": getattr(tc, "args", {}),
-                    "result": getattr(tc, "result", None),
+                    "args": _sanitize(getattr(tc, "args", {})),
+                    "result": _sanitize(getattr(tc, "result", None)),
                     "is_error": getattr(tc, "is_error", False),
                 }
             )
