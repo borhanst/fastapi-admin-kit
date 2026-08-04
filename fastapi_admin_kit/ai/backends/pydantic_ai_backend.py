@@ -620,6 +620,18 @@ class PydanticAIAgent(AIAgent):
             session=session,  # type: ignore[arg-type]
         )
 
+    def get_raw_agent(self) -> Any:
+        """Return the underlying Pydantic AI agent for streaming adapters."""
+        if self._agent is None:
+            raise RuntimeError("pydantic-ai is not installed.")
+        return self._agent
+
+    def get_streaming_adapter(self) -> type:
+        """Return the Vercel AI adapter class for SSE streaming."""
+        if self._agent is None:
+            raise RuntimeError("pydantic-ai is not installed.")
+        return _get_vercel_adapter_class()
+
     def _compute_cost(self, usage: RunUsage) -> float:
         cfg = self._config
         req = (getattr(usage, "input_tokens", None) or 0) / 1000

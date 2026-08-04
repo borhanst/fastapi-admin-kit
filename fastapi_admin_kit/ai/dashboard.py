@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -614,6 +614,184 @@ async def ai_chat(request: Request) -> JSONResponse:
         )
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+
+
+@router.post("/chat/stream")
+async def ai_chat_stream(request: Request):
+    """Stream a message to an AI agent via Vercel AI Data Stream protocol (SSE).
+
+    Uses the agent's streaming adapter with an on_complete callback to persist
+    the conversation, tool calls, and usage after the stream finishes.
+    """
+    from sqlalchemy import select
+
+    from fastapi_admin_kit.ai.conversation import ConversationRecorder
+    from fastapi_admin_kit.ai.deps import AdminDeps
+    from fastapi_admin_kit.ai.usage import AIConversation, AIUsageWriter
+    from fastapi_admin_kit.db import get_db_session
+
+    body = await request.json()
+    agent_name = body.get("agent", "default")
+    page_url = body.get("page_url")
+    conversation_id = body.get("id") or body.get("conversation_id")
+    user_message = ""
+
+    # Extract user message from Vercel AI format body
+    messages = body.get("messages", [])
+    if messages:
+        last_msg = messages[-1]
+        if last_msg.get("role") == "user":
+            parts = last_msg.get("parts", [])
+            for part in parts:
+                if part.get("type") == "text":
+                    user_message = part.get("text", "")
+                    break
+
+    agents = _get_ai_agents(request)
+    agent = agents.get(agent_name)
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found.")
+
+    user = await _resolve_user(request)
+    session = get_db_session(request)
+    checker = await _resolve_checker(request, user)
+
+    deps = AdminDeps(
+        session=session,
+        admin_user=user,
+        request=request,
+        registry=request.app.state.admin_registry,
+        permission_checker=checker,
+        page_url=page_url,
+    )
+
+    message_history = None
+
+    if conversation_id:
+        result = await session.execute(
+            select(AIConversation).where(AIConversation.id == conversation_id)
+        )
+        conv = result.scalar_one_or_none()
+        if conv and conv.message_history:
+            message_history = _deserialize_messages(conv.message_history)
+
+    raw_agent = agent.get_raw_agent()
+
+    adapter_cls = agent.get_streaming_adapter()
+    if adapter_cls is None:
+        raise HTTPException(
+            status_code=501,
+            detail=f"Agent '{agent_name}' does not support streaming.",
+        )
+
+    # Create on_complete callback to persist conversation and usage after stream
+    async def on_complete(result) -> None:
+        from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
+            _extract_tool_calls,
+        )
+
+        # Get or create conversation
+        recorder = ConversationRecorder(session)
+        conv = await recorder.get_or_create(
+            conversation_id,
+            agent_name=agent_name,
+            user=user,
+        )
+
+        # Log user message
+        if user_message:
+            await recorder.log_message(conv, role="user", content=user_message)
+
+        # Log assistant message
+        output_text = str(getattr(result, "output", ""))
+        usage = getattr(result, "usage", None)
+        latency_ms = None  # Could be computed if we track start time
+
+        await recorder.log_message(
+            conv,
+            role="assistant",
+            content=output_text,
+            tokens=usage.total_tokens if usage else None,
+            latency_ms=latency_ms,
+        )
+
+        # Log tool calls
+        tool_calls = _extract_tool_calls(result)
+        for tc in tool_calls:
+            await recorder.log_tool_call(conv, tc)
+
+        # Update conversation metadata
+        tokens_delta = usage.total_tokens if usage else 0
+        cost_delta = 0.0
+        if usage:
+            # Compute cost from agent config
+            cfg = agent._config
+            req_tokens = (getattr(usage, "input_tokens", None) or 0) / 1000
+            resp_tokens = (getattr(usage, "output_tokens", None) or 0) / 1000
+            cost_delta = round(
+                req_tokens * cfg.cost_per_1k_input_tokens
+                + resp_tokens * cfg.cost_per_1k_output_tokens,
+                6,
+            )
+
+        await recorder.touch(
+            conv,
+            message_history=[_safe_dict(m) for m in result.new_messages()],
+            tokens_delta=tokens_delta,
+            cost_delta=cost_delta,
+        )
+
+        # Write AIUsageLog
+        if usage:
+            writer = AIUsageWriter()
+            await writer.write(
+                agent_name=agent_name,
+                model=str(agent._config.model),
+                request_tokens=getattr(usage, "input_tokens", None) or 0,
+                response_tokens=getattr(usage, "output_tokens", None) or 0,
+                total_tokens=usage.total_tokens,
+                cost=cost_delta,
+                user=user,
+                success=True,
+                latency_ms=latency_ms or 0,
+                tool_calls=[
+                    {
+                        "name": tc.name,
+                        "args": tc.args,
+                        "ok": tc.is_error is False,
+                    }
+                    for tc in tool_calls
+                ],
+                session=session,
+            )
+
+    def _safe_dict(obj: Any) -> Any:
+        import dataclasses as _dc
+        from datetime import datetime
+
+        def _sanitize(v: Any) -> Any:
+            if isinstance(v, datetime):
+                return v.isoformat()
+            if isinstance(v, dict):
+                return {k: _sanitize(val) for k, val in v.items()}
+            if isinstance(v, list):
+                return [_sanitize(item) for item in v]
+            model_dump = getattr(v, "model_dump", None)
+            if callable(model_dump):
+                return _sanitize(model_dump())
+            return v
+
+        d = _dc.asdict(obj) if _dc.is_dataclass(obj) and not isinstance(obj, type) else str(obj)
+        return _sanitize(d)
+
+    return await adapter_cls.dispatch_request(
+        request,
+        agent=raw_agent,
+        deps=deps,
+        message_history=message_history,
+        conversation_id=conversation_id,
+        on_complete=on_complete,
+    )
 
 
 @router.get("/conversations")

@@ -103,3 +103,17 @@ class AIAgent(ABC):
     async def get_usage_stats(
         self, period: str = "day", session: Any | None = None
     ) -> dict[str, Any]: ...
+
+    def get_raw_agent(self) -> Any | None:
+        """Return the underlying backend-specific agent for streaming adapters.
+
+        Returns ``None`` if the backend is not installed or not applicable.
+        """
+        return None
+
+    def get_streaming_adapter(self) -> type | None:
+        """Return the backend's streaming adapter class (e.g., VercelAIAdapter).
+
+        Returns ``None`` if the backend doesn't support streaming.
+        """
+        return None

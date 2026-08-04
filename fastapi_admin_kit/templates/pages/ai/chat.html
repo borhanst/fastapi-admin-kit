@@ -674,7 +674,7 @@
         </div>
       </template>
 
-      <template x-if="isTyping">
+      <template x-if="isTyping && !streamingStarted">
         <div class="ai-chat-msg ai-chat-msg--ai">
           <div class="ai-chat-msg-avatar" style="background: linear-gradient(135deg, var(--primary-500), var(--primary-700)); color: white;">
             <span class="material-symbols-outlined" style="font-size: 14px;">smart_toy</span>
@@ -720,6 +720,7 @@ function aiChat() {
     messages: [],
     userInput: '',
     isTyping: false,
+    streamingStarted: false,
     selectedAgent: 'default',
     agents: [],
     conversationId: null,
@@ -796,35 +797,80 @@ function aiChat() {
       this.addMessage('user', text);
       this.userInput = '';
       this.isTyping = true;
+      this.streamingStarted = false;
       this.scrollToBottom();
 
-      try {
-        const resp = await fetch(window.__ADMIN_PATH__ + '/ai/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: text,
-            agent: this.selectedAgent,
-            conversation_id: this.conversationId,
-            page_url: window.location.pathname
-          })
-        });
-        const data = await resp.json();
-        this.isTyping = false;
+      if (!this.conversationId) {
+        this.conversationId = (crypto.randomUUID && crypto.randomUUID()) || ('conv-' + Date.now());
+      }
 
-        if (data.error) {
-          this.addMessage('assistant', 'Error: ' + data.error);
-        } else {
-          this.conversationId = data.conversation_id || this.conversationId;
-          this.addMessage('assistant', data.output);
-          await this.loadConversations();
+      try {
+        const msgId = 'msg-' + Date.now();
+        const body = {
+          id: this.conversationId,
+          trigger: 'submit-message',
+          messages: [{ id: msgId, role: 'user', parts: [{ type: 'text', text }] }],
+          agent: this.selectedAgent,
+          page_url: window.location.pathname
+        };
+
+        const resp = await fetch(window.__ADMIN_PATH__ + '/ai/chat/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+          body: JSON.stringify(body)
+        });
+
+        if (!resp.ok || !resp.body) {
+          this.isTyping = false;
+          const err = await resp.json().catch(() => null);
+          this.addMessage('assistant', 'Error: ' + ((err && err.error) || resp.statusText));
+          return;
         }
+
+        const reply = { role: 'assistant', content: '', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+        this.messages.push(reply);
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split('\n\n');
+          buffer = chunks.pop();
+          for (const chunk of chunks) {
+            this.processStreamChunk(chunk, reply);
+          }
+        }
+        if (buffer.trim()) this.processStreamChunk(buffer, reply);
+        this.isTyping = false;
+        this.streamingStarted = false;
+        await this.loadConversations();
       } catch (e) {
         this.isTyping = false;
+        this.streamingStarted = false;
         this.addMessage('assistant', 'Request failed: ' + e.message);
       }
 
       this.scrollToBottom();
+    },
+
+    processStreamChunk(chunk, reply) {
+      const lines = chunk.split('\n').filter(l => l.startsWith('data: ')).map(l => l.slice(6));
+      for (const line of lines) {
+        if (line === '[DONE]') continue;
+        try {
+          const data = JSON.parse(line);
+          if (data.type === 'text-delta') {
+            if (!this.streamingStarted) {
+              this.streamingStarted = true;
+            }
+            reply.content += data.delta || '';
+            this.scrollToBottom();
+          }
+        } catch (e) {}
+      }
     },
 
     sendSuggestion(text) {

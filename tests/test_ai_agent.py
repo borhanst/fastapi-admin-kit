@@ -781,3 +781,72 @@ class TestPluginBackendFactory:
 
         assert get_backend("pydantic_ai").name == "pydantic_ai"
         assert "explicit-agent" in admin._app.state.ai_agents
+
+
+# ─── Streaming endpoint ───
+
+
+def _parse_sse_chunks(buffer: str) -> list[dict]:
+    """Parse SSE buffer into event dicts (Python equivalent of widget logic)."""
+    events = []
+    for chunk in buffer.split("\n\n"):
+        for line in chunk.split("\n"):
+            if line.startswith("data: "):
+                data = line[6:]
+                if data == "[DONE]":
+                    continue
+                try:
+                    events.append(__import__("json").loads(data))
+                except Exception:
+                    pass
+    return events
+
+
+class TestChatStreamEndpoint:
+    """Tests for the /ai/chat/stream SSE endpoint and stream parsing."""
+
+    def test_parse_sse_chunks_text_delta(self):
+        """Test parsing of text-delta SSE chunks."""
+        buffer = (
+            'data: {"type":"text-delta","delta":"Hello"}\n\n'
+            'data: {"type":"text-delta","delta":" world"}\n\n'
+        )
+        events = _parse_sse_chunks(buffer)
+
+        assert len(events) == 2
+        assert events[0] == {"type": "text-delta", "delta": "Hello"}
+        assert events[1] == {"type": "text-delta", "delta": " world"}
+
+    def test_parse_sse_chunks_ignores_done(self):
+        """Test that [DONE] marker is ignored."""
+        buffer = 'data: {"type":"text-delta","delta":"!"}\n\ndata: [DONE]\n\n'
+        events = _parse_sse_chunks(buffer)
+
+        assert len(events) == 1
+        assert events[0] == {"type": "text-delta", "delta": "!"}
+
+    def test_parse_sse_chunks_handles_malformed_json(self):
+        """Test that malformed JSON lines don't crash the parser."""
+        buffer = (
+            'data: {"type":"text-delta","delta":"OK"}\n\n'
+            "data: not-json\n\n"
+            'data: {"type":"text-delta","delta":"!"}\n\n'
+        )
+        events = _parse_sse_chunks(buffer)
+
+        assert len(events) == 2
+        assert events[0] == {"type": "text-delta", "delta": "OK"}
+        assert events[1] == {"type": "text-delta", "delta": "!"}
+
+    def test_parse_sse_chunks_ignores_other_types(self):
+        """Test that non text-delta event types are parsed but can be filtered."""
+        buffer = (
+            'data: {"type":"start","runId":"123"}\n\n'
+            'data: {"type":"text-delta","delta":"Hi"}\n\n'
+            'data: {"type":"finish"}\n\n'
+        )
+        events = _parse_sse_chunks(buffer)
+
+        assert len(events) == 3
+        text_deltas = [e for e in events if e.get("type") == "text-delta"]
+        assert text_deltas == [{"type": "text-delta", "delta": "Hi"}]

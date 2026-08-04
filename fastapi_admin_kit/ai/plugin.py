@@ -51,6 +51,7 @@ class AIPlugin:
     def on_startup(self, admin: Admin) -> None:
         """Initialize AI agents via the selected backend factory."""
         from fastapi_admin_kit.ai.backends import resolve_backend
+        from fastapi_admin_kit.ai.conversation import patch_agent_with_conversation_logging
         from fastapi_admin_kit.ai.deps import get_admin_deps
         from fastapi_admin_kit.ai.usage import AIUsageWriter
 
@@ -64,6 +65,8 @@ class AIPlugin:
                 deps_factory=get_admin_deps,
                 usage_writer=writer,
             )
+            # Apply conversation logging wrappers
+            patch_agent_with_conversation_logging(type(agent))
             ai_agents[cfg.name] = agent
 
         admin._app.state.ai_agents = ai_agents  # type: ignore[attr-defined]
