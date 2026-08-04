@@ -1,5 +1,6 @@
 """AI Agent Integration — Pydantic AI (Phase 1)."""
 
+import fastapi_admin_kit.ai.backends  # noqa: F401  (registers built-in backends)
 from fastapi_admin_kit.ai.agent import (
     AIAgent,
     ChatResult,

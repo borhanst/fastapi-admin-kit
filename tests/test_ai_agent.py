@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from fastapi_admin_kit.ai.agent import ChatResult, ToolCallRecord, UsageInfo
 from fastapi_admin_kit.ai.config import AIAgentConfig, AIConfig
@@ -671,3 +673,111 @@ class TestAgentWiring:
         agent._usage_writer = usage_writer
         agent.name = "default"
         return agent, usage_writer
+
+
+# ─── AIBackend registry ───
+
+
+class TestBackendRegistry:
+    def test_pydantic_backend_registered(self):
+        from fastapi_admin_kit.ai.backends import (
+            AIBackend,
+            get_backend,
+            get_default_backend,
+        )
+
+        backend = get_backend("pydantic_ai")
+        assert backend is not None
+        assert isinstance(backend, AIBackend)
+        assert backend.name == "pydantic_ai"
+        assert backend.is_available() is True
+        assert get_default_backend() is backend
+
+    def test_auto_resolves_to_pydantic_backend(self):
+        from fastapi_admin_kit.ai.backends import resolve_backend
+
+        assert resolve_backend("auto").name == "pydantic_ai"
+
+    def test_explicit_pydantic_backend(self):
+        from fastapi_admin_kit.ai.backends import resolve_backend
+
+        assert resolve_backend("pydantic_ai").name == "pydantic_ai"
+
+    def test_unknown_backend_not_registered(self):
+        from fastapi_admin_kit.ai.backends import get_backend, resolve_backend
+
+        assert get_backend("langchain") is None
+        with pytest.raises(RuntimeError, match="langchain"):
+            resolve_backend("langchain")
+
+    def test_create_agent_via_backend(self):
+        from fastapi_admin_kit.ai.backends import resolve_backend
+        from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
+            PydanticAIAgent,
+        )
+
+        backend = resolve_backend("pydantic_ai")
+        cfg = AIAgentConfig(name="backend-test", model="test", tools=[])
+        agent = backend.create_agent(
+            config=cfg,
+            deps_factory=AsyncMock(),
+            usage_writer=AsyncMock(),
+        )
+        assert isinstance(agent, PydanticAIAgent)
+        assert agent.name == "backend-test"
+
+    def test_get_streaming_adapter_returns_vercel_adapter(self):
+        from fastapi_admin_kit.ai.backends import resolve_backend
+        from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
+            PydanticAIAgent,
+        )
+
+        backend = resolve_backend("pydantic_ai")
+        agent = PydanticAIAgent.__new__(PydanticAIAgent)
+        agent._agent = MagicMock()
+        adapter = backend.get_streaming_adapter(agent)
+        assert adapter.__name__ == "VercelAIAdapter"
+
+    def test_get_streaming_adapter_rejects_wrong_agent(self):
+        from fastapi_admin_kit.ai.backends import resolve_backend
+
+        backend = resolve_backend("pydantic_ai")
+        with pytest.raises(TypeError, match="PydanticAIAgent"):
+            backend.get_streaming_adapter(MagicMock())
+
+
+class TestPluginBackendFactory:
+    def test_on_startup_builds_agents_via_backend(self):
+        from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
+            PydanticAIAgent,
+        )
+        from fastapi_admin_kit.ai.plugin import AIPlugin
+
+        cfg = AIAgentConfig(name="plugin-agent", model="test", tools=[])
+        plugin = AIPlugin(agents=[cfg])
+
+        admin = MagicMock()
+        plugin.on_startup(admin)
+
+        agents = admin._app.state.ai_agents
+        assert "plugin-agent" in agents
+        assert isinstance(agents["plugin-agent"], PydanticAIAgent)
+        assert admin._app.state.ai_config is plugin
+
+    def test_on_startup_honours_explicit_backend(self):
+        from fastapi_admin_kit.ai.backends import get_backend
+        from fastapi_admin_kit.ai.plugin import AIPlugin
+
+        cfg = AIAgentConfig(
+            name="explicit-agent",
+            model="test",
+            backend="pydantic_ai",
+            tools=[],
+        )
+        plugin = AIPlugin(agents=[cfg])
+
+        admin = MagicMock()
+        plugin.on_startup(admin)
+
+        assert get_backend("pydantic_ai").name == "pydantic_ai"
+        assert "explicit-agent" in admin._app.state.ai_agents

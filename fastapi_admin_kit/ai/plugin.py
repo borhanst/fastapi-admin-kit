@@ -49,10 +49,8 @@ class AIPlugin:
         return []
 
     def on_startup(self, admin: Admin) -> None:
-        """Initialize AI agents and store on admin state."""
-        from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
-            PydanticAIAgent,
-        )
+        """Initialize AI agents via the selected backend factory."""
+        from fastapi_admin_kit.ai.backends import resolve_backend
         from fastapi_admin_kit.ai.deps import get_admin_deps
         from fastapi_admin_kit.ai.usage import AIUsageWriter
 
@@ -60,7 +58,8 @@ class AIPlugin:
         ai_agents: dict[str, AIAgent] = {}
 
         for cfg in self.agents:
-            agent = PydanticAIAgent(
+            backend = resolve_backend(cfg.backend)
+            agent = backend.create_agent(
                 config=cfg,
                 deps_factory=get_admin_deps,
                 usage_writer=writer,

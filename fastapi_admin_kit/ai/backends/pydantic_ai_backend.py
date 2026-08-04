@@ -15,6 +15,7 @@ from fastapi_admin_kit.ai.agent import (
     ToolCallRecord,
     UsageInfo,
 )
+from fastapi_admin_kit.ai.backends import AIBackend, register_backend
 from fastapi_admin_kit.ai.deps import AdminDeps
 from fastapi_admin_kit.ai.errors import error_detail
 
@@ -626,3 +627,55 @@ class PydanticAIAgent(AIAgent):
         in_cost = req * cfg.cost_per_1k_input_tokens
         out_cost = resp * cfg.cost_per_1k_output_tokens
         return round(in_cost + out_cost, 6)
+
+
+def _get_vercel_adapter_class() -> type:
+    """Locate the ``VercelAIAdapter`` regardless of the pydantic-ai layout."""
+    try:
+        from pydantic_ai.ui.vercel_ai import VercelAIAdapter
+    except ImportError:
+        from pydantic_ai.adapters.vercel_ai import VercelAIAdapter
+    return VercelAIAdapter
+
+
+class PydanticAIBackend(AIBackend):
+    """Backend that builds :class:`PydanticAIAgent` instances.
+
+    Registered automatically on import under the ``"pydantic_ai"`` key and
+    selected by default (``AIAgentConfig.backend == "auto"``) whenever
+    ``pydantic-ai`` is installed.
+    """
+
+    name = "pydantic_ai"
+
+    def create_agent(
+        self,
+        config: AIAgentConfig,
+        *,
+        deps_factory: Callable[..., Awaitable[AdminDeps]],
+        usage_writer: AIUsageWriter,
+    ) -> PydanticAIAgent:
+        return PydanticAIAgent(
+            config=config,
+            deps_factory=deps_factory,
+            usage_writer=usage_writer,
+        )
+
+    def get_streaming_adapter(self, agent: AIAgent) -> type:
+        if not isinstance(agent, PydanticAIAgent):
+            raise TypeError(
+                f"{self.name} backend expects a PydanticAIAgent, got {type(agent).__name__}"
+            )
+        if agent._agent is None:
+            raise RuntimeError("pydantic-ai is not installed; cannot build a streaming adapter.")
+        return _get_vercel_adapter_class()
+
+    def is_available(self) -> bool:
+        try:
+            import pydantic_ai  # noqa: F401
+        except ImportError:
+            return False
+        return True
+
+
+register_backend(PydanticAIBackend())
