@@ -694,81 +694,121 @@ async def ai_chat_stream(request: Request):
         from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
             _extract_tool_calls,
         )
+        from fastapi_admin_kit.db import rollback_if_needed
 
-        # Get or create conversation
-        recorder = ConversationRecorder(session)
-        conv = await recorder.get_or_create(
-            conversation_id,
-            agent_name=agent_name,
-            user=user,
-        )
+        # The middleware's session is already committed/closed by the time
+        # streaming completes, so create a fresh session for persistence.
+        cb_session = None
+        try:
+            factory = getattr(request.app.state, "admin_session_factory", None)
+            if factory is None:
+                return
+            cb_session = factory()
 
-        # Log user message
-        if user_message:
-            await recorder.log_message(conv, role="user", content=user_message)
-
-        # Log assistant message
-        output_text = str(getattr(result, "output", ""))
-        usage = getattr(result, "usage", None)
-        latency_ms = None  # Could be computed if we track start time
-
-        await recorder.log_message(
-            conv,
-            role="assistant",
-            content=output_text,
-            tokens=usage.total_tokens if usage else None,
-            latency_ms=latency_ms,
-        )
-
-        # Log tool calls
-        tool_calls = _extract_tool_calls(result)
-        for tc in tool_calls:
-            await recorder.log_tool_call(conv, tc)
-
-        # Update conversation metadata
-        tokens_delta = usage.total_tokens if usage else 0
-        cost_delta = 0.0
-        if usage:
-            # Compute cost from agent config
-            cfg = agent._config
-            req_tokens = (getattr(usage, "input_tokens", None) or 0) / 1000
-            resp_tokens = (getattr(usage, "output_tokens", None) or 0) / 1000
-            cost_delta = round(
-                req_tokens * cfg.cost_per_1k_input_tokens
-                + resp_tokens * cfg.cost_per_1k_output_tokens,
-                6,
-            )
-
-        await recorder.touch(
-            conv,
-            message_history=[_safe_dict(m) for m in result.new_messages()],
-            tokens_delta=tokens_delta,
-            cost_delta=cost_delta,
-        )
-
-        # Write AIUsageLog
-        if usage:
-            writer = AIUsageWriter()
-            await writer.write(
+            # Get or create conversation
+            recorder = ConversationRecorder(cb_session)
+            conv = await recorder.get_or_create(
+                conversation_id,
                 agent_name=agent_name,
-                model=str(agent._config.model),
-                request_tokens=getattr(usage, "input_tokens", None) or 0,
-                response_tokens=getattr(usage, "output_tokens", None) or 0,
-                total_tokens=usage.total_tokens,
-                cost=cost_delta,
                 user=user,
-                success=True,
-                latency_ms=latency_ms or 0,
-                tool_calls=[
-                    {
-                        "name": tc.name,
-                        "args": tc.args,
-                        "ok": tc.is_error is False,
-                    }
-                    for tc in tool_calls
-                ],
-                session=session,
             )
+
+            # Log user message
+            if user_message:
+                await recorder.log_message(conv, role="user", content=user_message)
+
+            # Log assistant message
+            is_error = (
+                isinstance(result, Exception) or getattr(result, "finish_reason", None) == "error"
+            )
+            if is_error:
+                output_text = f"Error: {str(result)}"
+                usage = None
+            else:
+                output_text = str(getattr(result, "output", ""))
+                usage = getattr(result, "usage", None)
+            latency_ms = None
+
+            await recorder.log_message(
+                conv,
+                role="assistant" if not is_error else "error",
+                content=output_text,
+                tokens=usage.total_tokens if usage else None,
+                latency_ms=latency_ms,
+            )
+
+            # Log tool calls
+            try:
+                tool_calls = _extract_tool_calls(result) if not is_error else []
+            except Exception:
+                tool_calls = []
+
+            for tc in tool_calls:
+                await recorder.log_tool_call(conv, tc)
+
+            # Update conversation metadata
+            tokens_delta = usage.total_tokens if usage else 0
+            cost_delta = 0.0
+            if usage:
+                cfg = agent._config
+                req_tokens = (getattr(usage, "input_tokens", None) or 0) / 1000
+                resp_tokens = (getattr(usage, "output_tokens", None) or 0) / 1000
+                cost_delta = round(
+                    req_tokens * cfg.cost_per_1k_input_tokens
+                    + resp_tokens * cfg.cost_per_1k_output_tokens,
+                    6,
+                )
+
+            new_msgs = []
+            if not is_error and hasattr(result, "new_messages"):
+                try:
+                    new_msgs = [_safe_dict(m) for m in result.new_messages()]
+                except Exception:
+                    pass
+
+            await recorder.touch(
+                conv,
+                message_history=new_msgs if new_msgs else None,
+                tokens_delta=tokens_delta,
+                cost_delta=cost_delta,
+            )
+
+            # Write AIUsageLog
+            if usage:
+                writer = AIUsageWriter()
+                await writer.write(
+                    agent_name=agent_name,
+                    model=str(agent._config.model),
+                    request_tokens=getattr(usage, "input_tokens", None) or 0,
+                    response_tokens=getattr(usage, "output_tokens", None) or 0,
+                    total_tokens=usage.total_tokens,
+                    cost=cost_delta,
+                    user=user,
+                    success=True,
+                    latency_ms=latency_ms or 0,
+                    tool_calls=[
+                        {
+                            "name": tc.name,
+                            "args": tc.args,
+                            "ok": tc.is_error is False,
+                        }
+                        for tc in tool_calls
+                    ],
+                    session=cb_session,
+                )
+
+            await cb_session.commit()
+        except Exception:
+            if cb_session is not None:
+                try:
+                    await rollback_if_needed(cb_session)
+                except Exception:
+                    pass
+        finally:
+            if cb_session is not None:
+                result = cb_session.close()
+                if hasattr(result, "__await__"):
+                    await result
 
     def _safe_dict(obj: Any) -> Any:
         import dataclasses as _dc

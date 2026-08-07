@@ -56,7 +56,9 @@ class AIUsageWriter:
                 latency_ms=latency_ms,
             )
         )
-        await session.flush()
+        from fastapi_admin_kit.db import flush_with_rollback
+
+        await flush_with_rollback(session)
 
     async def aggregate(
         self,

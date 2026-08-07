@@ -82,7 +82,7 @@ class ConversationRecorder:
             if conv:
                 return conv
 
-        conv_id = str(uuid.uuid4())
+        conv_id = conversation_id if conversation_id else str(uuid.uuid4())
         conv = AIConversation(
             id=conv_id,
             agent_name=agent_name,
@@ -90,7 +90,9 @@ class ConversationRecorder:
             user_email=getattr(user, "email", None),
         )
         self.session.add(conv)
-        await self.session.flush()
+        from fastapi_admin_kit.db import flush_with_rollback
+
+        await flush_with_rollback(self.session)
         return conv
 
     async def log_message(
@@ -112,7 +114,9 @@ class ConversationRecorder:
                 latency_ms=latency_ms,
             )
         )
-        await self.session.flush()
+        from fastapi_admin_kit.db import flush_with_rollback
+
+        await flush_with_rollback(self.session)
 
     async def log_tool_call(self, conv: AIConversation, call: ToolCallRecord) -> None:
         from fastapi_admin_kit.ai.usage import AIMessage
@@ -130,7 +134,9 @@ class ConversationRecorder:
                 latency_ms=int((time.perf_counter() - start) * 1000),
             )
         )
-        await self.session.flush()
+        from fastapi_admin_kit.db import flush_with_rollback
+
+        await flush_with_rollback(self.session)
 
     async def log_error(self, conv: AIConversation, error: str) -> None:
         from fastapi_admin_kit.ai.usage import AIMessage
@@ -143,7 +149,9 @@ class ConversationRecorder:
                 error=error,
             )
         )
-        await self.session.flush()
+        from fastapi_admin_kit.db import flush_with_rollback
+
+        await flush_with_rollback(self.session)
 
     async def touch(
         self,
@@ -160,7 +168,9 @@ class ConversationRecorder:
         conv.total_cost = float(conv.total_cost or 0) + cost_delta
         conv.turn_count = (conv.turn_count or 0) + 1
         conv.last_message_at = sqlfunc.now()
-        await self.session.flush()
+        from fastapi_admin_kit.db import flush_with_rollback
+
+        await flush_with_rollback(self.session)
 
 
 def _with_conversation_logging(
