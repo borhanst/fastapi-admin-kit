@@ -731,6 +731,7 @@ async def ai_chat_stream(request: Request):
                 conversation_id,
                 agent_name=agent_name,
                 user=safe_user,
+                title=user_message[:80] if user_message else None,
             )
 
             # Log user message
@@ -1007,10 +1008,10 @@ async def delete_conversation(conversation_id: str, request: Request) -> JSONRes
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
-    await session.execute(select(AIMessage).where(AIMessage.conversation_id == conversation_id))
     from sqlalchemy import delete as sqldel
 
     await session.execute(sqldel(AIMessage).where(AIMessage.conversation_id == conversation_id))
     await session.delete(conv)
+    await session.commit()
 
     return JSONResponse({"success": True})

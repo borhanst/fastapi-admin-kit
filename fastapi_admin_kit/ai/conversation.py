@@ -69,6 +69,7 @@ class ConversationRecorder:
         conversation_id: str | None,
         agent_name: str,
         user: AdminUserProtocol,
+        title: str | None = None,
     ) -> AIConversation:
         from fastapi_admin_kit.ai.usage import AIConversation
 
@@ -88,6 +89,7 @@ class ConversationRecorder:
             agent_name=agent_name,
             user_id=getattr(user, "id", None),
             user_email=getattr(user, "email", None),
+            title=title,
         )
         self.session.add(conv)
         from fastapi_admin_kit.db import flush_with_rollback
@@ -232,6 +234,7 @@ def _with_conversation_logging_stream(
             conversation_id,
             agent_name=getattr(self, "name", "default"),
             user=deps.admin_user,
+            title=message[:80] if message else None,
         )
 
         await recorder.log_message(conv, role="user", content=message)
