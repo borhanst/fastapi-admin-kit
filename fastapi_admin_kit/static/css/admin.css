@@ -104,6 +104,7 @@ img { max-width: 100%; display: block; }
 
 [data-theme="dark"] ::selection {
   background: var(--primary-800);
+  color: var(--text-inverse);
 }
 
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */
