@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -505,6 +506,10 @@ async def ai_chat(request: Request) -> JSONResponse:
                 return {k: _sanitize(val) for k, val in v.items()}
             if isinstance(v, list):
                 return [_sanitize(item) for item in v]
+            from decimal import Decimal
+
+            if isinstance(v, Decimal):
+                return float(v)
             model_dump = getattr(v, "model_dump", None)
             if callable(model_dump):
                 return _sanitize(model_dump())
@@ -640,7 +645,7 @@ async def ai_chat_stream(request: Request):
     page_url = body.get("page_url")
     conversation_id = body.get("id") or body.get("conversation_id")
     user_message = ""
-
+    print("conversation", conversation_id, "body", body)
     # Extract user message from Vercel AI format body
     messages = body.get("messages", [])
     if messages:
@@ -660,6 +665,21 @@ async def ai_chat_stream(request: Request):
     user = await _resolve_user(request)
     session = get_db_session(request)
     checker = await _resolve_checker(request, user)
+
+    # Detach user attributes to prevent DetachedInstanceError in on_complete callback
+    class _SafeUser:
+        id = getattr(user, "id", None)
+        email = getattr(user, "email", None)
+
+    safe_user = _SafeUser()
+
+    factory = getattr(request.app.state, "admin_session_factory", None)
+    if factory is None:
+        real_app = request.scope.get("app")
+        if real_app is not None:
+            factory = getattr(real_app.state, "admin_session_factory", None)
+    if factory is None:
+        factory = getattr(request.state, "admin_session_factory", None)
 
     deps = AdminDeps(
         session=session,
@@ -682,35 +702,35 @@ async def ai_chat_stream(request: Request):
 
     raw_agent = agent.get_raw_agent()
 
-    adapter_cls = agent.get_streaming_adapter()
-    if adapter_cls is None:
-        raise HTTPException(
-            status_code=501,
-            detail=f"Agent '{agent_name}' does not support streaming.",
-        )
-
     # Create on_complete callback to persist conversation and usage after stream
     async def on_complete(result) -> None:
         from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
             _extract_tool_calls,
         )
-        from fastapi_admin_kit.db import rollback_if_needed
 
         # The middleware's session is already committed/closed by the time
         # streaming completes, so create a fresh session for persistence.
         cb_session = None
+        cb_adapter = None
         try:
-            factory = getattr(request.app.state, "admin_session_factory", None)
             if factory is None:
+                import logging
+
+                logging.error("admin_session_factory not found! Cannot save conversation.")
                 return
             cb_session = factory()
+            from fastapi_admin_kit.backends.sqlalchemy import (
+                SqlAlchemySessionAdapter,
+            )
+
+            cb_adapter = SqlAlchemySessionAdapter(cb_session)
 
             # Get or create conversation
-            recorder = ConversationRecorder(cb_session)
+            recorder = ConversationRecorder(cb_adapter)
             conv = await recorder.get_or_create(
                 conversation_id,
                 agent_name=agent_name,
-                user=user,
+                user=safe_user,
             )
 
             # Log user message
@@ -740,7 +760,10 @@ async def ai_chat_stream(request: Request):
             # Log tool calls
             try:
                 tool_calls = _extract_tool_calls(result) if not is_error else []
-            except Exception:
+            except Exception as tool_err:
+                import logging
+
+                logging.warning(f"Could not extract tool calls: {tool_err}")
                 tool_calls = []
 
             for tc in tool_calls:
@@ -762,7 +785,12 @@ async def ai_chat_stream(request: Request):
             new_msgs = []
             if not is_error and hasattr(result, "new_messages"):
                 try:
-                    new_msgs = [_safe_dict(m) for m in result.new_messages()]
+                    msgs = (
+                        result.new_messages()
+                        if callable(result.new_messages)
+                        else result.new_messages
+                    )
+                    new_msgs = [_safe_dict(m) for m in msgs]
                 except Exception:
                     pass
 
@@ -783,7 +811,7 @@ async def ai_chat_stream(request: Request):
                     response_tokens=getattr(usage, "output_tokens", None) or 0,
                     total_tokens=usage.total_tokens,
                     cost=cost_delta,
-                    user=user,
+                    user=safe_user,
                     success=True,
                     latency_ms=latency_ms or 0,
                     tool_calls=[
@@ -794,21 +822,31 @@ async def ai_chat_stream(request: Request):
                         }
                         for tc in tool_calls
                     ],
-                    session=cb_session,
+                    session=cb_adapter,
                 )
 
-            await cb_session.commit()
-        except Exception:
+            commit_coro = cb_session.commit()
+            if hasattr(commit_coro, "__await__"):
+                await commit_coro
+        except Exception as e:
+            import logging
+
+            logging.error(f"Error in AI stream on_complete: {e}", exc_info=True)
             if cb_session is not None:
                 try:
-                    await rollback_if_needed(cb_session)
+                    rb = cb_session.rollback()
+                    if hasattr(rb, "__await__"):
+                        await rb
                 except Exception:
                     pass
         finally:
             if cb_session is not None:
-                result = cb_session.close()
-                if hasattr(result, "__await__"):
-                    await result
+                try:
+                    close_coro = cb_session.close()
+                    if hasattr(close_coro, "__await__"):
+                        await close_coro
+                except Exception:
+                    pass
 
     def _safe_dict(obj: Any) -> Any:
         import dataclasses as _dc
@@ -821,6 +859,10 @@ async def ai_chat_stream(request: Request):
                 return {k: _sanitize(val) for k, val in v.items()}
             if isinstance(v, list):
                 return [_sanitize(item) for item in v]
+            from decimal import Decimal
+
+            if isinstance(v, Decimal):
+                return float(v)
             model_dump = getattr(v, "model_dump", None)
             if callable(model_dump):
                 return _sanitize(model_dump())
@@ -829,14 +871,41 @@ async def ai_chat_stream(request: Request):
         d = _dc.asdict(obj) if _dc.is_dataclass(obj) and not isinstance(obj, type) else str(obj)
         return _sanitize(d)
 
-    return await adapter_cls.dispatch_request(
-        request,
-        agent=raw_agent,
-        deps=deps,
-        message_history=message_history,
-        conversation_id=conversation_id,
-        on_complete=on_complete,
-    )
+    from starlette.responses import StreamingResponse
+
+    async def generate_simple_stream():
+        try:
+            final_result = None
+            async with raw_agent.run_stream_events(
+                user_prompt=user_message,
+                deps=deps,
+                message_history=message_history,
+                conversation_id=conversation_id,
+                usage_limits=agent._config.usage_limits,
+                metadata=agent._config.metadata,
+            ) as event_stream:
+                async for event in event_stream:
+                    if hasattr(event, "event_kind"):
+                        if event.event_kind == "part_delta":
+                            delta = event.delta
+                            if hasattr(delta, "content_delta") and delta.content_delta:
+                                payload = {
+                                    "type": "text-delta",
+                                    "delta": delta.content_delta,
+                                }
+                                yield f"data: {json.dumps(payload)}\n\n"
+                        elif event.event_kind == "agent_run_result":
+                            final_result = event.result
+                            break
+
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+            if on_complete and final_result is not None:
+                await on_complete(final_result)
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+    return StreamingResponse(generate_simple_stream(), media_type="text/event-stream")
 
 
 @router.get("/conversations")

@@ -10,7 +10,7 @@ Agent configs select a backend through ``AIAgentConfig.backend``;
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from fastapi_admin_kit.ai.config import AIBackendName
 
@@ -45,13 +45,13 @@ class AIBackend(ABC):
         """Build a concrete :class:`~fastapi_admin_kit.ai.agent.AIAgent` from a config."""
         ...
 
-    @abstractmethod
-    def get_streaming_adapter(self, agent: AIAgent) -> Any:
+    def get_streaming_adapter(self, agent: AIAgent) -> type | None:
         """Return the backend's UI streaming adapter for an agent.
 
         Consumed by ``/ai/chat/stream`` to dispatch response streaming.
+        Returns ``None`` if the backend handles streaming itself without an adapter.
         """
-        ...
+        return None
 
     @abstractmethod
     def is_available(self) -> bool:

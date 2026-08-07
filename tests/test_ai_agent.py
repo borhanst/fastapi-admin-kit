@@ -726,7 +726,7 @@ class TestBackendRegistry:
         assert isinstance(agent, PydanticAIAgent)
         assert agent.name == "backend-test"
 
-    def test_get_streaming_adapter_returns_vercel_adapter(self):
+    def test_get_streaming_adapter_returns_none(self):
         from fastapi_admin_kit.ai.backends import resolve_backend
         from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
             PydanticAIAgent,
@@ -736,7 +736,7 @@ class TestBackendRegistry:
         agent = PydanticAIAgent.__new__(PydanticAIAgent)
         agent._agent = MagicMock()
         adapter = backend.get_streaming_adapter(agent)
-        assert adapter.__name__ == "VercelAIAdapter"
+        assert adapter is None
 
     def test_get_streaming_adapter_rejects_wrong_agent(self):
         from fastapi_admin_kit.ai.backends import resolve_backend

@@ -112,8 +112,8 @@ class AIAgent(ABC):
         return None
 
     def get_streaming_adapter(self) -> type | None:
-        """Return the backend's streaming adapter class (e.g., VercelAIAdapter).
+        """Return the backend's streaming adapter class.
 
-        Returns ``None`` if the backend doesn't support streaming.
+        Returns ``None`` if the backend doesn't support streaming via a UI adapter.
         """
         return None

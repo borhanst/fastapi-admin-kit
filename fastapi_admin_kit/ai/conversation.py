@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from datetime import time as dt_time
 from functools import wraps
 from typing import TYPE_CHECKING, Any
@@ -161,13 +161,11 @@ class ConversationRecorder:
         tokens_delta: int = 0,
         cost_delta: float = 0.0,
     ) -> None:
-        from sqlalchemy import func as sqlfunc
-
         conv.message_history = message_history
         conv.total_tokens = (conv.total_tokens or 0) + tokens_delta
         conv.total_cost = float(conv.total_cost or 0) + cost_delta
         conv.turn_count = (conv.turn_count or 0) + 1
-        conv.last_message_at = sqlfunc.now()
+        conv.last_message_at = datetime.now(UTC)
         from fastapi_admin_kit.db import flush_with_rollback
 
         await flush_with_rollback(self.session)

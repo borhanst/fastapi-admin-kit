@@ -621,16 +621,10 @@ class PydanticAIAgent(AIAgent):
         )
 
     def get_raw_agent(self) -> Any:
-        """Return the underlying Pydantic AI agent for streaming adapters."""
+        """Return the underlying Pydantic AI agent for direct streaming."""
         if self._agent is None:
             raise RuntimeError("pydantic-ai is not installed.")
         return self._agent
-
-    def get_streaming_adapter(self) -> type:
-        """Return the Vercel AI adapter class for SSE streaming."""
-        if self._agent is None:
-            raise RuntimeError("pydantic-ai is not installed.")
-        return _get_vercel_adapter_class()
 
     def _compute_cost(self, usage: RunUsage) -> float:
         cfg = self._config
@@ -639,15 +633,6 @@ class PydanticAIAgent(AIAgent):
         in_cost = req * cfg.cost_per_1k_input_tokens
         out_cost = resp * cfg.cost_per_1k_output_tokens
         return round(in_cost + out_cost, 6)
-
-
-def _get_vercel_adapter_class() -> type:
-    """Locate the ``VercelAIAdapter`` regardless of the pydantic-ai layout."""
-    try:
-        from pydantic_ai.ui.vercel_ai import VercelAIAdapter
-    except ImportError:
-        from pydantic_ai.adapters.vercel_ai import VercelAIAdapter
-    return VercelAIAdapter
 
 
 class PydanticAIBackend(AIBackend):
@@ -673,14 +658,12 @@ class PydanticAIBackend(AIBackend):
             usage_writer=usage_writer,
         )
 
-    def get_streaming_adapter(self, agent: AIAgent) -> type:
+    def get_streaming_adapter(self, agent: AIAgent) -> type | None:
         if not isinstance(agent, PydanticAIAgent):
             raise TypeError(
                 f"{self.name} backend expects a PydanticAIAgent, got {type(agent).__name__}"
             )
-        if agent._agent is None:
-            raise RuntimeError("pydantic-ai is not installed; cannot build a streaming adapter.")
-        return _get_vercel_adapter_class()
+        return None
 
     def is_available(self) -> bool:
         try:
