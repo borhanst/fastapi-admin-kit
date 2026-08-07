@@ -97,6 +97,13 @@ class _ArticleAdmin(ModelAdmin):
     list_display = ["id", "title"]
 
 
+class _TupleSearchFieldsAdmin(ModelAdmin):
+    """Admin that uses tuples for search_fields / list_display."""
+
+    search_fields = ("name", "description")
+    list_display = ("id", "name")
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -767,3 +774,35 @@ class TestM2MSave:
         )
         assert resp.status_code == 200
         assert f"multiRelation([&#34;{tag_id}&#34;]" in resp.text
+
+
+class TestTupleSearchFields:
+    """Regression: search_fields / list_display defined as tuples must not crash."""
+
+    @pytest.fixture()
+    async def tuple_admin_app(self, app, engine):
+        from fastapi_admin_kit.admin import Admin
+
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            auto_discover=False,
+        )
+        admin.register(_Category)
+        admin.register(_Product, _TupleSearchFieldsAdmin)
+        await admin.setup()
+        return app
+
+    def test_suggestions_with_tuple_search_fields(self, tuple_admin_app):
+        client = TestClient(tuple_admin_app)
+        cookie = create_session_cookie(1)
+        resp = client.get(
+            "/admin/search/suggestions",
+            params={"q": "name"},
+            cookies={"admin_session": cookie},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "suggestions" in data
+        assert data["query"] == "name"

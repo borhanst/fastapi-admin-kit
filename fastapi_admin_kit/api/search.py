@@ -103,8 +103,8 @@ async def get_search_suggestions(
 
         extra_fields: list[str] = list(
             set(
-                (getattr(admin, "search_fields", None) or [])
-                + (getattr(admin, "list_display", None) or [])
+                list(getattr(admin, "search_fields", None) or [])
+                + list(getattr(admin, "list_display", None) or [])
             )
         )
         existing_names = {fe[0] for fe in field_entries}
