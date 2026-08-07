@@ -327,7 +327,10 @@ class PydanticAIAgent(AIAgent):
             self._agent: Agent[AdminDeps, Any] | None = Agent(**agent_kwargs)
             self._bind_tools(config.tools)
             self._register_instructions()
-        except ImportError:
+        except ImportError as e:
+            print("=========================")
+            print(e)
+            print("=======================")
             self._agent = None
 
     def _build_system_prompt(self, config: AIAgentConfig) -> str:

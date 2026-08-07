@@ -91,6 +91,10 @@ async def resolve_user(request: Request, user_id: int | str | None) -> AdminUser
     if auth_backend is None or session is None:
         return None
 
+    from fastapi_admin_kit.db import rollback_if_needed
+
+    await rollback_if_needed(session)
+
     user = await auth_backend.get_user(user_id, session)
     if user is None or not getattr(user, "is_active", False):
         return None

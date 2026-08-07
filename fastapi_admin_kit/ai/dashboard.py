@@ -586,7 +586,9 @@ async def ai_chat(request: Request) -> JSONResponse:
                 )
         except Exception:
             pass
-        await session.flush()
+        from fastapi_admin_kit.db import flush_with_rollback
+
+        await flush_with_rollback(session)
 
         tool_calls_data = []
         for tc in getattr(result, "tool_calls", []):
@@ -613,6 +615,9 @@ async def ai_chat(request: Request) -> JSONResponse:
             }
         )
     except Exception as e:
+        from fastapi_admin_kit.db import rollback_if_needed
+
+        await rollback_if_needed(session)
         return JSONResponse({"error": str(e)}, status_code=400)
 
 

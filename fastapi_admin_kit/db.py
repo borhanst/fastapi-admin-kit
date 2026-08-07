@@ -101,9 +101,15 @@ class SessionMiddleware:
             raise
         else:
             if hasattr(session, "commit"):
-                result = session.commit()
-                if hasattr(result, "__await__"):
-                    await result
+                try:
+                    result = session.commit()
+                    if hasattr(result, "__await__"):
+                        await result
+                except Exception:
+                    if hasattr(session, "rollback"):
+                        result = session.rollback()
+                        if hasattr(result, "__await__"):
+                            await result
         finally:
             if hasattr(session, "close"):
                 result = session.close()
@@ -159,3 +165,41 @@ class SyncSessionWrapper:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._session, name)
+
+
+async def rollback_if_needed(session: Any) -> None:
+    """Roll back *session* to clear any pending-rollback state.
+
+    SQLAlchemy marks a session with a ``PendingRollbackError`` after a flush
+    raises: every later operation on that session fails until it is rolled
+    back.  This helper calls ``rollback()`` unconditionally because the
+    cost on a clean session is negligible, while the benefit of clearing a
+    pending-rollback state is essential.
+    """
+    try:
+        result = session.rollback()
+        if hasattr(result, "__await__"):
+            await result
+    except Exception:
+        pass
+
+
+async def flush_with_rollback(session: Any) -> None:
+    """``flush()`` that never leaves the session in a pending-rollback state.
+
+    If the flush raises, the session is rolled back (making it reusable) and
+    the original exception is re-raised so callers know the write did not
+    persist.
+    """
+    try:
+        result = session.flush()
+        if hasattr(result, "__await__"):
+            await result
+    except Exception:
+        try:
+            result = session.rollback()
+            if hasattr(result, "__await__"):
+                await result
+        except Exception:
+            pass
+        raise
