@@ -26,6 +26,7 @@ class AdminConfig:
         behavior: BehaviorConfig | None = None,
         storage: StorageConfig | None = None,
         nav: NavConfig | None = None,
+        template_dirs: list[str] | None = None,
     ):
         self.ui = ui or UIConfig()
         self.auth = auth or AuthConfig()
@@ -33,6 +34,7 @@ class AdminConfig:
         self.behavior = behavior or BehaviorConfig()
         self.storage = storage or StorageConfig()
         self.nav = nav or NavConfig()
+        self.template_dirs = template_dirs or []
 
     def validate_all(self) -> None:
         """Validate all configuration components."""

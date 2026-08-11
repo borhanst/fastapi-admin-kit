@@ -57,10 +57,21 @@ class BaseView:
     def __init__(self, registered: RegisteredModel):
         self.registered = registered
         self.admin = registered.admin
+        # Raw template overrides from ModelAdmin (None = auto-discovery → default)
+        self.list_template = getattr(self.admin, "list_template", None)
+        self.create_template = getattr(self.admin, "create_template", None)
+        self.edit_template = getattr(self.admin, "edit_template", None)
+        self.detail_template = getattr(self.admin, "detail_template", None)
+        self.inline_edit_template = getattr(self.admin, "inline_edit_template", None)
         # Instantiate dependencies — DIP: inject via class attributes
         self.query_provider = self.query_provider_class(registered)
         self.form_parser = self.form_parser_class(registered)
-        self.html_renderer = self.html_renderer_class() if self.html_renderer_class else None
+        self.html_renderer = self.html_renderer_class(
+            list_template=self.list_template,
+            create_template=self.create_template,
+            edit_template=self.edit_template,
+            table_name=registered.table_name,
+        ) if self.html_renderer_class else None
         self.api_renderer = self.api_renderer_class(registered) if self.api_renderer_class else None
         self.model_saver = self.model_saver_class(registered)
         self.list_context_builder = self.list_context_builder_class()
@@ -234,9 +245,11 @@ class ListView(BaseView):
         self, request: Request, q: str, page: int, checker: Any
     ) -> dict[str, Any]:
         """Build template context — delegates to ListContextBuilder."""
-        return await self.list_context_builder.build_list_context(
+        ctx = await self.list_context_builder.build_list_context(
             self.registered, request, q, page, checker
         )
+        ctx["view"] = self
+        return ctx
 
     async def html_response(self, request: Request, q: str = "", page: int = 1) -> Response:
         checker = await _resolve_permission_checker(request)
@@ -347,6 +360,7 @@ class CreateView(BaseView):
                 self.admin, "change_form_show_cancel_button", True
             ),
             "inline_formsets": ctx.inline_formsets,
+            "view": self,
         }
         template_context.update(self._get_extra_context(request))
         await inject_sidebar_context(request, template_context)
@@ -534,7 +548,7 @@ class CreateView(BaseView):
 
         if request.method == "GET":
             ctx = await self._build_form_context(request, is_create=True, checker=checker)
-            return await self.html_renderer.render(request, ctx)
+            return await self.html_renderer.render(request, ctx, is_create=True)
 
         # POST
         parsed, errors = await self.form_parser.parse(request)
@@ -569,7 +583,7 @@ class CreateView(BaseView):
                 is_create=True,
                 checker=checker,
             )
-            return await self.html_renderer.render(request, ctx)
+            return await self.html_renderer.render(request, ctx, is_create=True)
 
         try:
             result = self.admin.validate_create(parsed, request)
@@ -583,7 +597,7 @@ class CreateView(BaseView):
                 is_create=True,
                 checker=checker,
             )
-            return await self.html_renderer.render(request, ctx)
+            return await self.html_renderer.render(request, ctx, is_create=True)
         except ValueError as e:
             session = get_db_session(request)
             await session.rollback()
@@ -594,7 +608,7 @@ class CreateView(BaseView):
                 is_create=True,
                 checker=checker,
             )
-            return await self.html_renderer.render(request, ctx)
+            return await self.html_renderer.render(request, ctx, is_create=True)
 
         parsed = result
 
@@ -721,6 +735,7 @@ class EditView(BaseView):
                 self.admin, "change_form_show_cancel_button", True
             ),
             "inline_formsets": ctx.inline_formsets,
+            "view": self,
         }
         template_context.update(self._get_extra_context(request))
         await inject_sidebar_context(request, template_context)
@@ -963,6 +978,7 @@ class EditView(BaseView):
             "permissions": checker.permission_set(self.registered.table_name)
             if checker
             else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),
+            "view": self,
         }
         template_context.update(self._get_extra_context(request))
         await inject_sidebar_context(request, template_context)
@@ -1002,8 +1018,17 @@ class EditView(BaseView):
         if request.method == "GET":
             if perms and not perms.can_edit and perms.can_view:
                 ctx = await self._build_detail_context(request, obj, checker)
+                # Custom detail template: explicit → auto-discovery → global → default
+                from fastapi_admin_kit.views.renderers import resolve_template
+
+                candidates = []
+                if self.detail_template:
+                    candidates.append(self.detail_template)
+                candidates.append(f"admin/{self.registered.table_name}/detail.html")
+                candidates += ["admin/detail.html", "pages/detail.html"]
+                detail_template = resolve_template(request, candidates)
                 return request.app.state.admin_jinja_env.TemplateResponse(
-                    request, "pages/detail.html", ctx
+                    request, detail_template, ctx
                 )
             rel_labels = await self._resolve_rel_labels(obj, request)
             ctx = await self._build_form_context(
@@ -1013,7 +1038,7 @@ class EditView(BaseView):
                 checker=checker,
                 rel_labels=rel_labels,
             )
-            return await self.html_renderer.render(request, ctx)
+            return await self.html_renderer.render(request, ctx, is_create=False)
 
         # POST
         parsed, errors = await self.form_parser.parse(request, obj=obj)
@@ -1051,7 +1076,7 @@ class EditView(BaseView):
                 checker=checker,
                 rel_labels=rel_labels,
             )
-            return await self.html_renderer.render(request, ctx)
+            return await self.html_renderer.render(request, ctx, is_create=False)
 
         try:
             result = self.admin.validate_update(obj, parsed, request)
@@ -1068,7 +1093,7 @@ class EditView(BaseView):
                 checker=checker,
                 rel_labels=rel_labels,
             )
-            return await self.html_renderer.render(request, ctx)
+            return await self.html_renderer.render(request, ctx, is_create=False)
         except ValueError as e:
             session = get_db_session(request)
             await session.rollback()

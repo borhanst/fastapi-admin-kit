@@ -1,0 +1,86 @@
+{# admin/base_detail.html — block-based base for read-only detail views.
+   Extend this to customize individual sections of the detail view.
+
+   Available blocks:
+     detail_breadcrumb   — breadcrumb navigation
+     detail_header       — page header (title + edit/delete actions)
+     detail_fieldsets    — read-only field value groups
+
+   Context: registered, obj, form_fields, fieldsets, permissions, view, etc.
+#}
+{% extends "base.html" %}
+
+{% block title %}{{ registered.verbose_name }} #{{ obj.id }} — {{ title | default("Admin") }}{% endblock %}
+
+{% block breadcrumb %}
+{{ super() }}
+<span class="breadcrumb-separator">/</span>
+<a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/" class="breadcrumb-segment hover:text-[var(--color-primary-600)] transition-colors">{{ registered.verbose_name_plural }}</a>
+<span class="breadcrumb-separator">/</span>
+<span class="breadcrumb-current">{{ obj }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  {% block detail_header %}
+  <div class="page-header">
+    <div class="page-header-left">
+      <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/" class="page-header-back">
+        {{ icon("chevron-left", size="16px") }}
+        {{ registered.verbose_name_plural }}
+      </a>
+      <h1 class="page-header-title">View {{ registered.verbose_name }}</h1>
+      <p class="page-header-subtitle">
+        <span class="mono">#{{ obj.id }}</span>
+        {% if obj.__str__() %} — {{ obj.__str__() }}{% endif %}
+      </p>
+    </div>
+    <div class="page-header-right">
+      {% if permissions.can_edit %}
+      <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/{{ obj.id }}" class="btn btn-primary btn-sm">
+        {{ icon("pencil", size="16px") }}
+        Edit
+      </a>
+      {% endif %}
+      {% if permissions.can_delete %}
+      <form method="post" action="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/{{ obj.id }}/delete" style="display: inline;">
+        <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
+        <button type="button" class="btn btn-danger btn-sm"
+                onclick="confirmAction('Delete', 'Are you sure you want to delete this {{ registered.verbose_name | lower }}?', () => this.closest('form').submit())">
+          Delete
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endblock %}
+
+  {% block detail_fieldsets %}
+  {% if fieldsets %}
+  {% for fieldset in fieldsets %}
+  <div class="bg-white rounded-xl border border-[var(--color-gray-200)]">
+    <div class="px-6 py-4 border-b border-[var(--color-gray-200)]">
+      <h2 class="text-lg font-semibold text-[var(--color-gray-900)]">{{ fieldset.title or "Details" }}</h2>
+    </div>
+    <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+      {% for field in fieldset.fields %}
+      {% include "partials/detail_field.html" %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="bg-white rounded-xl border border-[var(--color-gray-200)]">
+    <div class="px-6 py-4 border-b border-[var(--color-gray-200)]">
+      <h2 class="text-lg font-semibold text-[var(--color-gray-900)]">Details</h2>
+    </div>
+    <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+      {% for field in form_fields %}
+      {% include "partials/detail_field.html" %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  {% endblock %}
+</div>
+{% endblock %}

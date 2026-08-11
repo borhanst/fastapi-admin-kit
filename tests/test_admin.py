@@ -6,6 +6,7 @@ from sqlalchemy import Boolean, Column, Integer, String
 from sqlalchemy.orm import DeclarativeBase
 
 from fastapi_admin_kit.admin import Admin
+from fastapi_admin_kit.admin.admin_config import AdminConfig
 from fastapi_admin_kit.auth import models as _auth_models  # noqa: F401 — register Role etc.
 from fastapi_admin_kit.exceptions import ConfigError
 
@@ -123,6 +124,42 @@ class TestAdminConstruction:
         assert admin.session_cookie_name == "my_cookie"
         assert admin.session_secure is True
         assert admin.superuser_emails == ["admin@test.com"]
+
+    def test_legacy_kwargs_merged_into_provided_config(self):
+        """Regression: Admin(config=...) must not silently drop legacy kwargs.
+
+        Previously passing a full ``AdminConfig`` ignored ``auth_backend``,
+        ``title`` and friends — leaving the auth backend as None and causing
+        every authenticated request to 401.
+        """
+        from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
+
+        admin = Admin(
+            title="Acme Admin",
+            auth_backend=BuiltinAuthBackend(),
+            session_cookie_name="my_cookie",
+            config=AdminConfig(),
+        )
+        assert admin.title == "Acme Admin"
+        assert admin.auth_backend is not None
+        assert admin.session_cookie_name == "my_cookie"
+
+    def test_provided_config_values_not_overridden(self):
+        """Explicit config fields win over legacy kwargs defaults."""
+        from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
+
+        config = AdminConfig()
+        config.ui.title = "Configured Title"
+        config.auth.auth_backend = BuiltinAuthBackend()
+        admin = Admin(config=config, auth_backend=BuiltinAuthBackend())
+        assert admin.title == "Configured Title"
+        assert admin.auth_backend is not None
+
+    def test_template_dirs_flow_into_admin_template(self):
+        """template_dirs set via AdminConfig reach the AdminTemplate."""
+        config = AdminConfig(template_dirs=["/tmp/custom-templates"])
+        admin = Admin(config=config)
+        assert admin.template.template_dirs == ["/tmp/custom-templates"]
 
     def test_seed_roles_default(self):
         admin = Admin()

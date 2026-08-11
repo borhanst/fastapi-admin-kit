@@ -1,0 +1,59 @@
+{# partials/detail_field.html — render a single read-only field value.
+   Expects `field` (FieldRenderContext) in context.
+#}
+<div{% if field.meta.extra.get('full_width', false) %} class="md:col-span-2"{% endif %}>
+  <dt class="text-sm font-medium text-[var(--color-gray-500)]">{{ field.meta.label }}</dt>
+  <dd class="mt-1 text-sm text-[var(--color-gray-900)]">
+    {% set val = field.widget_context.value | default(none) %}
+    {% if val is none %}
+      <span class="text-[var(--color-gray-400)]">-</span>
+    {% elif field.widget_macro == 'toggle' %}
+      {% if val %}
+      <span class="status-badge status-badge--success">
+        {{ icon("check-circle", size="14px") }}
+        Active
+      </span>
+      {% else %}
+      <span class="status-badge status-badge--muted">
+        {{ icon("x-circle", size="14px") }}
+        Inactive
+      </span>
+      {% endif %}
+    {% elif field.widget_macro == 'select' %}
+      {% set choices = field.widget_context.choices | default([]) %}
+      {% set found = false %}
+      {% for choice in choices %}
+        {% if choice[0] | string == val | string %}
+          {{ choice[1] }}
+          {% set found = true %}
+        {% endif %}
+      {% endfor %}
+      {% if not found and val %}{{ val }}{% endif %}
+    {% elif field.widget_macro == 'image_upload' and val %}
+      <img src="{{ val }}" style="max-width: 200px; max-height: 200px; border-radius: var(--radius-md); border: 1px solid var(--surface-border);">
+    {% elif field.widget_macro == 'file_upload' and val %}
+      <a href="{{ val }}" target="_blank" style="color: var(--primary-500);">{{ val }}</a>
+    {% elif field.widget_macro == 'json_editor' %}
+      <pre class="bg-[var(--color-gray-50)] rounded-lg p-4 overflow-auto text-sm text-[var(--color-gray-900)]" style="max-height: 300px;">{{ val }}</pre>
+    {% elif field.widget_macro == 'color_picker' %}
+      <div class="flex items-center gap-2">
+        <div style="width: 24px; height: 24px; border-radius: var(--radius-sm); border: 1px solid var(--surface-border); background: {{ val }};"></div>
+        <span>{{ val }}</span>
+      </div>
+    {% elif field.widget_macro == 'relation_picker' %}
+      {{ field.widget_context.label_text | default(val) }}
+    {% elif field.widget_macro == 'tag_input' %}
+      {% set tags = val | default('[]') %}
+      {% if tags is string %}
+        {% set tags = tags | tojson %}
+      {% endif %}
+      <div class="flex flex-wrap gap-1">
+        {% for tag in tags %}
+        <span class="tag-chip">{{ tag }}</span>
+        {% endfor %}
+      </div>
+    {% else %}
+      {{ val }}
+    {% endif %}
+  </dd>
+</div>

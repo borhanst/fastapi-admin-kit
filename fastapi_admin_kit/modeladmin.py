@@ -93,6 +93,13 @@ class ModelAdmin:
     nav_order: int = 999
     nav_children: list[NavItemConfig] | None = None
 
+    # Template customization (None = auto-discovery → built-in default)
+    list_template: str | None = None
+    create_template: str | None = None
+    edit_template: str | None = None
+    detail_template: str | None = None
+    inline_edit_template: str | None = None
+
     # Route generation
     skip_auto_routes: bool = False
 
