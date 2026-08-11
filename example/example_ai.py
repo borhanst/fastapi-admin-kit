@@ -55,6 +55,7 @@ from fastapi_admin_kit.auth.models import User  # noqa: F401
 from fastapi_admin_kit.config import ThemeConfig
 from fastapi_admin_kit.models import Base as AdminBase
 from fastapi_admin_kit.nav import NavGroupConfig
+from fastapi_admin_kit.storage.local import LocalStorageBackend
 
 load_dotenv()
 
@@ -880,6 +881,7 @@ admin = Admin(
     admin_path="/admin",
     secret_key=SECRET_KEY,
     auth_backend=BuiltinAuthBackend(),
+    storage=LocalStorageBackend(),
     # AI
     ai_enabled=True,
     ai=ai_config,

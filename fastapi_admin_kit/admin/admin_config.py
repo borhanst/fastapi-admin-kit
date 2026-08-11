@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING
 
 from fastapi_admin_kit.config import (
+    AIChatConfig,
     AuditConfig,
     AuthConfig,
     BehaviorConfig,
@@ -26,6 +27,7 @@ class AdminConfig:
         behavior: BehaviorConfig | None = None,
         storage: StorageConfig | None = None,
         nav: NavConfig | None = None,
+        ai_chat: AIChatConfig | None = None,
     ):
         self.ui = ui or UIConfig()
         self.auth = auth or AuthConfig()
@@ -33,6 +35,7 @@ class AdminConfig:
         self.behavior = behavior or BehaviorConfig()
         self.storage = storage or StorageConfig()
         self.nav = nav or NavConfig()
+        self.ai_chat = ai_chat or AIChatConfig()
 
     def validate_all(self) -> None:
         """Validate all configuration components."""

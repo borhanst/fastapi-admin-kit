@@ -18,6 +18,7 @@ from fastapi_admin_kit.admin.admin_database import AdminDatabase
 from fastapi_admin_kit.admin.admin_router import AdminRouter
 from fastapi_admin_kit.admin.admin_template import AdminTemplate
 from fastapi_admin_kit.config import (
+    AIChatConfig,
     AuditConfig,
     AuthConfig,
     BehaviorConfig,
@@ -185,6 +186,9 @@ class Admin:
         ai_enabled: bool = False,
         is_development: bool = False,
         sidebar_bottom_links: list[dict[str, str]] | None = None,
+        # AI chat file attachments
+        ai_chat_max_file_size_mb: int = 10,
+        ai_chat_allowed_extensions: list[str] | None = None,
     ):
         self.registry = AdminRegistry()
         self._app: FastAPI | None = app
@@ -267,6 +271,23 @@ class Admin:
                     dashboard_permission=dashboard_permission,
                     settings_permission=settings_permission,
                     sidebar_bottom_links=sidebar_bottom_links,
+                ),
+                ai_chat=AIChatConfig(
+                    max_file_size_mb=ai_chat_max_file_size_mb,
+                    allowed_extensions=ai_chat_allowed_extensions
+                    or [
+                        ".pdf",
+                        ".xlsx",
+                        ".xls",
+                        ".docx",
+                        ".doc",
+                        ".csv",
+                        ".png",
+                        ".jpg",
+                        ".jpeg",
+                        ".gif",
+                        ".webp",
+                    ],
                 ),
             )
 

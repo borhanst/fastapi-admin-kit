@@ -11,14 +11,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi_admin_kit.migrations.models import AIConversation, AIMessage, AIUsageLog
+from fastapi_admin_kit.migrations.models import AIAttachment, AIConversation, AIMessage, AIUsageLog
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from fastapi_admin_kit.auth.protocol import AdminUserProtocol
 
-__all__ = ["AIUsageLog", "AIConversation", "AIMessage", "AIUsageWriter"]
+__all__ = ["AIUsageLog", "AIConversation", "AIMessage", "AIAttachment", "AIUsageWriter"]
 
 
 class AIUsageWriter:

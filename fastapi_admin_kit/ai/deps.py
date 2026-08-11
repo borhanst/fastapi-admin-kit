@@ -41,6 +41,7 @@ class AdminDeps:
     permission_checker: PermissionChecker
     page_url: str | None = None
     debug: bool = False
+    attachments: list[dict[str, object]] | None = field(default=None, repr=False)
     # ORM backend adapters — populated from request.app.state by get_admin_deps
     query_backend: QueryBackend | None = field(default=None, repr=False)
     introspection_backend: IntrospectionBackend | None = field(default=None, repr=False)

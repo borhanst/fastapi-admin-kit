@@ -583,6 +583,97 @@
     max-height: 200px;
     overflow-y: auto;
   }
+
+  .ai-chat-pending-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px var(--content-padding);
+    background: var(--surface-raised);
+    border-top: 1px solid var(--surface-border);
+  }
+
+  .ai-chat-pending-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+    border: 1px solid var(--surface-border);
+    font-size: var(--text-2xs);
+    color: var(--text-secondary);
+  }
+
+  .ai-chat-pending-file-name {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ai-chat-pending-file-remove {
+    border: none;
+    background: transparent;
+    color: var(--text-disabled);
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+  }
+
+  .ai-chat-pending-file-remove:hover {
+    color: var(--error-500);
+    background: var(--error-50);
+  }
+
+  .ai-chat-pending-file-remove .material-symbols-outlined {
+    font-size: 14px;
+  }
+
+  .ai-chat-attachment-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    margin-top: 6px;
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+    border: 1px solid var(--surface-border);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: all var(--duration-fast) var(--easing-out);
+  }
+
+  .ai-chat-attachment-card:hover {
+    border-color: var(--primary-500);
+    color: var(--primary-600);
+  }
+
+  .ai-chat-attachment-card .material-symbols-outlined {
+    font-size: 16px;
+  }
+
+  .ai-chat-attachment-card img {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+  }
+
+  .ai-chat-file-preview {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+  }
+
+  [data-theme="dark"] .ai-chat-attachment-card {
+    background: rgba(255,255,255,0.05);
+  }
 </style>
 {% endblock %}
 
@@ -668,7 +759,24 @@
                 <span class="material-symbols-outlined" style="font-size: 14px;">person</span>
               </template>
             </div>
-            <div class="ai-chat-msg-body" x-html="formatMessage(msg.content)"></div>
+            <div>
+              <div class="ai-chat-msg-body" x-html="formatMessage(msg.content)"></div>
+              <template x-if="msg.attachments && msg.attachments.length">
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+                  <template x-for="att in msg.attachments" :key="att.id">
+                    <a class="ai-chat-attachment-card" :href="att.url" target="_blank" rel="noopener">
+                      <template x-if="att.mime_type && att.mime_type.startsWith('image/')">
+                        <img :src="att.url" :alt="att.filename" class="ai-chat-file-preview">
+                      </template>
+                      <template x-if="!att.mime_type || !att.mime_type.startsWith('image/')">
+                        <span class="material-symbols-outlined">description</span>
+                      </template>
+                      <span x-text="att.filename"></span>
+                    </a>
+                  </template>
+                </div>
+              </template>
+            </div>
           </div>
           <div class="ai-chat-msg-time" :class="msg.role === 'user' ? 'ai-chat-msg--user' : ''" x-text="msg.time"></div>
         </div>
@@ -691,7 +799,21 @@
     </div>
 
     <div class="ai-chat-input-bar">
+      <div class="ai-chat-pending-files" x-show="pendingFiles.length > 0" x-cloak>
+        <template x-for="(file, idx) in pendingFiles" :key="idx">
+          <div class="ai-chat-pending-file">
+            <span class="ai-chat-pending-file-name" x-text="file.name"></span>
+            <button class="ai-chat-pending-file-remove" @click="removeFile(idx)" title="Remove">
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+        </template>
+      </div>
       <div class="ai-chat-input-wrapper">
+        <input type="file" multiple accept=".pdf,.xlsx,.xls,.docx,.doc,.csv,.png,.jpg,.jpeg,.gif,.webp" x-ref="fileInput" @change="addFiles($event)" class="hidden">
+        <button class="ai-chat-attach-btn" @click="$refs.fileInput.click()" :disabled="isTyping" title="Attach files" style="width:40px;height:40px;border-radius:var(--radius-lg);border:1px solid var(--surface-border);background:transparent;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all var(--duration-fast) var(--easing-out);">
+          <span class="material-symbols-outlined">attach_file</span>
+        </button>
         <textarea
           class="ai-chat-input-field"
           x-model="userInput"
@@ -704,7 +826,7 @@
         <button
           class="ai-chat-send-btn"
           @click="sendMessage()"
-          :disabled="!userInput.trim() || isTyping"
+          :disabled="!canSend() || isTyping"
           title="Send message"
         >
           <span class="material-symbols-outlined">arrow_upward</span>
@@ -725,6 +847,11 @@ function aiChat() {
     agents: [],
     conversationId: null,
     conversations: [],
+    pendingFiles: [],
+
+    get canSend() {
+      return (this.userInput.trim() || this.pendingFiles.length > 0) && !this.isTyping;
+    },
 
     async init() {
       await this.loadAgents();
@@ -766,7 +893,7 @@ function aiChat() {
           .filter(m => m.role !== 'tool')
           .map(m => {
             const time = m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-            return { role: m.role, content: m.content, time };
+            return { role: m.role, content: m.content, time, attachments: m.attachments || [] };
           });
         this.scrollToBottom();
       } catch (e) {
@@ -787,14 +914,69 @@ function aiChat() {
     newChat() {
       this.messages = [];
       this.conversationId = null;
+      this.pendingFiles = [];
       this.$refs.chatInput?.focus();
+    },
+
+    addFiles(event) {
+      const input = event.target;
+      if (!input.files) return;
+      for (const file of input.files) {
+        this.pendingFiles.push(file);
+      }
+      input.value = '';
+    },
+
+    removeFile(index) {
+      this.pendingFiles.splice(index, 1);
+    },
+
+    formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    },
+
+    async uploadFiles() {
+      if (!this.pendingFiles.length) return [];
+      const form = new FormData();
+      for (const file of this.pendingFiles) {
+        form.append('files', file);
+      }
+      const resp = await fetch(window.__ADMIN_PATH__ + '/ai/chat/upload', {
+        method: 'POST',
+        body: form,
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => null);
+        throw new Error(err?.detail || err?.error || 'Upload failed');
+      }
+      return await resp.json();
     },
 
     async sendMessage() {
       const text = this.userInput.trim();
-      if (!text || this.isTyping) return;
+      if (!this.canSend) return;
 
-      this.addMessage('user', text);
+      let uploadedAttachments = [];
+      if (this.pendingFiles.length > 0) {
+        try {
+          uploadedAttachments = await this.uploadFiles();
+        } catch (e) {
+          this.addMessage('assistant', 'Upload failed: ' + e.message);
+          return;
+        } finally {
+          this.pendingFiles = [];
+        }
+      }
+
+      const parts = [];
+      if (text) parts.push({ type: 'text', text });
+      for (const att of uploadedAttachments) {
+        parts.push({ type: 'file', url: att.url, mimeType: att.mime_type, filename: att.filename });
+      }
+
+      this.addMessage('user', text || '[file attachment]', uploadedAttachments);
       this.userInput = '';
       this.isTyping = true;
       this.streamingStarted = false;
@@ -809,7 +991,7 @@ function aiChat() {
         const body = {
           id: this.conversationId,
           trigger: 'submit-message',
-          messages: [{ id: msgId, role: 'user', parts: [{ type: 'text', text }] }],
+          messages: [{ id: msgId, role: 'user', parts }],
           agent: this.selectedAgent,
           page_url: window.location.pathname
         };
@@ -893,10 +1075,10 @@ function aiChat() {
       this.sendMessage();
     },
 
-    addMessage(role, content) {
+    addMessage(role, content, attachments = []) {
       const now = new Date();
       const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      this.messages.push({ role, content, time });
+      this.messages.push({ role, content, time, attachments });
     },
 
     formatMessage(text) {

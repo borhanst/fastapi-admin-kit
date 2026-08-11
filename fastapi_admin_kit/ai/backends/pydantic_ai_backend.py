@@ -429,7 +429,7 @@ class PydanticAIAgent(AIAgent):
 
     async def chat(
         self,
-        message: str,
+        message: str | list[Any],
         deps: AdminDeps,
         message_history: list | None = None,
         conversation_id: str | None = None,
@@ -443,13 +443,14 @@ class PydanticAIAgent(AIAgent):
         user_repr = getattr(deps.admin_user, "email", None) or getattr(
             deps.admin_user, "id", "anonymous"
         )
+        display_message = message if isinstance(message, str) else "[multimodal input]"
         logger.info(
             "[AI Agent '%s'] Starting chat run | Model: %s | User: %s | Page: %s | Message: %r",
             self.name,
             self._config.model,
             user_repr,
             deps.page_url or "N/A",
-            message[:100] + "..." if len(message) > 100 else message,
+            display_message[:100] + "..." if len(display_message) > 100 else display_message,
         )
 
         start = time.perf_counter()
@@ -540,7 +541,7 @@ class PydanticAIAgent(AIAgent):
 
     def chat_stream(
         self,
-        message: str,
+        message: str | list[Any],
         deps: AdminDeps,
         message_history: list | None = None,
     ) -> AsyncGenerator[StreamedRunResult[AdminDeps, Any], None]:

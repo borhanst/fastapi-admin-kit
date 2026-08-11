@@ -104,6 +104,7 @@ class ConversationRecorder:
         content: str,
         tokens: int | None = None,
         latency_ms: int | None = None,
+        attachments: list[dict[str, object]] | None = None,
     ) -> None:
         from fastapi_admin_kit.ai.usage import AIMessage
 
@@ -185,7 +186,7 @@ def _with_conversation_logging(
     @wraps(chat_fn)
     async def wrapper(
         self: AIAgent,
-        message: str,
+        message: str | list[Any],
         deps: AdminDeps,
         message_history: list | None = None,
         conversation_id: str | None = None,
@@ -223,21 +224,22 @@ def _with_conversation_logging_stream(
     @wraps(chat_stream_fn)
     async def wrapper(
         self: AIAgent,
-        message: str,
+        message: str | list[Any],
         deps: AdminDeps,
         message_history: list | None = None,
         conversation_id: str | None = None,
         **kwargs: Any,
     ) -> AsyncGenerator[Any, None]:
         recorder = ConversationRecorder(deps.session)
+        display_title = message if isinstance(message, str) else "[multimodal input]"
         conv = await recorder.get_or_create(
             conversation_id,
             agent_name=getattr(self, "name", "default"),
             user=deps.admin_user,
-            title=message[:80] if message else None,
+            title=display_title[:80] if display_title else None,
         )
 
-        await recorder.log_message(conv, role="user", content=message)
+        await recorder.log_message(conv, role="user", content=display_title)
 
         start = time.perf_counter()
         accumulated: list[str] = []

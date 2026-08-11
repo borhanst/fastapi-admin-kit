@@ -1,5 +1,6 @@
 """Configuration classes for FastAPI Admin Kit."""
 
+from fastapi_admin_kit.config.ai_chat import AIChatConfig
 from fastapi_admin_kit.config.audit import AuditConfig
 from fastapi_admin_kit.config.auth import AuthConfig
 from fastapi_admin_kit.config.behavior import BehaviorConfig
@@ -10,6 +11,7 @@ from fastapi_admin_kit.config.theme import ThemeConfig
 from fastapi_admin_kit.config.ui import UIConfig
 
 __all__ = [
+    "AIChatConfig",
     "AuthConfig",
     "AuditConfig",
     "DatabaseConfig",

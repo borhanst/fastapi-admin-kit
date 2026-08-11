@@ -77,7 +77,7 @@ class AIAgent(ABC):
     @abstractmethod
     async def chat(
         self,
-        message: str,
+        message: str | list[Any],
         deps: AdminDeps,
         message_history: list | None = None,
         conversation_id: str | None = None,
@@ -86,7 +86,7 @@ class AIAgent(ABC):
     @abstractmethod
     def chat_stream(
         self,
-        message: str,
+        message: str | list[Any],
         deps: AdminDeps,
         message_history: list | None = None,
     ) -> AsyncGenerator[Any, None]: ...

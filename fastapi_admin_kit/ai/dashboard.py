@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import io
 import json
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
+from pydantic_ai import BinaryContent, DocumentUrl, ImageUrl
 
 if TYPE_CHECKING:
     import jinja2
@@ -79,6 +82,55 @@ def _get_ai_agents(request: Request) -> dict[str, AIAgent]:
     return getattr(request.app.state, "ai_agents", {})
 
 
+def _build_multimodal_input(parts: list[dict], model: str = "") -> str | list:
+    """Build a pydantic-ai multimodal input from Vercel AI Data Stream parts.
+
+    Text parts are concatenated into a single string. File parts are
+    converted to ImageUrl, DocumentUrl, or BinaryContent depending on MIME type.
+    """
+    text_segments: list[str] = []
+    content_parts: list[Any] = []
+
+    for part in parts:
+        part_type = part.get("type")
+        if part_type == "text":
+            text = part.get("text", "")
+            if text:
+                text_segments.append(text)
+        elif part_type == "file":
+            url = part.get("url", "")
+            mime_type = part.get("mimeType", "")
+            filename = part.get("filename", "")
+            if not url:
+                continue
+            if mime_type and mime_type.startswith("image/"):
+                content_parts.append(ImageUrl(url=url))
+            elif filename:
+                ext = PurePosixPath(filename).suffix.lower()
+                if ext in {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".csv"}:
+                    if model.startswith("groq:"):
+                        # Groq does not support DocumentUrl in user prompts.
+                        # Fall back to a text mention so the model is aware of the attachment.
+                        text_segments.append(f"[Attached file: {filename}]")
+                    else:
+                        content_parts.append(DocumentUrl(url=url))
+                else:
+                    content_parts.append(
+                        BinaryContent(data=b"", media_type=mime_type or "application/octet-stream")
+                    )
+            else:
+                content_parts.append(
+                    BinaryContent(data=b"", media_type=mime_type or "application/octet-stream")
+                )
+
+    text = " ".join(text_segments).strip()
+    if not content_parts:
+        return text
+    if not text:
+        return content_parts
+    return [text] + content_parts
+
+
 async def _resolve_user(request: Request) -> AdminUserProtocol:
     """Manually resolve the admin user from the session cookie."""
     from fastapi_admin_kit.auth.dependencies import get_session
@@ -121,6 +173,96 @@ async def ai_chat_page(request: Request) -> jinja2.TemplateResponse:
     }
     context.update(await admin.sidebar_template_kwargs(request) if admin else {})
     return jinja.TemplateResponse(request, "pages/ai/chat.html", context)
+
+
+@router.post("/chat/upload", response_model=None)
+async def ai_chat_upload(
+    request: Request,
+    files: list[UploadFile] = File(...),
+) -> JSONResponse:
+    """Upload files for AI chat attachments."""
+    from fastapi_admin_kit.ai.attachments import (
+        ALLOWED_EXTENSIONS,
+        detect_mime,
+        validate_extension,
+        validate_mime,
+    )
+    from fastapi_admin_kit.ai.usage import AIAttachment
+    from fastapi_admin_kit.db import get_db_session
+
+    admin = _get_admin(request)
+    if admin is None:
+        raise HTTPException(status_code=500, detail="Admin not configured.")
+
+    max_size_bytes = int(admin.config.ai_chat.max_file_size_mb * 1024 * 1024)
+    allowed_exts = set(admin.config.ai_chat.allowed_extensions) or ALLOWED_EXTENSIONS
+
+    storage = getattr(request.app.state, "admin_storage", None)
+    if storage is None:
+        raise HTTPException(status_code=500, detail="Storage not configured.")
+
+    session = get_db_session(request)
+    results: list[dict[str, object]] = []
+
+    for file in files:
+        if file.filename is None:
+            continue
+
+        ext = validate_extension(file.filename)
+        if ext not in allowed_exts:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File extension '{ext}' is not allowed.",
+            )
+
+        content = await file.read()
+        if len(content) > max_size_bytes:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"File '{file.filename}' exceeds maximum size of "
+                    f"{admin.config.ai_chat.max_file_size_mb}MB."
+                ),
+            )
+
+        mime_type = detect_mime(file.filename, content)
+        try:
+            validate_mime(ext, mime_type)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        upload_file = UploadFile(filename=file.filename, file=io.BytesIO(content))
+        try:
+            saved_path = await storage.save(upload_file, directory="ai_attachments")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
+
+        file_url = storage.url(saved_path)
+
+        attachment = AIAttachment(
+            conversation_id=None,
+            message_id=None,
+            filename=file.filename,
+            file_path=saved_path,
+            file_size=len(content),
+            mime_type=mime_type,
+        )
+        session.add(attachment)
+        from fastapi_admin_kit.db import flush_with_rollback
+
+        await flush_with_rollback(session)
+
+        results.append(
+            {
+                "id": attachment.id,
+                "filename": file.filename,
+                "url": file_url,
+                "mime_type": mime_type,
+                "size": len(content),
+            }
+        )
+
+    return JSONResponse(results)
 
 
 @router.get("/logs")
@@ -450,15 +592,19 @@ async def ai_chat(request: Request) -> JSONResponse:
     from fastapi_admin_kit.db import get_db_session
 
     body = await request.json()
-    message = body.get("message", "")
     agent_name = body.get("agent", "default")
     conversation_id = body.get("conversation_id")
     page_url = body.get("page_url")
+    parts = body.get("parts", [])
+    message = body.get("message", "")
 
     agents = _get_ai_agents(request)
     agent = agents.get(agent_name)
     if agent is None:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found.")
+
+    if parts:
+        message = _build_multimodal_input(parts, model=getattr(agent._config, "model", ""))
 
     user = await _resolve_user(request)
     session = get_db_session(request)
@@ -517,6 +663,8 @@ async def ai_chat(request: Request) -> JSONResponse:
 
         new_messages = [_safe_dict(m) for m in result.new_messages]
 
+        display_content = message if isinstance(message, str) else json.dumps(message, default=str)
+
         if conversation_id:
             conv_result = await session.execute(
                 select(AIConversation).where(AIConversation.id == conversation_id)
@@ -538,7 +686,7 @@ async def ai_chat(request: Request) -> JSONResponse:
                     agent_name=agent_name,
                     user_id=getattr(user, "id", None),
                     user_email=getattr(user, "email", None),
-                    title=message[:80],
+                    title=display_content[:80],
                     message_history=new_messages,
                     turn_count=1,
                     total_tokens=result.usage.total_tokens,
@@ -552,7 +700,7 @@ async def ai_chat(request: Request) -> JSONResponse:
                 agent_name=agent_name,
                 user_id=getattr(user, "id", None),
                 user_email=getattr(user, "email", None),
-                title=message[:80],
+                title=display_content[:80],
                 message_history=new_messages,
                 turn_count=1,
                 total_tokens=result.usage.total_tokens,
@@ -564,7 +712,7 @@ async def ai_chat(request: Request) -> JSONResponse:
             AIMessage(
                 conversation_id=conversation_id,
                 role="user",
-                content=message,
+                content=display_content,
             )
         )
         session.add(
@@ -645,7 +793,8 @@ async def ai_chat_stream(request: Request):
     page_url = body.get("page_url")
     conversation_id = body.get("id") or body.get("conversation_id")
     user_message = ""
-    print("conversation", conversation_id, "body", body)
+    user_parts = []
+    parts = []
     # Extract user message from Vercel AI format body
     messages = body.get("messages", [])
     if messages:
@@ -655,10 +804,19 @@ async def ai_chat_stream(request: Request):
             for part in parts:
                 if part.get("type") == "text":
                     user_message = part.get("text", "")
-                    break
+                elif part.get("type") == "file":
+                    user_parts.append(part)
+            if parts and not user_message:
+                user_message = "[file attachment]"
 
     agents = _get_ai_agents(request)
     agent = agents.get(agent_name)
+
+    multimodal_input = (
+        _build_multimodal_input(parts, model=getattr(agent._config, "model", ""))
+        if parts and agent
+        else user_message
+    )
     if agent is None:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found.")
 
@@ -878,7 +1036,7 @@ async def ai_chat_stream(request: Request):
         try:
             final_result = None
             async with raw_agent.run_stream_events(
-                user_prompt=user_message,
+                user_prompt=multimodal_input,
                 deps=deps,
                 message_history=message_history,
                 conversation_id=conversation_id,
@@ -948,7 +1106,7 @@ async def load_conversation(conversation_id: str, request: Request) -> JSONRespo
     """Load messages for a conversation."""
     from sqlalchemy import select
 
-    from fastapi_admin_kit.ai.usage import AIConversation, AIMessage
+    from fastapi_admin_kit.ai.usage import AIAttachment, AIConversation, AIMessage
     from fastapi_admin_kit.db import get_db_session
 
     user = await _resolve_user(request)
@@ -971,6 +1129,52 @@ async def load_conversation(conversation_id: str, request: Request) -> JSONRespo
     )
     msgs = result.scalars().all()
 
+    # Load attachments for this conversation
+    attach_result = await session.execute(
+        select(AIAttachment)
+        .where(AIAttachment.conversation_id == conversation_id)
+        .order_by(AIAttachment.created_at)
+    )
+    attachments = attach_result.scalars().all()
+
+    # Group attachments by message (we link them by message_id if available)
+    attachments_by_message: dict[int, list[dict]] = {}
+    for att in attachments:
+        if att.message_id is not None:
+            storage_url = (
+                request.app.state.admin_storage.url(att.file_path)
+                if request.app.state.admin_storage
+                else att.file_path
+            )
+            attachments_by_message.setdefault(att.message_id, []).append(
+                {
+                    "id": att.id,
+                    "filename": att.filename,
+                    "url": storage_url,
+                    "mime_type": att.mime_type,
+                    "size": att.file_size,
+                }
+            )
+
+    # For user messages without message_id, try to match by order.
+    user_msg_indices = [i for i, m in enumerate(msgs) if m.role == "user"]
+    unattached = [att for att in attachments if att.message_id is None]
+    for idx, att in zip(user_msg_indices, unattached):
+        storage_url = (
+            request.app.state.admin_storage.url(att.file_path)
+            if request.app.state.admin_storage
+            else att.file_path
+        )
+        attachments_by_message.setdefault(msgs[idx].id, []).append(
+            {
+                "id": att.id,
+                "filename": att.filename,
+                "url": storage_url,
+                "mime_type": att.mime_type,
+                "size": att.file_size,
+            }
+        )
+
     return JSONResponse(
         [
             {
@@ -981,6 +1185,7 @@ async def load_conversation(conversation_id: str, request: Request) -> JSONRespo
                 "tool_args": m.tool_args,
                 "tool_result": m.tool_result,
                 "is_error": m.is_error,
+                "attachments": attachments_by_message.get(m.id, []),
             }
             for m in msgs
         ]
@@ -990,9 +1195,10 @@ async def load_conversation(conversation_id: str, request: Request) -> JSONRespo
 @router.delete("/conversations/{conversation_id}")
 async def delete_conversation(conversation_id: str, request: Request) -> JSONResponse:
     """Delete a conversation and its messages."""
+    from sqlalchemy import delete as sqldel
     from sqlalchemy import select
 
-    from fastapi_admin_kit.ai.usage import AIConversation, AIMessage
+    from fastapi_admin_kit.ai.usage import AIAttachment, AIConversation, AIMessage
     from fastapi_admin_kit.db import get_db_session
 
     user = await _resolve_user(request)
@@ -1008,9 +1214,10 @@ async def delete_conversation(conversation_id: str, request: Request) -> JSONRes
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
-    from sqlalchemy import delete as sqldel
-
     await session.execute(sqldel(AIMessage).where(AIMessage.conversation_id == conversation_id))
+    await session.execute(
+        sqldel(AIAttachment).where(AIAttachment.conversation_id == conversation_id)
+    )
     await session.delete(conv)
     await session.commit()
 

@@ -340,3 +340,23 @@ AI_MESSAGE_SCHEMA = Schema(
     ],
     relations=[],
 )
+
+AI_ATTACHMENT_SCHEMA = Schema(
+    table_name="admin_ai_attachments",
+    verbose_name="AI Attachment",
+    verbose_name_plural="AI Attachments",
+    fields=[
+        Field("id", type="integer", primary_key=True, auto_increment=True),
+        Field("conversation_id", type="string", max_length=36, nullable=True),
+        Field("message_id", type="integer", nullable=True),
+        Field("filename", type="string", max_length=255, nullable=False),
+        Field("file_path", type="string", max_length=500, nullable=False),
+        Field("file_size", type="integer", nullable=True),
+        Field("mime_type", type="string", max_length=100, nullable=True),
+        Field("created_at", type="datetime", server_default="now()"),
+    ],
+    indexes=[
+        {"columns": ["conversation_id", "created_at"], "name": "idx_ai_attach_conv"},
+    ],
+    relations=[],
+)
