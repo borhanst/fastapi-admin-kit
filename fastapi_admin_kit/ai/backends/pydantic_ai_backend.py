@@ -19,6 +19,63 @@ from fastapi_admin_kit.ai.backends import AIBackend, register_backend
 from fastapi_admin_kit.ai.deps import AdminDeps
 from fastapi_admin_kit.ai.errors import error_detail
 
+try:
+    from pydantic_ai.exceptions import ModelHTTPError
+except ImportError:  # pragma: no cover - pydantic-ai is an optional dependency
+
+    class ModelHTTPError(Exception):
+        pass
+
+
+# Groq (and some other providers) reject malformed tool-call arguments
+# server-side with a ``tool_use_failed`` error. The raw provider message leaks
+# straight to the user, so we detect it and retry with a corrective instruction
+# instead of surfacing the provider's internal text.
+_GROQ_TOOL_FAIL_MARKERS = (
+    "failed_generation",
+    "Failed to call a function",
+    "tool_use_failed",
+    "Tool call validation failed",
+    "tool call validation failed",
+)
+
+_TOOL_CALL_RETRY_LIMIT = 2
+
+_CORRECTIVE_INSTRUCTION = (
+    "Your previous reply attempted to call a tool, but the model provider "
+    "rejected the call because the arguments were not valid JSON matching "
+    "the tool's schema. Do NOT write tool calls as plain text. Use the "
+    "native tool-calling mechanism with strictly valid JSON arguments that "
+    "match the tool's parameter schema (all required fields present, no "
+    "unknown fields). If a required value is unknown, ask the user for it "
+    "rather than guessing."
+)
+
+_FRIENDLY_TOOL_FAILURE = (
+    "I couldn't complete that request: the model produced a tool call with "
+    "invalid arguments and the provider rejected it. Please rephrase your "
+    "request, include the required details (such as an ID or name), and try "
+    "again."
+)
+
+
+def _looks_like_tool_failure(text: str) -> bool:
+    """Return True when *text* looks like a provider tool-call rejection."""
+    return bool(text) and any(marker in text for marker in _GROQ_TOOL_FAIL_MARKERS)
+
+
+def _model_http_error_text(err: ModelHTTPError) -> str:
+    """Best-effort string representation of a :class:`ModelHTTPError`."""
+    body = getattr(err, "body", None)
+    if body is None:
+        return str(err)
+    try:
+        body_str = json.dumps(body, default=str)
+    except TypeError:
+        body_str = str(body)
+    return f"{err} {body_str}"
+
+
 logger = logging.getLogger("fastapi_admin_kit.ai")
 
 if TYPE_CHECKING:
@@ -292,6 +349,8 @@ async def _resolve_literal_calls(
 class PydanticAIAgent(AIAgent):
     """Phase 1 implementation using Pydantic AI."""
 
+    _tool_retry_limit: int = _TOOL_CALL_RETRY_LIMIT
+
     def __init__(
         self,
         config: AIAgentConfig,
@@ -302,6 +361,7 @@ class PydanticAIAgent(AIAgent):
         self._deps_factory = deps_factory
         self._usage_writer = usage_writer
         self.name = config.name
+        self._tool_retry_limit = _TOOL_CALL_RETRY_LIMIT
 
         try:
             from pydantic_ai import Agent
@@ -454,21 +514,50 @@ class PydanticAIAgent(AIAgent):
         )
 
         start = time.perf_counter()
-        result = await self._agent.run(
-            message,
-            deps=deps,
-            message_history=message_history,
-            conversation_id=conversation_id,
-            usage_limits=self._config.usage_limits,
-            metadata=self._config.metadata,
+        result, output_override = await self._run_with_tool_retries(
+            message, deps, message_history, conversation_id
         )
         latency_ms = int((time.perf_counter() - start) * 1000)
+
+        if result is None:
+            # Every attempt was rejected by the provider (e.g. Groq
+            # tool_use_failed). Surface a friendly message instead of the
+            # raw provider error.
+            logger.warning(
+                "[AI Agent '%s'] All tool-call attempts failed; returning friendly fallback.",
+                self.name,
+            )
+            await self._usage_writer.write(
+                agent_name=self._config.name,
+                model=str(self._config.model),
+                request_tokens=0,
+                response_tokens=0,
+                total_tokens=0,
+                cost=0.0,
+                user=deps.admin_user,
+                success=False,
+                latency_ms=latency_ms,
+                tool_calls=[],
+                session=deps.session,
+            )
+            return ChatResult(
+                output=output_override or _FRIENDLY_TOOL_FAILURE,
+                usage=UsageInfo(
+                    request_tokens=0,
+                    response_tokens=0,
+                    total_tokens=0,
+                    cost=0.0,
+                ),
+                new_messages=[],
+                tool_calls=[],
+                conversation_id=conversation_id,
+            )
 
         usage = result.usage
         cost = self._compute_cost(usage)
         tool_calls = _extract_tool_calls(result)
 
-        output = result.output
+        output = output_override if output_override is not None else result.output
         if isinstance(output, str):
             literal_calls = _parse_literal_function_calls(output)
             if literal_calls:
@@ -538,6 +627,71 @@ class PydanticAIAgent(AIAgent):
             tool_calls=tool_calls,
             conversation_id=result.conversation_id,
         )
+
+    async def _run_with_tool_retries(
+        self,
+        message: str | list[Any],
+        deps: AdminDeps,
+        message_history: list | None,
+        conversation_id: str | None,
+    ) -> tuple[Any, str | None]:
+        """Run the agent, recovering from provider tool-call rejections.
+
+        Groq (and some other providers) reject malformed tool-call arguments
+        server-side. pydantic-ai either surfaces that as a ``ModelHTTPError``
+        or converts it into a final output containing the raw provider text.
+        In both cases we retry with a corrective instruction appended to the
+        message history. Returns ``(result, output_override)`` where
+        ``output_override`` is a friendly message when every attempt failed.
+        """
+        result: Any = None
+        last_err: Exception | None = None
+        history: list | None = message_history
+
+        for _attempt in range(self._tool_retry_limit + 1):
+            try:
+                result = await self._agent.run(
+                    message,
+                    deps=deps,
+                    message_history=history,
+                    conversation_id=conversation_id,
+                    usage_limits=self._config.usage_limits,
+                    metadata=self._config.metadata,
+                )
+            except ModelHTTPError as err:
+                last_err = err
+                if _attempt < self._tool_retry_limit and _looks_like_tool_failure(
+                    _model_http_error_text(err)
+                ):
+                    history = self._correction_history(result, history)
+                    continue
+                break
+
+            output = result.output
+            if isinstance(output, str) and _looks_like_tool_failure(output):
+                if _attempt < self._tool_retry_limit:
+                    history = self._correction_history(result, history)
+                    continue
+                return result, _FRIENDLY_TOOL_FAILURE
+            return result, None
+
+        if result is None:
+            if last_err is not None and not _looks_like_tool_failure(
+                _model_http_error_text(last_err)
+            ):
+                # A non-tool-call provider error (auth, rate limit, …): let it
+                # propagate so callers can handle it as before.
+                raise last_err
+            return None, _FRIENDLY_TOOL_FAILURE
+        return result, None
+
+    def _correction_history(self, result: Any, history: list | None) -> list:
+        """Build a message history that appends a corrective instruction."""
+        from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+        base: list = list(result.all_messages()) if result is not None else list(history or [])
+        base.append(ModelRequest(parts=[UserPromptPart(content=_CORRECTIVE_INSTRUCTION)]))
+        return base
 
     def chat_stream(
         self,

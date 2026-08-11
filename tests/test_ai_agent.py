@@ -358,6 +358,106 @@ class TestSecondLLMPass:
         assert "tickets" in result.output
 
 
+# ─── Groq tool-call rejection recovery ───
+
+
+class TestToolCallFailureRecovery:
+    def _make_agent(self):
+        from unittest.mock import AsyncMock
+
+        from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
+            _FRIENDLY_TOOL_FAILURE,
+            PydanticAIAgent,
+        )
+        from fastapi_admin_kit.ai.config import AIAgentConfig
+
+        config = AIAgentConfig(
+            name="default",
+            model="groq:llama-3.3-70b-versatile",
+            tools=[],
+            retries=1,
+        )
+        usage_writer = AsyncMock()
+        agent = PydanticAIAgent.__new__(PydanticAIAgent)
+        agent._config = config
+        agent._usage_writer = usage_writer
+        agent.name = "default"
+        return agent, usage_writer, _FRIENDLY_TOOL_FAILURE
+
+    def _fake_run_result(self, output: str):
+        from unittest.mock import MagicMock
+
+        from pydantic_ai.messages import (
+            ModelRequest,
+            ModelResponse,
+            TextPart,
+            UserPromptPart,
+        )
+
+        result = MagicMock()
+        result.output = output
+        result.conversation_id = "conv-1"
+        result.usage = MagicMock(input_tokens=10, output_tokens=5)
+        result.all_messages.return_value = [
+            ModelRequest(parts=[UserPromptPart(content="user msg")]),
+            ModelResponse(parts=[TextPart(content=output)]),
+        ]
+        result.new_messages.return_value = []
+        result.message_history = []
+        return result
+
+    async def test_recovers_via_retry_then_succeeds(self):
+        from unittest.mock import AsyncMock
+
+        agent, _usage_writer, _ = self._make_agent()
+        failure_text = (
+            "Error: Failed to call a function. Please adjust your prompt. "
+            "See 'failed_generation' for more details."
+        )
+        fake_agent = MagicMock()
+        fake_agent.run = AsyncMock(
+            side_effect=[
+                self._fake_run_result(failure_text),
+                self._fake_run_result(failure_text),
+                self._fake_run_result("Here is your answer."),
+            ]
+        )
+        agent._agent = fake_agent
+        agent.execute_tool = AsyncMock(return_value={})
+        agent._model = "groq:llama-3.3-70b-versatile"
+
+        deps = MagicMock()
+        deps.admin_user = MagicMock()
+
+        result = await agent.chat("do the thing", deps, conversation_id="conv-1")
+
+        assert result.output == "Here is your answer."
+        # initial run + 2 retries = 3 calls
+        assert fake_agent.run.call_count == 3
+
+    async def test_friendly_fallback_when_all_retries_fail(self):
+        from unittest.mock import AsyncMock
+
+        agent, _usage_writer, friendly = self._make_agent()
+        failure_text = (
+            "Error: Failed to call a function. Please adjust your prompt. "
+            "See 'failed_generation' for more details."
+        )
+        fake_agent = MagicMock()
+        fake_agent.run = AsyncMock(side_effect=[self._fake_run_result(failure_text)] * 3)
+        agent._agent = fake_agent
+        agent.execute_tool = AsyncMock(return_value={})
+        agent._model = "groq:llama-3.3-70b-versatile"
+
+        deps = MagicMock()
+        deps.admin_user = MagicMock()
+
+        result = await agent.chat("do the thing", deps, conversation_id="conv-1")
+
+        assert result.output == friendly
+        assert fake_agent.run.call_count == 3
+
+
 # ─── Prompt providers ───
 
 

@@ -1062,7 +1062,38 @@ async def ai_chat_stream(request: Request):
             if on_complete and final_result is not None:
                 await on_complete(final_result)
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+            from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
+                _looks_like_tool_failure,
+            )
+
+            # Groq (and similar providers) reject malformed tool calls
+            # server-side; recover via the non-streaming path, which retries
+            # with a corrective prompt and falls back to a friendly message
+            # instead of leaking the raw provider error to the client.
+            if _looks_like_tool_failure(str(e)):
+                try:
+                    fallback = await agent.chat(
+                        multimodal_input,
+                        deps,
+                        message_history=message_history,
+                        conversation_id=conversation_id,
+                    )
+                    text = str(fallback.output)
+                    yield f"data: {json.dumps({'type': 'text-delta', 'delta': text})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    if on_complete:
+                        try:
+                            await on_complete(fallback)
+                        except Exception:
+                            pass
+                    return
+                except Exception:
+                    pass
+            fallback_error = (
+                "The AI model failed to call a tool with valid arguments. "
+                "Please rephrase your request and try again."
+            )
+            yield f"data: {json.dumps({'type': 'error', 'error': fallback_error})}\n\n"
 
     return StreamingResponse(generate_simple_stream(), media_type="text/event-stream")
 
