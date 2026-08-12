@@ -510,6 +510,21 @@ class AIChatService:
                         # frames to the client verbatim.
                         yield f"data: {json.dumps(event)}\n\n"
                 if final_event is not None:
+                    # The agent ran on the per-request session and may have
+                    # left an open write transaction (e.g. a tool call that
+                    # updated a record).  Commit it *before* the streaming
+                    # persistence opens its own session, otherwise both
+                    # sessions hold the SQLite write lock at once and the
+                    # second INSERT fails with "database is locked".
+                    try:
+                        commit_coro = session.commit()
+                        if hasattr(commit_coro, "__await__"):
+                            await commit_coro
+                    except Exception:
+                        logger.warning(
+                            "Pre-commit of request session before AI persistence failed",
+                            exc_info=True,
+                        )
                     await self._persist_stream_result(
                         agent_name, agent, conversation_id, user_message, final_event
                     )
