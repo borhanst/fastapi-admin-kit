@@ -295,11 +295,49 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str | None = None) -
 
 
 async def _current_user_from_ws_cookie(websocket: WebSocket) -> Any:
-    """Resolve the current user from the session cookie on a WebSocket."""
-    from starlette.requests import Request
+    """Resolve the current user from the session cookie on a WebSocket.
 
-    request = Request(websocket.scope)
-    return await get_current_user_from_cookie(request)
+    WebSocket scopes are not HTTP scopes, so we decode the signed session
+    cookie directly from ``websocket.cookies`` and load the user via the
+    configured auth backend — without constructing an HTTP ``Request``
+    (``Starlette.Request`` asserts ``scope["type"] == "http"`` and rejects
+    WebSocket scopes with an exception that surfaces as a 403).
+    """
+    app = websocket.app
+    session_backend = getattr(app.state, "admin_session_backend", None)
+    if session_backend is None:
+        return None
+    cookie_name = getattr(session_backend, "cookie_name", "admin_session")
+    token = websocket.cookies.get(cookie_name)
+    payload = session_backend.decode(token)
+    if not payload:
+        return None
+    user_id = payload.get("user_id")
+    if user_id is None:
+        return None
+
+    auth_backend = getattr(app.state, "admin_auth_backend", None)
+    if auth_backend is None:
+        return None
+
+    session = None
+    try:
+        service = getattr(app.state, "notification_service", None)
+        if service is not None and service.session_factory is not None:
+            session = service.session_factory()
+        else:
+            session = getattr(app.state, "admin_db_session", None)
+        if session is None or not hasattr(session, "execute"):
+            return None
+        user = await auth_backend.get_user(user_id, session)
+        if user is None or not getattr(user, "is_active", False):
+            return None
+        return user
+    finally:
+        if session is not None and hasattr(session, "close"):
+            result = session.close()
+            if hasattr(result, "__await__"):
+                await result
 
 
 def _hub(websocket: WebSocket) -> Any:

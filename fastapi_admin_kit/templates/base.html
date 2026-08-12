@@ -138,6 +138,7 @@
 
   <script>
     window.__ADMIN_PATH__ = {{ admin_path | default('/admin') | tojson }};
+    window.__NOTIFICATIONS_API_PATH__ = {{ notifications_api_path | default(admin_path + '/notifications') | tojson }};
   </script>
   <script src="/static/js/htmx-config.js"></script>
   <script src="/static/js/admin.js?v={{ static_version }}"></script>

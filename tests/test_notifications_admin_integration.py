@@ -172,3 +172,64 @@ def test_unauthenticated_list_401(app):
     client = TestClient(app)
     resp = client.get("/admin/notifications/")
     assert resp.status_code == 401
+
+
+@pytest.fixture
+def api_prefix_app(engine, async_session_factory, admin_user):
+    """Admin app with notifications mounted under a non-default prefix."""
+    app = FastAPI()
+    admin = Admin(app=app, engine=engine, secret_key=SECRET_KEY, auto_discover=False)
+
+    service = NotificationService(session_factory=async_session_factory)
+    configure_notifications(app, service, prefix="/api/notifications")
+
+    os.environ["SKIP_CREATE_TABLES"] = "true"
+    try:
+        run_async(admin.setup(app))
+    finally:
+        os.environ.pop("SKIP_CREATE_TABLES", None)
+    return app, admin
+
+
+def test_admin_paths_synced_to_mount_prefix(api_prefix_app, admin_user):
+    """The admin template/JS must point at the real mount prefix, not /admin/notifications."""
+    app, admin = api_prefix_app
+    assert admin.config.notifications_api_path == "/api/notifications"
+    assert admin.config.notifications_list_path == "/api/notifications/"
+
+    client = TestClient(app)
+    client.cookies.set("admin_session", create_session_cookie(admin_user.id))
+    resp = client.get("/admin/")
+    assert resp.status_code == 200
+    html = resp.text
+    assert 'window.__NOTIFICATIONS_API_PATH__ = "/api/notifications"' in html.replace(
+        "</script>", ""
+    )
+
+    # The frontend endpoints resolve at the synced prefix.
+    resp = client.get("/api/notifications/unread-count")
+    assert resp.status_code == 200
+
+
+def test_explicit_admin_path_respected(engine, async_session_factory, admin_user):
+    """A user-provided notifications_api_path is never overwritten by configure_notifications."""
+    app = FastAPI()
+    admin = Admin(
+        app=app,
+        engine=engine,
+        secret_key=SECRET_KEY,
+        auto_discover=False,
+        notifications_api_path="/custom/notifications",
+    )
+
+    service = NotificationService(session_factory=async_session_factory)
+    configure_notifications(app, service, prefix="/api/notifications")
+
+    os.environ["SKIP_CREATE_TABLES"] = "true"
+    try:
+        run_async(admin.setup(app))
+    finally:
+        os.environ.pop("SKIP_CREATE_TABLES", None)
+
+    assert admin.config.notifications_api_path == "/custom/notifications"
+    assert admin.config.notifications_list_path == "/custom/notifications/"
