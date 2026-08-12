@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any
@@ -12,12 +10,27 @@ from typing import TYPE_CHECKING, Any
 from fastapi_admin_kit.ai.agent import (
     AIAgent,
     ChatResult,
-    ToolCallRecord,
     UsageInfo,
 )
 from fastapi_admin_kit.ai.backends import AIBackend, register_backend
+from fastapi_admin_kit.ai.backends.repairer import (
+    _CORRECTIVE_INSTRUCTION,
+    _FRIENDLY_TOOL_FAILURE,
+    ModelOutputRepairer,
+    _extract_tool_calls,
+    _looks_like_tool_failure,
+    _parse_literal_function_calls,
+)
 from fastapi_admin_kit.ai.deps import AdminDeps
-from fastapi_admin_kit.ai.errors import error_detail
+
+__all__ = [
+    "PydanticAIAgent",
+    "PydanticAIBackend",
+    "_looks_like_tool_failure",
+    "_parse_literal_function_calls",
+    "_extract_tool_calls",
+    "_FRIENDLY_TOOL_FAILURE",
+]
 
 try:
     from pydantic_ai.exceptions import ModelHTTPError
@@ -27,327 +40,32 @@ except ImportError:  # pragma: no cover - pydantic-ai is an optional dependency
         pass
 
 
-# Groq (and some other providers) reject malformed tool-call arguments
-# server-side with a ``tool_use_failed`` error. The raw provider message leaks
-# straight to the user, so we detect it and retry with a corrective instruction
-# instead of surfacing the provider's internal text.
-_GROQ_TOOL_FAIL_MARKERS = (
-    "failed_generation",
-    "Failed to call a function",
-    "tool_use_failed",
-    "Tool call validation failed",
-    "tool call validation failed",
-)
-
 _TOOL_CALL_RETRY_LIMIT = 2
-
-_CORRECTIVE_INSTRUCTION = (
-    "Your previous reply attempted to call a tool, but the model provider "
-    "rejected the call because the arguments were not valid JSON matching "
-    "the tool's schema. Do NOT write tool calls as plain text. Use the "
-    "native tool-calling mechanism with strictly valid JSON arguments that "
-    "match the tool's parameter schema (all required fields present, no "
-    "unknown fields). If a required value is unknown, ask the user for it "
-    "rather than guessing."
-)
-
-_FRIENDLY_TOOL_FAILURE = (
-    "I couldn't complete that request: the model produced a tool call with "
-    "invalid arguments and the provider rejected it. Please rephrase your "
-    "request, include the required details (such as an ID or name), and try "
-    "again."
-)
-
-
-def _looks_like_tool_failure(text: str) -> bool:
-    """Return True when *text* looks like a provider tool-call rejection."""
-    return bool(text) and any(marker in text for marker in _GROQ_TOOL_FAIL_MARKERS)
-
-
-def _model_http_error_text(err: ModelHTTPError) -> str:
-    """Best-effort string representation of a :class:`ModelHTTPError`."""
-    body = getattr(err, "body", None)
-    if body is None:
-        return str(err)
-    try:
-        body_str = json.dumps(body, default=str)
-    except TypeError:
-        body_str = str(body)
-    return f"{err} {body_str}"
-
 
 logger = logging.getLogger("fastapi_admin_kit.ai")
 
+# Default repairer used when an agent is constructed without running
+# ``__init__`` (e.g. unit tests that build it via ``__new__``).  Normally an
+# instance gets its own :class:`ModelOutputRepairer` injected in ``__init__``.
+_DEFAULT_REPAIRER = ModelOutputRepairer()
+
 if TYPE_CHECKING:
     from pydantic_ai import Agent
-    from pydantic_ai.result import AgentRunResult, RunUsage, StreamedRunResult
 
     from fastapi_admin_kit.ai.config import AIAgentConfig
     from fastapi_admin_kit.ai.tools import Tool
     from fastapi_admin_kit.ai.usage import AIUsageWriter
 
 
-_LITERAL_CALL_RE = re.compile(r"<function=(\w+)")
-
-
-def _parse_literal_json_object(text: str) -> tuple[dict[str, Any] | None, int]:
-    """Parse a JSON object at the start of ``text``.
-
-    Returns ``(parsed_dict, end_index)`` or ``(None, 0)`` when no complete
-    JSON object is present. Handles nested braces and strings.
-    """
-    stripped = text.lstrip()
-    if not stripped.startswith("{"):
-        return None, 0
-
-    depth = 0
-    in_string = False
-    escaped = False
-    for i, ch in enumerate(stripped):
-        if in_string:
-            if escaped:
-                escaped = False
-            elif ch == "\\":
-                escaped = True
-            elif ch == '"':
-                in_string = False
-            continue
-        if ch == '"':
-            in_string = True
-        elif ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                try:
-                    return json.loads(stripped[: i + 1]), i + 1
-                except json.JSONDecodeError:
-                    return None, 0
-    return None, 0
-
-
-def _parse_literal_function_calls(
-    text: str,
-) -> list[tuple[str, dict[str, Any], int]]:
-    """Extract literal ``<function=name {json}>`` calls from model output.
-
-    Some models (e.g. Llama via Groq) occasionally emit tool calls as plain
-    text instead of using native tool calling. Returns ``(name, args, end)``
-    tuples where ``end`` is the index just past the call (args + optional
-    closing tag) so callers can replace the whole expression.
-    """
-    calls: list[tuple[str, dict[str, Any], int]] = []
-    for match in _LITERAL_CALL_RE.finditer(text):
-        name = match.group(1)
-        after_name = text[match.end() :]
-        # Skip optional `>` between name and JSON (e.g. `<function=get_ticket> {…}`).
-        # Some models also emit a stray `=` / `:` before the JSON object
-        # (e.g. `<function=name>={"key": value}`) or wrap it in parentheses
-        # (e.g. `<function=name>({"key": value})`). Tolerate all of these.
-        after_name = after_name.lstrip(">").lstrip()
-        while after_name[:1] in ("=", ":", "(", ">"):
-            after_name = after_name[1:].lstrip()
-        args, offset = _parse_literal_json_object(after_name)
-        # Consume a trailing `)` if the JSON object was wrapped in parens.
-        if offset:
-            while after_name[offset : offset + 1] == ")":
-                offset += 1
-        stripped_len = len(text[match.end() :]) - len(after_name)
-        end = match.end() + stripped_len + offset
-        if offset == 0:
-            closing = re.match(r"\s*</function>", text[end:])
-            if closing:
-                end += closing.end()
-        calls.append((name, args or {}, end))
-    return calls
-
-
-def _format_literal_call_result(result: Any) -> str:
-    """Render a tool result as readable text for the chat reply."""
-    from fastapi.encoders import jsonable_encoder
-
-    try:
-        return json.dumps(jsonable_encoder(result), indent=2, default=str, ensure_ascii=False)
-    except (TypeError, ValueError):
-        return str(result)
-
-
-def _strip_literal_function_calls(text: str) -> str:
-    """Remove literal ``<function=name {json}></function>`` expressions from text.
-
-    Used after tool results have been rendered so the raw call syntax never
-    leaks into the final chat reply.
-    """
-    return _LITERAL_CALL_RE.sub("", text).replace("</function>", "")
-
-
-def _replace_literal_calls_with_results(
-    text: str,
-    results: list[tuple[str, dict[str, Any], Any, bool]],
-    ends: list[int],
-) -> str:
-    """Replace each literal call in ``text`` with its executed result."""
-    if not results:
-        return text
-
-    rendered: list[str] = []
-    last = 0
-    for idx, match in enumerate(_LITERAL_CALL_RE.finditer(text)):
-        if idx >= len(results):
-            break
-        name, _args, result, is_error = results[idx]
-        rendered.append(text[last : match.start()])
-        if is_error:
-            rendered.append(f"[Tool {name} failed: {result}]")
-        else:
-            rendered.append(_format_literal_call_result(result))
-        last = max(ends[idx], match.end())
-    rendered.append(text[last:])
-    return "".join(rendered)
-
-
-def _extract_tool_calls(result: AgentRunResult[Any]) -> list[ToolCallRecord]:
-    """Extract tool call records from a Pydantic AI run result."""
-    records: list[ToolCallRecord] = []
-    messages = result.all_messages()
-    for msg in messages:
-        parts = getattr(msg, "parts", [])
-        for part in parts:
-            if getattr(part, "part_kind", "") == "tool-call":
-                records.append(
-                    ToolCallRecord(
-                        name=getattr(part, "tool_name", ""),
-                        args=getattr(part, "args", {}),
-                    )
-                )
-            elif getattr(part, "part_kind", "") == "tool-return":
-                if records:
-                    records[-1].result = getattr(part, "content", None)
-    return records
-
-
-async def _resolve_literal_calls(
-    agent: PydanticAIAgent,
-    output: str,
-    result: AgentRunResult[Any],
-    deps: AdminDeps,
-    tool_calls: list[ToolCallRecord],
-    cost: float,
-    usage: Any,
-) -> tuple[str, Any, float, list[ToolCallRecord]]:
-    """Handle legacy literal ``<function=name {json}>`` output.
-
-    Some models (e.g. Llama via Groq) emit tool calls as plain text instead of
-    using native tool calling. This executes each parsed call directly, then
-    runs a second LLM pass so the reply is natural language rather than raw
-    JSON. Returns ``(output, usage, cost, tool_calls)``.
-    """
-    executed: list[tuple[str, dict[str, Any], Any, bool]] = []
-    for name, args, _end in _parse_literal_function_calls(output):
-        is_error = False
-        try:
-            tool_result = await agent.execute_tool(name, args, deps)
-        except Exception as e:  # noqa: BLE001
-            tool_result = error_detail(e, debug=deps.debug)
-            is_error = True
-        executed.append((name, args, tool_result, is_error))
-        tool_calls.append(
-            ToolCallRecord(
-                name=name,
-                args=args,
-                result=tool_result,
-                is_error=is_error,
-            )
-        )
-
-    # Second LLM pass: send tool results back to the model for a
-    # natural-language summary instead of inserting raw JSON.
-    from pydantic_ai.messages import (
-        ModelRequest,
-        ModelResponse,
-        TextPart,
-        UserPromptPart,
-    )
-
-    # Strip the literal <function=...> calls from the assistant reply
-    # so the model doesn't echo them back in the second pass.
-    rendered_output = _replace_literal_calls_with_results(
-        output,
-        executed,
-        [end for _name, _args, end in _parse_literal_function_calls(output)],
-    )
-    cleaned_output = _strip_literal_function_calls(rendered_output)
-
-    second_history: list[Any] = list(result.all_messages())
-    # The final assistant ModelResponse still contains the raw literal call
-    # text; replace its text with the cleaned reply so we don't feed the raw
-    # <function=...> back to the model.
-    if second_history and isinstance(second_history[-1], ModelResponse):
-        last = second_history[-1]
-        second_history[-1] = ModelResponse(
-            parts=[
-                (TextPart(content=cleaned_output) if isinstance(p, TextPart) else p)
-                for p in last.parts
-            ]
-        )
-
-    results_text = "\n\n".join(
-        (
-            f"Tool {name} returned:\n"
-            + (
-                _format_literal_call_result(tool_result)
-                if not is_error
-                else f"[Tool {name} failed: {tool_result}]"
-            )
-        )
-        for name, _args, tool_result, is_error in executed
-    )
-    second_history.append(
-        ModelRequest(
-            parts=[
-                UserPromptPart(
-                    content=(
-                        "Below are the results of the tool calls that "
-                        "were made. Please answer the user's question in "
-                        "clear, plain natural language based on these "
-                        "results. Do NOT output any tool calls or JSON.\n\n"
-                        f"{results_text}"
-                    )
-                )
-            ]
-        )
-    )
-
-    if agent._agent is None:
-        return cleaned_output, usage, cost, tool_calls
-
-    second_result: Any = None
-    try:
-        second_result = await agent._agent.run(
-            user_prompt="",
-            deps=deps,
-            message_history=second_history,
-            usage_limits=agent._config.usage_limits,
-            metadata=agent._config.metadata,
-        )
-        output = second_result.output
-        if isinstance(output, str):
-            output = _strip_literal_function_calls(output)
-    except Exception:  # noqa: BLE001
-        if second_result is None:
-            output = cleaned_output
-
-    if second_result is not None:
-        second_usage = second_result.usage
-        second_cost = agent._compute_cost(second_usage)
-        cost += second_cost
-        usage = second_usage
-
-    return output, usage, cost, tool_calls
-
-
 class PydanticAIAgent(AIAgent):
-    """Phase 1 implementation using Pydantic AI."""
+    """Phase 1 implementation using Pydantic AI.
+
+    Slimmed by the architecture review: provider output repair now lives in
+    :class:`~fastapi_admin_kit.ai.backends.repairer.ModelOutputRepairer`, and
+    persistence lives in :class:`~fastapi_admin_kit.ai.conversation
+    .AIConversationStore`.  This class only builds the model, runs it, computes
+    cost, and exposes native streaming events.
+    """
 
     _tool_retry_limit: int = _TOOL_CALL_RETRY_LIMIT
 
@@ -362,6 +80,7 @@ class PydanticAIAgent(AIAgent):
         self._usage_writer = usage_writer
         self.name = config.name
         self._tool_retry_limit = _TOOL_CALL_RETRY_LIMIT
+        self._repairer = ModelOutputRepairer()
 
         try:
             from pydantic_ai import Agent
@@ -389,6 +108,11 @@ class PydanticAIAgent(AIAgent):
             self._register_instructions()
         except ImportError:
             self._agent = None
+
+    @property
+    def repairer(self) -> ModelOutputRepairer:
+        """The output-repair adapter (falls back to the module default)."""
+        return getattr(self, "_repairer", _DEFAULT_REPAIRER)
 
     def _build_system_prompt(self, config: AIAgentConfig) -> str:
         """Build system prompt with tools list appended."""
@@ -559,9 +283,9 @@ class PydanticAIAgent(AIAgent):
 
         output = output_override if output_override is not None else result.output
         if isinstance(output, str):
-            literal_calls = _parse_literal_function_calls(output)
+            literal_calls = self.repairer.extract_literal_calls(output)
             if literal_calls:
-                output, usage, cost, tool_calls = await _resolve_literal_calls(
+                output, usage, cost, tool_calls = await self.repairer.repair(
                     self, output, result, deps, tool_calls, cost, usage
                 )
 
@@ -660,15 +384,15 @@ class PydanticAIAgent(AIAgent):
                 )
             except ModelHTTPError as err:
                 last_err = err
-                if _attempt < self._tool_retry_limit and _looks_like_tool_failure(
-                    _model_http_error_text(err)
+                if _attempt < self._tool_retry_limit and self.repairer.looks_like_failure(
+                    self.repairer.model_http_error_text(err)
                 ):
                     history = self._correction_history(result, history)
                     continue
                 break
 
             output = result.output
-            if isinstance(output, str) and _looks_like_tool_failure(output):
+            if isinstance(output, str) and self.repairer.looks_like_failure(output):
                 if _attempt < self._tool_retry_limit:
                     history = self._correction_history(result, history)
                     continue
@@ -676,8 +400,8 @@ class PydanticAIAgent(AIAgent):
             return result, None
 
         if result is None:
-            if last_err is not None and not _looks_like_tool_failure(
-                _model_http_error_text(last_err)
+            if last_err is not None and not self.repairer.looks_like_failure(
+                self.repairer.model_http_error_text(last_err)
             ):
                 # A non-tool-call provider error (auth, rate limit, …): let it
                 # propagate so callers can handle it as before.
@@ -693,22 +417,116 @@ class PydanticAIAgent(AIAgent):
         base.append(ModelRequest(parts=[UserPromptPart(content=_CORRECTIVE_INSTRUCTION)]))
         return base
 
-    def chat_stream(
+    def stream(
         self,
         message: str | list[Any],
         deps: AdminDeps,
         message_history: list | None = None,
-    ) -> AsyncGenerator[StreamedRunResult[AdminDeps, Any], None]:
-        if self._agent is None:
-            raise RuntimeError("pydantic-ai is not installed.")
+        conversation_id: str | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Stream a reply as native events.
 
-        return self._agent.run_stream(
-            message,
-            deps=deps,
-            message_history=message_history,
-            usage_limits=self._config.usage_limits,
-            metadata=self._config.metadata,
-        )
+        Consumes ``pydantic_ai``'s event stream and normalises it into the
+        admin kit's native events: ``delta`` events for text and a final
+        ``done`` event carrying ``conversation_id``, ``output``, ``usage`` and
+        the full tool-call list.  This is the real streaming seam — routes no
+        longer reach into the backend via ``get_raw_agent``.  On a provider
+        tool-call rejection it falls back to the (repairing) ``chat`` path and
+        marks the result so the route does not double-write the usage log.
+        """
+        if self._agent is None:
+            raise RuntimeError(
+                """pydantic-ai is not installed. Install with:
+                pip install pydantic-ai"""
+            )
+
+        async def _iterate() -> AsyncGenerator[dict[str, Any], None]:
+            final_result: Any = None
+            try:
+                async with self._agent.run_stream_events(
+                    user_prompt=message,
+                    deps=deps,
+                    message_history=message_history,
+                    conversation_id=conversation_id,
+                    usage_limits=self._config.usage_limits,
+                    metadata=self._config.metadata,
+                ) as event_stream:
+                    async for event in event_stream:
+                        if not hasattr(event, "event_kind"):
+                            continue
+                        if event.event_kind == "part_delta":
+                            delta = getattr(event, "delta", None)
+                            if delta is not None and getattr(delta, "content_delta", None):
+                                yield {"type": "delta", "text": delta.content_delta}
+                        elif event.event_kind == "agent_run_result":
+                            final_result = getattr(event, "result", None)
+
+                if final_result is None:
+                    raise RuntimeError("Agent stream ended without a final result.")
+
+                usage = final_result.usage
+                cost = self._compute_cost(usage)
+                tool_calls = _extract_tool_calls(final_result)
+                yield {
+                    "type": "done",
+                    "conversation_id": getattr(final_result, "conversation_id", None)
+                    or conversation_id,
+                    "output": str(getattr(final_result, "output", "")),
+                    "usage": {
+                        "request_tokens": getattr(usage, "request_tokens", None) or 0,
+                        "response_tokens": getattr(usage, "output_tokens", None) or 0,
+                        "total_tokens": getattr(usage, "total_tokens", None) or 0,
+                        "cost": cost,
+                    },
+                    "tool_calls": [
+                        {
+                            "name": tc.name,
+                            "args": tc.args,
+                            "result": tc.result,
+                            "is_error": tc.is_error,
+                        }
+                        for tc in tool_calls
+                    ],
+                    "new_messages": final_result.new_messages(),
+                }
+            except Exception as e:
+                if self.repairer.looks_like_failure(str(e)):
+                    try:
+                        fallback = await self.chat(
+                            message,
+                            deps,
+                            message_history=message_history,
+                            conversation_id=None,
+                        )
+                        yield {"type": "delta", "text": str(fallback.output)}
+                        yield {
+                            "type": "done",
+                            "conversation_id": fallback.conversation_id,
+                            "output": str(fallback.output),
+                            "usage": {
+                                "request_tokens": fallback.usage.request_tokens,
+                                "response_tokens": fallback.usage.response_tokens,
+                                "total_tokens": fallback.usage.total_tokens,
+                                "cost": fallback.usage.cost,
+                            },
+                            "tool_calls": [
+                                {
+                                    "name": tc.name,
+                                    "args": tc.args,
+                                    "result": tc.result,
+                                    "is_error": tc.is_error,
+                                }
+                                for tc in fallback.tool_calls
+                            ],
+                            "new_messages": fallback.new_messages,
+                            "usage_recorded": True,
+                        }
+                        return
+                    except Exception:
+                        pass
+                yield {"type": "error", "error": _FRIENDLY_TOOL_FAILURE}
+
+        return _iterate()
 
     async def execute_tool(self, tool_name: str, params: dict[str, Any], deps: AdminDeps) -> Any:
         tool = self._config.get_tool(tool_name)
@@ -775,13 +593,7 @@ class PydanticAIAgent(AIAgent):
             session=session,  # type: ignore[arg-type]
         )
 
-    def get_raw_agent(self) -> Any:
-        """Return the underlying Pydantic AI agent for direct streaming."""
-        if self._agent is None:
-            raise RuntimeError("pydantic-ai is not installed.")
-        return self._agent
-
-    def _compute_cost(self, usage: RunUsage) -> float:
+    def _compute_cost(self, usage: Any) -> float:
         cfg = self._config
         req = (getattr(usage, "input_tokens", None) or 0) / 1000
         resp = (getattr(usage, "output_tokens", None) or 0) / 1000

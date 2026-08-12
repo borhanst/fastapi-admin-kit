@@ -1,10 +1,8 @@
 """Built-in tools for AI agents.
 
-All database operations are routed through the ORM-agnostic backend adapters
-stored on :class:`~fastapi_admin_kit.ai.deps.AdminDeps`.  When a backend
-adapter is ``None`` (e.g. a minimal setup without ``Admin.setup``) the
-implementations fall back to direct SQLAlchemy calls so existing code
-continues to work unchanged.
+All database reads/writes go through :class:`~fastapi_admin_kit.ai.deps
+.AdminDeps.data_access` — the single seam that owns the ORM-agnostic /
+direct-SQLAlchemy dual path.  Tools no longer duplicate the fallback branch.
 """
 
 from __future__ import annotations
@@ -42,50 +40,7 @@ async def query_database(
     if not await deps.permission_checker.has_permission(table_name, "view"):
         raise ValueError(f"Not permitted to view {table_name}.")
 
-    session = deps.session
-    qb = deps.query_backend
-
-    if qb is not None:
-        # ORM-agnostic path — use the registered QueryBackend adapter.
-        stmt = qb.select(registered.model)
-        for field_name, value in (filters or {}).items():
-            col_attr = getattr(registered.model, field_name, None)
-            if col_attr is None:
-                continue
-            if isinstance(value, dict | list):
-                continue
-            try:
-                if value is None:
-                    stmt = qb.where(stmt, col_attr.is_(None))
-                else:
-                    stmt = qb.where(stmt, col_attr == value)
-            except Exception:  # noqa: BLE001
-                continue
-        stmt = qb.limit(stmt, limit)
-        result = await session.execute(stmt)
-        rows = result.scalars().all()
-    else:
-        # Fallback: direct SQLAlchemy (existing behaviour).
-        from sqlalchemy import select
-
-        stmt = select(registered.model)
-        model = registered.model
-        for field_name, value in (filters or {}).items():
-            if not hasattr(model, field_name):
-                continue
-            if isinstance(value, dict | list):
-                continue
-            col = getattr(model, field_name)
-            try:
-                if value is None:
-                    stmt = stmt.where(col.is_(None))
-                else:
-                    stmt = stmt.where(col == value)
-            except Exception:  # noqa: BLE001
-                continue
-        stmt = stmt.limit(limit)
-        result = await session.execute(stmt)
-        rows = result.scalars().all()
+    rows = await deps.data_access.query(registered.model, filters, limit)
 
     return QueryResult(
         row_count=len(rows),
@@ -109,12 +64,7 @@ async def create_record(
     if not await deps.permission_checker.has_permission(table_name, "create"):
         raise ValueError(f"Not permitted to create {table_name}.")
 
-    model = registered.model
-    session = deps.session
-
-    obj = model(**data)
-    session.add(obj)
-    await session.flush()
+    obj = await deps.data_access.create_record(registered.model, data)
 
     return {"id": getattr(obj, "id", None), "table": table_name}
 

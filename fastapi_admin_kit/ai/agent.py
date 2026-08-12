@@ -68,6 +68,19 @@ class ChatResult:
     conversation_id: str | None = None
 
 
+# ---------------------------------------------------------------------------
+# Native streaming seam
+# ---------------------------------------------------------------------------
+# ``stream`` is the real streaming seam: it yields provider-agnostic dict
+# events (``{"type": "delta", ...}``, ``{"type": "done", ...}``,
+# ``{"type": "error", ...}``) instead of leaking backend-specific objects.
+# Routes frame them (in whatever wire protocol the UI consumes) without
+# knowing anything about the underlying model library.  The ``get_raw_agent``
+# escape hatch that used to let routes reach straight into the backend was
+# removed — the deletion test showed it existed only so routes could bypass
+# this interface.
+
+
 class AIAgent(ABC):
     """Provider-agnostic surface used by the dashboard and chat routes.
 
@@ -84,12 +97,13 @@ class AIAgent(ABC):
     ) -> ChatResult: ...
 
     @abstractmethod
-    def chat_stream(
+    def stream(
         self,
         message: str | list[Any],
         deps: AdminDeps,
         message_history: list | None = None,
-    ) -> AsyncGenerator[Any, None]: ...
+        conversation_id: str | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]: ...
 
     @abstractmethod
     async def execute_tool(
@@ -103,17 +117,3 @@ class AIAgent(ABC):
     async def get_usage_stats(
         self, period: str = "day", session: Any | None = None
     ) -> dict[str, Any]: ...
-
-    def get_raw_agent(self) -> Any | None:
-        """Return the underlying backend-specific agent for streaming adapters.
-
-        Returns ``None`` if the backend is not installed or not applicable.
-        """
-        return None
-
-    def get_streaming_adapter(self) -> type | None:
-        """Return the backend's streaming adapter class.
-
-        Returns ``None`` if the backend doesn't support streaming via a UI adapter.
-        """
-        return None

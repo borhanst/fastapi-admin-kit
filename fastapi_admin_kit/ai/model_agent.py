@@ -182,24 +182,10 @@ def _build_update_tool(model: type, table_name: str, exclude_fields: list[str]) 
             data.pop(f, None)
 
         session = ctx.deps.session
-        qb = ctx.deps.query_backend
         audit = ctx.deps.audit_backend
 
-        if qb is not None:
-            # ORM-agnostic fetch by PK via QueryBackend.
-            pk_col = getattr(model, "id", None)
-            stmt = qb.select(model)
-            if pk_col is not None:
-                stmt = qb.where(stmt, pk_col == record_id)
-            stmt = qb.limit(stmt, 1)
-            result = await session.execute(stmt)
-            obj = result.scalars().first()
-        else:
-            # Fallback: direct SQLAlchemy.
-            from sqlalchemy import select
-
-            result = await session.execute(select(model).where(getattr(model, "id") == record_id))
-            obj = result.scalar_one_or_none()
+        # Single fetch-by-PK path (SQLAlchemy fallback lives in DataAccess).
+        obj = await ctx.deps.data_access.get_by_pk(model, record_id)
 
         if not obj:
             raise ValueError(f"No {table_name} with id {record_id}.")
@@ -256,24 +242,10 @@ def _build_delete_tool(model: type, table_name: str) -> Tool:
             raise ValueError(f"Not permitted to delete {table_name}.")
 
         session = ctx.deps.session
-        qb = ctx.deps.query_backend
         audit = ctx.deps.audit_backend
 
-        if qb is not None:
-            # ORM-agnostic fetch by PK via QueryBackend.
-            pk_col = getattr(model, "id", None)
-            stmt = qb.select(model)
-            if pk_col is not None:
-                stmt = qb.where(stmt, pk_col == record_id)
-            stmt = qb.limit(stmt, 1)
-            result = await session.execute(stmt)
-            obj = result.scalars().first()
-        else:
-            # Fallback: direct SQLAlchemy.
-            from sqlalchemy import select
-
-            result = await session.execute(select(model).where(getattr(model, "id") == record_id))
-            obj = result.scalar_one_or_none()
+        # Single fetch-by-PK path (SQLAlchemy fallback lives in DataAccess).
+        obj = await ctx.deps.data_access.get_by_pk(model, record_id)
 
         if not obj:
             raise ValueError(f"No {table_name} with id {record_id}.")

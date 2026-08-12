@@ -1,68 +1,100 @@
-"""Conversation and message logging for AI agents."""
+"""Centralized conversation-turn persistence.
+
+This module is the single home for "save one chat turn".  Before the
+architecture review, that logic was duplicated three ways: inline in the
+``ai_chat`` endpoint, again in the stream endpoint's ``on_complete``
+closure, and a third time behind ``ConversationRecorder`` (wired through
+``patch_agent_with_conversation_logging``) which the stream route bypassed
+entirely.  All of it now lives here behind one ``AIConversationStore`` whose
+``save_turn`` is the only call the routes make.
+
+The store has no dependency on any LLM, so it is unit-testable with nothing
+but an ``AsyncSession``.
+"""
 
 from __future__ import annotations
 
-import time
 import uuid
-from collections.abc import AsyncGenerator, Awaitable, Callable
-from datetime import UTC, date, datetime
-from datetime import time as dt_time
-from functools import wraps
 from typing import TYPE_CHECKING, Any
+
+from fastapi_admin_kit.ai.serialization import serialize
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from fastapi_admin_kit.ai.agent import AIAgent, ChatResult, ToolCallRecord
-    from fastapi_admin_kit.ai.deps import AdminDeps
+    from fastapi_admin_kit.ai.agent import ToolCallRecord, UsageInfo
     from fastapi_admin_kit.ai.usage import AIConversation
     from fastapi_admin_kit.auth.protocol import AdminUserProtocol
+    from fastapi_admin_kit.backends.protocols import (
+        QueryBackend,
+        SessionBackend,
+    )
 
 
-def _json_safe(value: Any) -> Any:
-    """Return a JSON-serializable copy of ``value``.
+def _session_adapter(session: Any) -> Any:
+    """Wrap a raw session in a :class:`SessionBackend` adapter."""
+    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
 
-    Recursively converts pydantic models (e.g. the ``QueryResult`` returned by
-    ``query_database``), datetimes, and other non-primitive objects into plain
-    JSON-friendly structures so they can be stored in a JSON column.
+    return SqlAlchemySessionAdapter(session)
+
+
+class AIConversationStore:
+    """Deep module owning all conversation/message persistence.
+
+    All reads/writes go through the Admin class's backend adapters:
+    ``query_backend`` (a :class:`QueryBackend`) builds the queries and
+    ``session_backend`` (a :class:`SessionBackend` wrapping the per-request
+    session) executes them.  When neither is supplied the store falls back to
+    the SQLAlchemy session directly, so call sites that only have a raw
+    ``AsyncSession`` keep working.
     """
-    if value is None or isinstance(value, str | int | float | bool):
-        return value
 
-    if isinstance(value, dict):
-        return {k: _json_safe(v) for k, v in value.items()}
-
-    if isinstance(value, list | tuple | set):
-        return [_json_safe(v) for v in value]
-
-    # Pydantic models — includes QueryResult, ReportSpec, ORM-like objects.
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        try:
-            return _json_safe(model_dump())
-        except Exception:  # noqa: BLE001
-            pass
-
-    # datetime / date / time and other objects with reasonable str() forms.
-    if isinstance(value, datetime | date | dt_time) or value.__class__.__module__.startswith(
-        "datetime"
-    ):
-        return value.isoformat()
-
-    if hasattr(value, "__dict__"):
-        try:
-            return _json_safe(vars(value))
-        except TypeError:
-            pass
-
-    return str(value)
-
-
-class ConversationRecorder:
-    """Handles persistence of conversations and messages."""
-
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        query_backend: QueryBackend | None = None,
+        session_backend: SessionBackend | None = None,
+        backend: Any = None,
+    ) -> None:
         self.session = session
+        # Prefer explicit adapters, then the composite backend's adapters.
+        if query_backend is None and backend is not None:
+            query_backend = getattr(backend, "query", None)
+        self._qb = query_backend
+        self._sb = session_backend or _session_adapter(session)
+
+    # -- adapter-aware helpers ---------------------------------------------
+
+    def _select(self, model: Any) -> Any:
+        """Build a SELECT for *model* via the QueryBackend, or raw SQLAlchemy."""
+        if self._qb is not None:
+            return self._qb.select(model)
+        from sqlalchemy import select
+
+        return select(model)
+
+    async def _exec(self, stmt: Any) -> Any:
+        """Execute *stmt* through the session adapter and return the result."""
+        return await self._sb.execute(stmt)
+
+    def _add(self, obj: Any) -> None:
+        self._sb.add(obj)
+
+    async def _flush(self) -> None:
+        await self._sb.flush()
+
+    async def _delete(self, obj: Any) -> None:
+        result = self._sb.delete(obj)
+        if hasattr(result, "__await__"):
+            await result
+
+    async def _commit(self) -> None:
+        result = self._sb.commit()
+        if hasattr(result, "__await__"):
+            await result
+
+    # -- conversation lifecycle --------------------------------------------
 
     async def get_or_create(
         self,
@@ -72,14 +104,11 @@ class ConversationRecorder:
         title: str | None = None,
     ) -> AIConversation:
         from fastapi_admin_kit.ai.usage import AIConversation
+        from fastapi_admin_kit.db import flush_with_rollback
 
         if conversation_id:
-            from sqlalchemy import select
-
-            result = await self.session.execute(
-                select(AIConversation).where(AIConversation.id == conversation_id)
-            )
-            conv = result.scalar_one_or_none()
+            stmt = self._select(AIConversation).where(AIConversation.id == conversation_id)
+            conv = (await self._exec(stmt)).scalar_one_or_none()
             if conv:
                 return conv
 
@@ -91,70 +120,110 @@ class ConversationRecorder:
             user_email=getattr(user, "email", None),
             title=title,
         )
-        self.session.add(conv)
-        from fastapi_admin_kit.db import flush_with_rollback
-
+        self._add(conv)
         await flush_with_rollback(self.session)
         return conv
 
-    async def log_message(
+    async def list_for_user(self, user: AdminUserProtocol) -> list[AIConversation]:
+        from fastapi_admin_kit.ai.usage import AIConversation
+
+        stmt = (
+            self._select(AIConversation)
+            .where(AIConversation.user_id == getattr(user, "id", None))
+            .order_by(AIConversation.last_message_at.desc().nullslast())
+            .limit(50)
+        )
+        return list((await self._exec(stmt)).scalars().all())
+
+    async def load(self, conversation_id: str, user: AdminUserProtocol) -> AIConversation | None:
+        from fastapi_admin_kit.ai.usage import AIConversation
+
+        stmt = self._select(AIConversation).where(
+            AIConversation.id == conversation_id,
+            AIConversation.user_id == getattr(user, "id", None),
+        )
+        return (await self._exec(stmt)).scalar_one_or_none()
+
+    async def load_messages(self, conversation_id: str) -> list[Any]:
+        from fastapi_admin_kit.ai.usage import AIMessage
+
+        stmt = (
+            self._select(AIMessage)
+            .where(AIMessage.conversation_id == conversation_id)
+            .order_by(AIMessage.created_at)
+        )
+        return list((await self._exec(stmt)).scalars().all())
+
+    async def delete(self, conversation_id: str, user: AdminUserProtocol) -> bool:
+        from fastapi_admin_kit.ai.usage import AIAttachment
+
+        conv = await self.load(conversation_id, user)
+        if conv is None:
+            return False
+
+        # Bulk delete is not part of the SessionBackend protocol, so fall back
+        # to fetching the dependent rows and deleting them via the adapter.
+        msgs = await self.load_messages(conversation_id)
+        for m in msgs:
+            await self._delete(m)
+
+        att_stmt = self._select(AIAttachment).where(AIAttachment.conversation_id == conversation_id)
+        attachments = list((await self._exec(att_stmt)).scalars().all())
+        for a in attachments:
+            await self._delete(a)
+
+        await self._delete(conv)
+        await self._commit()
+        return True
+
+    # -- message-level writes -----------------------------------------------
+
+    async def append_message(
         self,
         conv: AIConversation,
         role: str,
         content: str,
+        *,
         tokens: int | None = None,
         latency_ms: int | None = None,
-        attachments: list[dict[str, object]] | None = None,
+        tool_name: str | None = None,
+        tool_args: Any = None,
+        tool_result: Any = None,
+        is_error: bool = False,
+        error: str | None = None,
     ) -> None:
         from fastapi_admin_kit.ai.usage import AIMessage
+        from fastapi_admin_kit.db import flush_with_rollback
 
-        self.session.add(
+        self._add(
             AIMessage(
                 conversation_id=conv.id,
                 role=role,
                 content=content,
                 tokens=tokens,
                 latency_ms=latency_ms,
-            )
-        )
-        from fastapi_admin_kit.db import flush_with_rollback
-
-        await flush_with_rollback(self.session)
-
-    async def log_tool_call(self, conv: AIConversation, call: ToolCallRecord) -> None:
-        from fastapi_admin_kit.ai.usage import AIMessage
-
-        start = time.perf_counter()
-        self.session.add(
-            AIMessage(
-                conversation_id=conv.id,
-                role="tool",
-                tool_name=getattr(call, "name", None),
-                tool_args=_json_safe(getattr(call, "args", None)),
-                tool_result=_json_safe(getattr(call, "result", None)),
-                content=str(getattr(call, "result", "")),
-                is_error=getattr(call, "is_error", False),
-                latency_ms=int((time.perf_counter() - start) * 1000),
-            )
-        )
-        from fastapi_admin_kit.db import flush_with_rollback
-
-        await flush_with_rollback(self.session)
-
-    async def log_error(self, conv: AIConversation, error: str) -> None:
-        from fastapi_admin_kit.ai.usage import AIMessage
-
-        self.session.add(
-            AIMessage(
-                conversation_id=conv.id,
-                role="error",
-                content=error,
+                tool_name=tool_name,
+                tool_args=serialize(tool_args),
+                tool_result=serialize(tool_result),
+                is_error=is_error,
                 error=error,
             )
         )
-        from fastapi_admin_kit.db import flush_with_rollback
-
         await flush_with_rollback(self.session)
+
+    async def log_tool_call(self, conv: AIConversation, call: ToolCallRecord) -> None:
+        await self.append_message(
+            conv,
+            role="tool",
+            content=str(getattr(call, "result", "")),
+            tool_name=getattr(call, "name", None),
+            tool_args=getattr(call, "args", None),
+            tool_result=getattr(call, "result", None),
+            is_error=getattr(call, "is_error", False),
+        )
+
+    async def log_error(self, conv: AIConversation, error: str) -> None:
+        await self.append_message(conv, role="error", content=error, error=error)
 
     async def touch(
         self,
@@ -164,126 +233,118 @@ class ConversationRecorder:
         tokens_delta: int = 0,
         cost_delta: float = 0.0,
     ) -> None:
+        from datetime import UTC, datetime
+
+        from fastapi_admin_kit.db import flush_with_rollback
+
         conv.message_history = message_history
         conv.total_tokens = (conv.total_tokens or 0) + tokens_delta
         conv.total_cost = float(conv.total_cost or 0) + cost_delta
         conv.turn_count = (conv.turn_count or 0) + 1
         conv.last_message_at = datetime.now(UTC)
-        from fastapi_admin_kit.db import flush_with_rollback
-
         await flush_with_rollback(self.session)
 
+    # -- the one call the routes make ---------------------------------------
 
-def _with_conversation_logging(
-    chat_fn: Callable[..., Awaitable[ChatResult]],
-) -> Callable[..., Awaitable[ChatResult]]:
-    """Wrap a chat() method to log tool calls to an existing conversation.
-
-    Conversation creation and user/assistant message logging are handled
-    by the endpoint (dashboard.py ai_chat) to avoid duplicate conversations.
-    """
-
-    @wraps(chat_fn)
-    async def wrapper(
-        self: AIAgent,
-        message: str | list[Any],
-        deps: AdminDeps,
-        message_history: list | None = None,
+    async def save_turn(
+        self,
+        *,
+        agent_name: str,
+        user: AdminUserProtocol,
+        user_message: str,
+        output: str,
+        usage: UsageInfo,
+        tool_calls: list[ToolCallRecord],
         conversation_id: str | None = None,
-        **kwargs: Any,
-    ) -> ChatResult:
-        try:
-            result = await chat_fn(self, message, deps, message_history=message_history, **kwargs)
-        except Exception:
-            raise
+        new_messages: list[Any] | None = None,
+        title: str | None = None,
+        cost: float | None = None,
+    ) -> str:
+        """Persist a complete turn: conversation row, user + assistant messages,
+        tool calls, and rolled-up usage.  Returns the conversation id.
+        """
+        from fastapi_admin_kit.ai.usage import AIMessage
+        from fastapi_admin_kit.db import flush_with_rollback
 
-        for call in getattr(result, "tool_calls", []):
-            if conversation_id:
-                from sqlalchemy import select
-
-                from fastapi_admin_kit.ai.usage import AIConversation
-
-                recorder = ConversationRecorder(deps.session)
-                conv_result = await deps.session.execute(
-                    select(AIConversation).where(AIConversation.id == conversation_id)
-                )
-                conv = conv_result.scalar_one_or_none()
-                if conv:
-                    await recorder.log_tool_call(conv, call)
-
-        return result
-
-    return wrapper
-
-
-def _with_conversation_logging_stream(
-    chat_stream_fn: Callable[..., AsyncGenerator[Any, None]],
-) -> Callable[..., AsyncGenerator[Any, None]]:
-    """Wrap a chat_stream() method to log conversations after stream completes."""
-
-    @wraps(chat_stream_fn)
-    async def wrapper(
-        self: AIAgent,
-        message: str | list[Any],
-        deps: AdminDeps,
-        message_history: list | None = None,
-        conversation_id: str | None = None,
-        **kwargs: Any,
-    ) -> AsyncGenerator[Any, None]:
-        recorder = ConversationRecorder(deps.session)
-        display_title = message if isinstance(message, str) else "[multimodal input]"
-        conv = await recorder.get_or_create(
+        conv = await self.get_or_create(
             conversation_id,
-            agent_name=getattr(self, "name", "default"),
-            user=deps.admin_user,
-            title=display_title[:80] if display_title else None,
+            agent_name=agent_name,
+            user=user,
+            title=title or (user_message[:80] if user_message else None),
         )
 
-        await recorder.log_message(conv, role="user", content=display_title)
+        if conversation_id:
+            existing = conv.message_history or []
+            conv.message_history = existing + [serialize(m) for m in (new_messages or [])]
+            conv.turn_count = (conv.turn_count or 0) + 1
+            conv.total_tokens = (conv.total_tokens or 0) + usage.total_tokens
+            conv.total_cost = float(conv.total_cost or 0) + (
+                cost if cost is not None else usage.cost
+            )
+            from datetime import UTC, datetime
 
-        start = time.perf_counter()
-        accumulated: list[str] = []
-        stream_result = None
-        try:
-            async for chunk in chat_stream_fn(
-                self, message, deps, message_history=message_history, **kwargs
-            ):
-                stream_result = chunk
-                accumulated.append(str(chunk))
-                yield chunk
-        except Exception as exc:
-            await recorder.log_error(conv, error=str(exc))
-            raise
+            conv.last_message_at = datetime.now(UTC)
+        else:
+            conv.message_history = [serialize(m) for m in (new_messages or [])]
+            conv.turn_count = 1
+            conv.total_tokens = usage.total_tokens
+            conv.total_cost = cost if cost is not None else usage.cost
 
-        latency_ms = int((time.perf_counter() - start) * 1000)
-        full_content = "".join(accumulated)
+        self._add(
+            AIMessage(
+                conversation_id=conv.id,
+                role="user",
+                content=user_message,
+            )
+        )
+        self._add(
+            AIMessage(
+                conversation_id=conv.id,
+                role="assistant",
+                content=output,
+                tokens=usage.total_tokens,
+                latency_ms=None,
+            )
+        )
+        for tc in tool_calls:
+            await self.log_tool_call(conv, tc)
 
-        await recorder.log_message(
-            conv,
-            role="assistant",
-            content=full_content,
+        await flush_with_rollback(self.session)
+        return conv.id
+
+    async def record_usage(
+        self,
+        *,
+        agent_name: str,
+        model: str,
+        usage: UsageInfo,
+        user: AdminUserProtocol,
+        success: bool,
+        latency_ms: int,
+        tool_calls: list[ToolCallRecord],
+        cost: float | None = None,
+    ) -> None:
+        """Write the AIUsageLog row for a turn (streaming path)."""
+        from fastapi_admin_kit.ai.usage import AIUsageWriter
+
+        writer = AIUsageWriter()
+        await writer.write(
+            agent_name=agent_name,
+            model=model,
+            request_tokens=usage.request_tokens,
+            response_tokens=usage.response_tokens,
+            total_tokens=usage.total_tokens,
+            cost=cost if cost is not None else usage.cost,
+            user=user,
+            success=success,
             latency_ms=latency_ms,
+            tool_calls=[
+                {
+                    "name": getattr(tc, "name", ""),
+                    "args": getattr(tc, "args", {}),
+                    "ok": getattr(tc, "is_error", False) is False,
+                }
+                for tc in tool_calls
+            ],
+            session=self.session,
         )
-
-        if stream_result is not None:
-            try:
-                from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
-                    _extract_tool_calls,
-                )
-
-                tool_calls = _extract_tool_calls(stream_result)
-                for tc in tool_calls:
-                    await recorder.log_tool_call(conv, tc)
-            except Exception:
-                pass
-
-        await recorder.touch(conv)
-
-    return wrapper
-
-
-def patch_agent_with_conversation_logging(agent_cls: type[AIAgent]) -> None:
-    """Apply conversation logging wrappers to an agent class's chat methods."""
-    agent_cls.chat = _with_conversation_logging(agent_cls.chat)  # type: ignore[assignment]
-    if hasattr(agent_cls, "chat_stream") and agent_cls.chat_stream is not None:
-        agent_cls.chat_stream = _with_conversation_logging_stream(agent_cls.chat_stream)  # type: ignore[assignment]

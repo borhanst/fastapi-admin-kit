@@ -21,6 +21,13 @@ if TYPE_CHECKING:
 __all__ = ["AIUsageLog", "AIConversation", "AIMessage", "AIAttachment", "AIUsageWriter"]
 
 
+def _is_session_backend(obj: object) -> bool:
+    """True if *obj* satisfies the :class:`SessionBackend` protocol."""
+    from fastapi_admin_kit.backends.protocols import SessionBackend
+
+    return isinstance(obj, SessionBackend)
+
+
 class AIUsageWriter:
     """Writes AI usage logs and aggregates statistics."""
 
@@ -40,7 +47,13 @@ class AIUsageWriter:
         latency_ms: int | None = None,
         tool_calls: list[dict[str, object]] | None = None,
     ) -> None:
-        session.add(
+        # Route the insert through a SessionBackend adapter so a custom ORM
+        # backend (not just raw SQLAlchemy) can be used.  Fall back to wrapping
+        # the raw session when no adapter is passed.
+        from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
+
+        sb = session if _is_session_backend(session) else SqlAlchemySessionAdapter(session)
+        sb.add(
             AIUsageLog(
                 agent_name=agent_name,
                 model=model,
@@ -76,7 +89,14 @@ class AIUsageWriter:
         days = days_map.get(period, 1)
         cutoff = datetime.now(UTC) - timedelta(days=days)
 
-        result = await session.execute(
+        from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
+
+        sb = session if _is_session_backend(session) else SqlAlchemySessionAdapter(session)
+
+        # Aggregation with func.sum/case is backend-specific and has no
+        # QueryBackend equivalent, so the SELECT is built with SQLAlchemy
+        # directly; only execution is routed through the session adapter.
+        result = await sb.execute(
             select(
                 sqlfunc.sum(AIUsageLog.total_tokens).label("total_tokens"),
                 sqlfunc.sum(AIUsageLog.cost).label("total_cost"),
