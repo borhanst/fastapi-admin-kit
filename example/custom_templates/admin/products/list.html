@@ -1,0 +1,27 @@
+{# custom_templates/admin/products/list.html — PER-MODEL list-view override.
+   Only applies to the Product model (table "products"). It takes priority over
+   the global admin/list.html and the built-in default.
+
+   Template resolution order (first match wins):
+     1. Explicit admin.list_template
+     2. admin/<table>/list.html          <- this file
+     3. admin/list.html                  <- global override
+     4. pages/list.html                  <- built-in default
+#}
+{% extends "admin/base_list.html" %}
+
+{% block list_header %}
+<div class="page-header" style="border: 2px solid #10B981; border-radius: 0.75rem; padding: 1rem;">
+  <div class="page-header-left">
+    <h1 class="page-header-title">&#128230; PRODUCT CATALOG (custom template)</h1>
+    <p class="page-header-subtitle">This header comes from a per-model template: admin/products/list.html</p>
+  </div>
+  <div class="page-header-right" style="display: flex; gap: 0.5rem; align-items: center;">
+    {% if permissions.can_create %}
+    <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/create" class="btn btn-primary">
+      + New {{ registered.verbose_name }}
+    </a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

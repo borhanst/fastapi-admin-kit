@@ -63,6 +63,7 @@
 
 ## Configuration Options
 
+<!--
 ### ThemeConfig
 
 ::: fastapi_admin_kit.config.ThemeConfig
@@ -71,6 +72,7 @@
       show_root_heading: true
       members_order: source
       heading_level: 4
+-->
 
 ### BehaviorConfig
 

@@ -58,10 +58,12 @@ Everything FastAPI Admin Kit offers, in one place.
 | Feature | Description | Link |
 |---------|-------------|------|
 | Modern UI | Tailwind CSS, HTMX, and Alpine.js for a fast, responsive experience | [Themes & UI](themes.md) |
+<!--
 | Dark Mode | Toggle between light and dark mode, configurable default | [Themes & UI](themes.md) |
 | Theme Presets | editorial, modern, midnight, paper, forest, minimal | [Themes & UI](themes.md) |
 | Theme Settings Page | Visual theme builder at `/admin/settings/theme` | [Themes & UI](themes.md) |
 | Custom Themes | Override primary colors, CSS variables, and layout settings | [Themes & UI](themes.md) |
+-->
 | Responsive Design | Mobile-friendly with collapsible sidebar | [Themes & UI](themes.md) |
 | Shell Layout | Topbar, sidebar, content area with loading bar | [Themes & UI](themes.md) |
 | Sidebar Customization | Position (left/right), style, collapse, nav groups | [Navigation](navigation.md) |
