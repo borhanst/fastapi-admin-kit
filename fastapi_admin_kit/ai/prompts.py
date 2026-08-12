@@ -28,6 +28,10 @@ GUARDRAILS_TEXT = (
     "- Do not provide instructions that could be used to compromise the system.\n"
     "- If a request seems unsafe or ambiguous, decline and explain why.\n"
     "- Never output tool calls or JSON as plain text (e.g. no `\u003cfunction=...\u003e`).\n"
+    "- Only call a tool when the user explicitly asks to perform a data operation "
+    "(look up, list, create, update, or delete a record). For greetings (e.g. "
+    "'hi'), small talk, or general questions you can answer directly, reply in "
+    "plain natural language and do NOT call any tool.\n"
     "- When page context is provided (e.g. 'viewing record with ID: X'), use "
     "that ID automatically in your tool calls without asking, unless it seems derived.\n"
 )

@@ -81,10 +81,15 @@ class PydanticAIAgent(AIAgent):
         self.name = config.name
         self._tool_retry_limit = _TOOL_CALL_RETRY_LIMIT
         self._repairer = ModelOutputRepairer()
+        self._build_error: str | None = None
 
         try:
             from pydantic_ai import Agent
+        except ImportError:  # pydantic-ai itself is not installed
+            self._agent = None
+            return
 
+        try:
             self._model = self._build_model(config)
             model = self._model
             system_prompt = self._build_system_prompt(config)
@@ -106,8 +111,21 @@ class PydanticAIAgent(AIAgent):
             self._agent: Agent[AdminDeps, Any] | None = Agent(**agent_kwargs)
             self._bind_tools(config.tools)
             self._register_instructions()
-        except ImportError:
+        except ImportError as e:
+            # A provider extra is missing (e.g. the `groq` package for Groq
+            # models), NOT pydantic-ai itself. Report the real cause so the
+            # user installs the right extra instead of being told pydantic-ai
+            # is missing.
             self._agent = None
+            self._build_error = (
+                f"Could not build AI model '{config.model}': {e}. "
+                "If this is a Groq/OpenAI/Anthropic/Google model, install the "
+                "matching pydantic-ai provider extra, e.g. "
+                '`pip install "pydantic-ai[groq]"`.'
+            )
+        except Exception as e:  # pragma: no cover - unexpected build failure
+            self._agent = None
+            self._build_error = f"Failed to build the AI agent: {e}"
 
     @property
     def repairer(self) -> ModelOutputRepairer:
@@ -220,7 +238,8 @@ class PydanticAIAgent(AIAgent):
     ) -> ChatResult:
         if self._agent is None:
             raise RuntimeError(
-                """pydantic-ai is not installed. Install with:
+                self._build_error
+                or """pydantic-ai is not installed. Install with:
                 pip install pydantic-ai"""
             )
 
@@ -436,7 +455,8 @@ class PydanticAIAgent(AIAgent):
         """
         if self._agent is None:
             raise RuntimeError(
-                """pydantic-ai is not installed. Install with:
+                self._build_error
+                or """pydantic-ai is not installed. Install with:
                 pip install pydantic-ai"""
             )
 
@@ -490,7 +510,8 @@ class PydanticAIAgent(AIAgent):
                     "new_messages": final_result.new_messages(),
                 }
             except Exception as e:
-                if self.repairer.looks_like_failure(str(e)):
+                error_text = str(e)
+                if self.repairer.looks_like_failure(error_text):
                     try:
                         fallback = await self.chat(
                             message,
@@ -498,11 +519,12 @@ class PydanticAIAgent(AIAgent):
                             message_history=message_history,
                             conversation_id=None,
                         )
-                        yield {"type": "delta", "text": str(fallback.output)}
+                        output = str(fallback.output)
+                        yield {"type": "delta", "text": output}
                         yield {
                             "type": "done",
                             "conversation_id": fallback.conversation_id,
-                            "output": str(fallback.output),
+                            "output": output,
                             "usage": {
                                 "request_tokens": fallback.usage.request_tokens,
                                 "response_tokens": fallback.usage.response_tokens,
@@ -523,8 +545,29 @@ class PydanticAIAgent(AIAgent):
                         }
                         return
                     except Exception:
-                        pass
-                yield {"type": "error", "error": _FRIENDLY_TOOL_FAILURE}
+                        # The model could not be steered away from an invalid tool
+                        # call. Surface the friendly message as a normal assistant
+                        # reply (not a hard error bubble) and stop.
+                        yield {"type": "delta", "text": _FRIENDLY_TOOL_FAILURE}
+                        yield {
+                            "type": "done",
+                            "conversation_id": conversation_id,
+                            "output": _FRIENDLY_TOOL_FAILURE,
+                            "usage": {
+                                "request_tokens": 0,
+                                "response_tokens": 0,
+                                "total_tokens": 0,
+                                "cost": 0.0,
+                            },
+                            "tool_calls": [],
+                            "new_messages": [],
+                            "usage_recorded": True,
+                        }
+                        return
+                # Non-tool errors (auth, rate limit, network, bad model, …) are
+                # NOT tool-call rejections — surface the real cause verbatim
+                # instead of the misleading tool-failure message.
+                yield {"type": "error", "error": error_text}
 
         return _iterate()
 

@@ -512,8 +512,14 @@ class AIChatService:
                     await self._persist_stream_result(
                         agent_name, agent, conversation_id, user_message, final_event
                     )
-            except Exception:
-                yield f"data: {json.dumps({'type': 'error', 'error': _FRIENDLY_TOOL_FAILURE})}\n\n"
+            except Exception as e:
+                # The agent already converts provider tool-call rejections into a
+                # graceful assistant reply; if we get here it is an unexpected
+                # streaming error, so surface the real cause instead of the
+                # misleading tool-failure text.
+                err_text = str(e) or "Unknown streaming error"
+                logger.error("AI stream crashed: %s", err_text, exc_info=True)
+                yield f"data: {json.dumps({'type': 'error', 'error': err_text})}\n\n"
 
         return StreamingResponse(generate(), media_type="text/event-stream")
 

@@ -642,15 +642,20 @@ ai_config = AIConfig(
     agents=[
         AIAgentConfig(
             name="default",
-            model="groq:llama-3.3-70b-versatile",
+            model=os.environ.get("MODEL_NAME", "groq:llama-3.3-70b-versatile"),
             api_key=os.environ.get("GROQ_API_KEY"),
             retries=3,
             system_prompt=(
                 "You are a helpful admin assistant for an e-commerce admin panel. "
-                "You MUST use your tools to answer questions. "
+                "Use your tools ONLY when a question requires data from the "
+                "database (looking up, listing, creating, updating or deleting "
+                "records). For greetings, small talk, or questions you can answer "
+                "directly from general knowledge, reply in plain language and do "
+                "NOT call any tool. "
                 "NEVER output tool calls as text like <function=...>. "
                 "Instead, use the actual tool calling mechanism. "
-                "Never make up data — call the appropriate tool. "
+                "Never make up data — when you do need data, call the appropriate "
+                "tool. "
                 "Be concise and accurate. "
                 "When page context is provided (e.g., 'viewing record with ID: X'), "
                 "use that ID automatically in your tool calls without asking.\n\n"
