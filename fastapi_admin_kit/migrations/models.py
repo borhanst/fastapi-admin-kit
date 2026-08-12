@@ -19,6 +19,9 @@ from fastapi_admin_kit.models.base import Base
 from fastapi_admin_kit.schemas.builtin import (
     AUDIT_LOG_SCHEMA,
     LOGIN_ATTEMPT_SCHEMA,
+    NOTIFICATION_LOG_SCHEMA,
+    NOTIFICATION_PREFERENCE_SCHEMA,
+    NOTIFICATION_SCHEMA,
     PERMISSION_SCHEMA,
     REFRESH_TOKEN_SCHEMA,
     ROLE_SCHEMA,
@@ -83,6 +86,11 @@ Permission = _backend.materialize(PERMISSION_SCHEMA, base=Base)
 AuditLog = _backend.materialize(AUDIT_LOG_SCHEMA, base=Base)
 LoginAttempt = _backend.materialize(LOGIN_ATTEMPT_SCHEMA, base=Base)
 
+# Notification models
+Notification = _backend.materialize(NOTIFICATION_SCHEMA, base=Base)
+NotificationPreference = _backend.materialize(NOTIFICATION_PREFERENCE_SCHEMA, base=Base)
+NotificationLog = _backend.materialize(NOTIFICATION_LOG_SCHEMA, base=Base)
+
 # Junction tables are now available via metadata
 admin_user_roles = Base.metadata.tables.get("admin_user_roles")
 admin_role_permissions = Base.metadata.tables.get("admin_role_permissions")
@@ -98,6 +106,9 @@ __all__ = [
     "UserTOTP",
     "AuditLog",
     "LoginAttempt",
+    "Notification",
+    "NotificationPreference",
+    "NotificationLog",
     "admin_user_roles",
     "admin_role_permissions",
 ]
