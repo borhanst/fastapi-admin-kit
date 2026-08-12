@@ -500,6 +500,7 @@ class AIChatService:
                         payload = json.dumps({"type": "text-delta", "delta": event.get("text", "")})
                         yield f"data: {payload}\n\n"
                     elif event_type == "done":
+                        final_event = event
                         yield f"data: {json.dumps({'type': 'done'})}\n\n"
                     elif event_type == "error":
                         err = event.get("error", _FRIENDLY_TOOL_FAILURE)

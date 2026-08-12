@@ -476,7 +476,17 @@ class PydanticAIAgent(AIAgent):
                             continue
                         if event.event_kind == "part_delta":
                             delta = getattr(event, "delta", None)
-                            if delta is not None and getattr(delta, "content_delta", None):
+                            if delta is None:
+                                continue
+                            # Only surface *text* deltas as visible reply text.
+                            # Thinking/reasoning deltas also expose
+                            # ``content_delta`` but must stay hidden from the
+                            # user — otherwise the model's internal reasoning
+                            # ("Should respond with greeting. No tool calls.")
+                            # leaks into the visible assistant message.
+                            if getattr(delta, "part_delta_kind", None) != "text":
+                                continue
+                            if getattr(delta, "content_delta", None):
                                 yield {"type": "delta", "text": delta.content_delta}
                         elif event.event_kind == "agent_run_result":
                             final_result = getattr(event, "result", None)
