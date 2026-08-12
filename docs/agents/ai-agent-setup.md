@@ -76,7 +76,13 @@ See `example/example_ai.py` for a full working example.
 | `api_key` | Provider key (falls back to the provider's env var). |
 | `tools` | List of tool names (resolved against the tool registry) and `Tool` objects. |
 | `retries` | Retry count for failed tool calls. |
-| `cost_per_1k_input_tokens` / `cost_per_1k_output_tokens` | Token pricing used for usage logs and cost dashboards. |
+| `input_cost` / `output_cost` | Token pricing used for usage logs and cost dashboards. Accepts a `Cost(amount, per)` object or a `"amount/per"` string (`"1k"` or `"1m"`, e.g. `"0.00059/1k"`); a bare float is treated as per-1k. |
+
+> **Free-tier APIs:** cost is computed purely from the `input_cost` / `output_cost`
+> amounts you configure. The system does **not** know whether a model is free — if you
+> pass a non-zero cost, it will be charged in the usage logs and dashboards. When using a
+> free API tier, set the cost amounts to `0` (e.g. `input_cost=0`, `output_cost=0`) so
+> reported costs stay at zero.
 | `metadata` | Function tagging each run with tenant / user / etc. |
 | `max_concurrency` | Concurrency limit for parallel tool calls. |
 | `enable_default_guardrails` | Inject default guardrails, page context, and user permissions. |

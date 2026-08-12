@@ -19,6 +19,45 @@ if TYPE_CHECKING:
 AIBackendName = Literal["pydantic_ai", "langchain", "auto"]
 
 
+#: Token pricing unit understood by :class:`Cost`. ``"1k"`` means price per
+#: 1,000 tokens; ``"1m"`` means price per 1,000,000 tokens.
+CostPerUnit = Literal["1k", "1m"]
+
+
+@dataclass
+class Cost:
+    """Token pricing for an agent.
+
+    ``amount`` is the price and ``per`` is the token unit it applies to
+    (``"1k"`` or ``"1m"``). The divisor converts raw token counts into the
+    unit used for cost calculation.
+    """
+
+    amount: float
+    per: CostPerUnit = "1k"
+
+    @property
+    def divisor(self) -> int:
+        return 1_000_000 if self.per == "1m" else 1000
+
+
+def parse_cost(value: Cost | str | float) -> Cost:
+    """Normalize a cost value into a :class:`Cost`.
+
+    Accepts:
+
+    * a :class:`Cost` (returned unchanged),
+    * a ``"amount/per"`` string (e.g. ``"0.00059/1k"``, ``"0.00079/1m"``),
+    * a bare ``float`` (treated as price per 1k tokens, for backward compat).
+    """
+    if isinstance(value, Cost):
+        return value
+    if isinstance(value, str):
+        amount_s, _, per = value.partition("/")
+        return Cost(float(amount_s), (per or "1k"))  # type: ignore[arg-type]
+    return Cost(float(value), "1k")
+
+
 @dataclass
 class AIAgentConfig:
     """Configuration for a single AI agent.
@@ -42,8 +81,8 @@ class AIAgentConfig:
     result_type: type | None = None
     tools: list[str | Tool] = field(default_factory=list)
     retries: int = 3
-    cost_per_1k_input_tokens: float = 0.0
-    cost_per_1k_output_tokens: float = 0.0
+    input_cost: Cost | str | float = 0.0
+    output_cost: Cost | str | float = 0.0
     metadata: MetadataProvider | None = None
     model_settings: ModelSettingsProvider | object | None = None
     usage_limits: object | None = None
@@ -70,6 +109,8 @@ class AIAgentConfig:
                 raise TypeError(f"Expected str or Tool, got {type(t).__name__}")
         self._resolved_tools = resolved
         self.tools = self._resolved_tools  # type: ignore[assignment]
+        self.input_cost = parse_cost(self.input_cost)
+        self.output_cost = parse_cost(self.output_cost)
 
     def get_tool(self, name: str) -> Tool | None:
         return next((t for t in self._resolved_tools if t.name == name), None)

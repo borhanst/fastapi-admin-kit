@@ -21,6 +21,7 @@ from fastapi_admin_kit.ai.backends.repairer import (
     _looks_like_tool_failure,
     _parse_literal_function_calls,
 )
+from fastapi_admin_kit.ai.config import parse_cost
 from fastapi_admin_kit.ai.deps import AdminDeps
 
 __all__ = [
@@ -648,10 +649,12 @@ class PydanticAIAgent(AIAgent):
 
     def _compute_cost(self, usage: Any) -> float:
         cfg = self._config
-        req = (getattr(usage, "input_tokens", None) or 0) / 1000
-        resp = (getattr(usage, "output_tokens", None) or 0) / 1000
-        in_cost = req * cfg.cost_per_1k_input_tokens
-        out_cost = resp * cfg.cost_per_1k_output_tokens
+        in_c = parse_cost(cfg.input_cost)
+        out_c = parse_cost(cfg.output_cost)
+        req = (getattr(usage, "input_tokens", None) or 0) / in_c.divisor
+        resp = (getattr(usage, "output_tokens", None) or 0) / out_c.divisor
+        in_cost = req * in_c.amount
+        out_cost = resp * out_c.amount
         return round(in_cost + out_cost, 6)
 
 

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from fastapi_admin_kit.ai.agent import ChatResult, ToolCallRecord, UsageInfo
-from fastapi_admin_kit.ai.config import AIAgentConfig, AIConfig
+from fastapi_admin_kit.ai.config import AIAgentConfig, AIConfig, Cost, parse_cost
 from fastapi_admin_kit.ai.deps import AdminDeps
 from fastapi_admin_kit.ai.model_agent import ModelAIAgent
 from fastapi_admin_kit.ai.tools import Tool, ToolRegistry, tool, tool_registry
@@ -175,6 +175,84 @@ class TestAIAgentConfig:
         cfg = AIAgentConfig(name="test", model="m", tools=[t])
         assert cfg.get_tool("x") is t
         assert cfg.get_tool("y") is None
+
+    def test_cost_fields_normalized_to_cost(self):
+        cfg = AIAgentConfig(
+            name="test",
+            model="m",
+            input_cost="0.00059/1k",
+            output_cost=0.00079,
+        )
+        assert isinstance(cfg.input_cost, Cost)
+        assert cfg.input_cost.amount == 0.00059
+        assert cfg.input_cost.per == "1k"
+        assert isinstance(cfg.output_cost, Cost)
+        assert cfg.output_cost.amount == 0.00079
+        assert cfg.output_cost.per == "1k"
+
+    def test_compute_cost_per_1k(self):
+        from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
+            PydanticAIAgent,
+        )
+
+        cfg = AIAgentConfig(
+            name="test",
+            model="m",
+            input_cost="0.00059/1k",
+            output_cost="0.00079/1k",
+        )
+        agent = PydanticAIAgent.__new__(PydanticAIAgent)
+        agent._config = cfg
+        usage = MagicMock(input_tokens=1000, output_tokens=2000)
+        # (1000/1000)*0.00059 + (2000/1000)*0.00079
+        assert agent._compute_cost(usage) == round(0.00059 + 2 * 0.00079, 6)
+
+    def test_compute_cost_per_1m(self):
+        from fastapi_admin_kit.ai.backends.pydantic_ai_backend import (
+            PydanticAIAgent,
+        )
+
+        cfg = AIAgentConfig(
+            name="test",
+            model="m",
+            input_cost="0.59/1m",
+            output_cost="0.79/1m",
+        )
+        agent = PydanticAIAgent.__new__(PydanticAIAgent)
+        agent._config = cfg
+        usage = MagicMock(input_tokens=1_000_000, output_tokens=2_000_000)
+        assert agent._compute_cost(usage) == round(0.59 + 2 * 0.79, 6)
+
+
+class TestCost:
+    def test_parse_cost_string_1k(self):
+        c = parse_cost("0.00059/1k")
+        assert isinstance(c, Cost)
+        assert c.amount == 0.00059
+        assert c.per == "1k"
+        assert c.divisor == 1000
+
+    def test_parse_cost_string_1m(self):
+        c = parse_cost("0.00079/1m")
+        assert c.per == "1m"
+        assert c.divisor == 1_000_000
+
+    def test_parse_cost_defaults_to_1k(self):
+        c = parse_cost("0.00059")
+        assert c.per == "1k"
+
+    def test_parse_cost_float_legacy_per_1k(self):
+        c = parse_cost(0.00059)
+        assert c.amount == 0.00059
+        assert c.per == "1k"
+
+    def test_parse_cost_passthrough(self):
+        c = Cost(0.00059, "1k")
+        assert parse_cost(c) is c
+
+    def test_divisor(self):
+        assert Cost(0.0, "1k").divisor == 1000
+        assert Cost(0.0, "1m").divisor == 1_000_000
 
 
 # ─── AIConfig ───

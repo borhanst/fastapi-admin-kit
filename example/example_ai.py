@@ -669,8 +669,8 @@ ai_config = AIConfig(
             ],
             metadata=_agent_metadata,
             max_concurrency=5,
-            cost_per_1k_input_tokens=0.00059,
-            cost_per_1k_output_tokens=0.00079,
+            input_cost=0.00059,
+            output_cost=0.00079,
             tools=product_tools+ticket_tools,
         ),
         # ----------------------------------------------------------------

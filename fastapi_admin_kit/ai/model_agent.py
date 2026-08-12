@@ -388,7 +388,7 @@ class ModelAIAgent(ABC):
             Optional static system prompt prepended before the tools list.
         **kwargs:
             Any additional keyword arguments forwarded to :class:`AIAgentConfig`
-            (e.g. ``api_key``, ``retries``, ``cost_per_1k_input_tokens``).
+            (e.g. ``api_key``, ``retries``, ``input_cost``, ``output_cost``).
 
         Returns
         -------
