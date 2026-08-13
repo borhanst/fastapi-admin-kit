@@ -1,0 +1,28 @@
+{# custom_templates/admin/list.html — GLOBAL list-view override.
+   Extends the built-in admin/base_list.html and replaces the page header with a
+   custom banner. Because this template lives in a custom template dir that is
+   prepended ahead of the built-ins, it wins over the default admin/list.html
+   for every registered model that doesn't provide its own per-model override.
+
+   To target a single model instead, name the file admin/<table>/list.html (see
+   the Product example in example/custom_templates/admin/products/list.html).
+#}
+{% extends "admin/base_list.html" %}
+
+{% block list_header %}
+<div class="page-header" style="border: 2px dashed #6366F1; border-radius: 0.75rem; padding: 1rem;">
+  <div class="page-header-left">
+    <h1 class="page-header-title">{{ registered.verbose_name_plural }}</h1>
+    <p class="page-header-subtitle">
+      &#10003; Custom template dir override applied — built-in header replaced.
+    </p>
+  </div>
+  <div class="page-header-right" style="display: flex; gap: 0.5rem; align-items: center;">
+    {% if permissions.can_create %}
+    <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/create" class="btn btn-primary">
+      + New {{ registered.verbose_name }}
+    </a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

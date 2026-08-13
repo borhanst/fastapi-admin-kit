@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/pypi/l/fastapi-admin-kit.svg)](https://github.com/borhanst/fastapi-admin-kit/blob/main/LICENSE)
 [![Tests](https://github.com/borhanst/fastapi-admin-kit/actions/workflows/tests.yml/badge.svg)](https://github.com/borhanst/fastapi-admin-kit/actions/workflows/tests.yml)
 
-A drop-in admin panel for FastAPI + SQLAlchemy + SQLModel apps, inspired by Django Unfold.
+A drop-in admin panel for FastAPI + SQLAlchemy + SQLModel apps, inspired by Django Admin.
 
 ![FastAPI Admin Kit Dashboard](docs/assets/images/admin-dashboard.png)
 
@@ -23,7 +23,7 @@ A drop-in admin panel for FastAPI + SQLAlchemy + SQLModel apps, inspired by Djan
 - **17 Built-in Widgets** — TextInput, Toggle, DatePicker, FileUpload, Wysiwyg, and more
 - **Inline Editing** — Edit records directly from list view with 3-dot action menu
 - **Command Palette** — `Cmd+K` / `Ctrl+K` global search across models and fields
-- **JSON API** — REST endpoints with JWT token auth for external frontends
+<!--- **JSON API** — REST endpoints with JWT token auth for external frontends-->
 - **Dashboard** — Configurable stat cards, charts, tables, and progress bars
 - **CLI Tools** — `fak-admin` / `fak` for superuser management and project scaffolding
 - **Pagination** — Offset, cursor, or dynamic strategies per model
@@ -187,7 +187,6 @@ All commands accept `-d DATABASE_URL` or read the `DATABASE_URL` environment var
 
 ```python
 from fastapi_admin_kit import Admin
-from fastapi_admin_kit.config import ThemeConfig
 
 admin = Admin(
     app=app,
@@ -196,7 +195,6 @@ admin = Admin(
     secret_key=SECRET_KEY,
     title="My Admin",           # Admin panel title
     admin_path="/admin",        # URL prefix
-    dark_mode_default=False,    # Dark mode on by default
     # Auth
     auth_backend=BuiltinAuthBackend(),
     # Environment badge

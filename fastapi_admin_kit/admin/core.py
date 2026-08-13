@@ -42,6 +42,53 @@ if TYPE_CHECKING:
     from fastapi_admin_kit.views import ModelAdmin
 
 
+def _merge_legacy_kwargs_into_config(
+    config: AdminConfig,
+    *,
+    ui: dict[str, Any],
+    auth: dict[str, Any],
+    audit: dict[str, Any],
+    behavior: dict[str, Any],
+    storage: dict[str, Any],
+    nav: dict[str, Any],
+) -> AdminConfig:
+    """Merge explicitly-provided legacy Admin() kwargs into a user-supplied config.
+
+    When the caller passes both a full ``AdminConfig`` *and* legacy keyword
+    arguments (e.g. ``title=``, ``auth_backend=``), the legacy kwargs must not be
+    silently dropped. Each value is applied to the config only when the config's
+    corresponding field is still at its own default — so an explicitly
+    configured ``config.ui`` / ``config.auth`` always wins over a legacy default.
+    """
+    import inspect
+
+    # Helper: apply legacy values for a sub-config, skipping anything that
+    # matches the sub-config's own default.
+    def _merge(sub_config: Any, legacy_values: dict[str, Any]) -> None:
+        try:
+            defaults = {
+                name: param.default
+                for name, param in inspect.signature(sub_config.__class__).parameters.items()
+                if param.default is not inspect.Parameter.empty
+            }
+        except Exception:
+            defaults = {}
+        for key, value in legacy_values.items():
+            if key not in defaults:
+                continue
+            current = getattr(sub_config, key, None)
+            if current == defaults[key]:
+                setattr(sub_config, key, value)
+
+    _merge(config.ui, ui)
+    _merge(config.auth, auth)
+    _merge(config.audit, audit)
+    _merge(config.behavior, behavior)
+    _merge(config.storage, storage)
+    _merge(config.nav, nav)
+    return config
+
+
 # ---------------------------------------------------------------------------
 # Default seed roles per AUTH_RBAC_SYSTEM.md §13
 # ---------------------------------------------------------------------------
@@ -299,6 +346,65 @@ class Admin:
                     ],
                 ),
             )
+        else:
+            config = _merge_legacy_kwargs_into_config(
+                config,
+                ui=dict(
+                    title=title,
+                    logo_url=logo_url,
+                    favicon_url=favicon_url,
+                    primary_color=primary_color,
+                    primary_color_dark=primary_color_dark,
+                    dark_mode_default=dark_mode_default,
+                    per_page_default=per_page_default,
+                    theme=theme,
+                    sidebar_style=sidebar_style,
+                    sidebar_position=sidebar_position,
+                    table_style=table_style,
+                    table_row_height=table_row_height,
+                    form_layout=form_layout,
+                    form_spacing=form_spacing,
+                    dashboard_grid=dashboard_grid,
+                    dashboard_card_style=dashboard_card_style,
+                    dashboard_stat_size=dashboard_stat_size,
+                    content_width=content_width,
+                    topbar_style=topbar_style,
+                    custom_css=custom_css,
+                    custom_css_url=custom_css_url,
+                    custom_js=custom_js,
+                    custom_js_url=custom_js_url,
+                    show_history=show_history,
+                    show_view_on_site=show_view_on_site,
+                    environment_label=environment_label,
+                    environment_color=environment_color,
+                    mobile_sidebar=mobile_sidebar,
+                ),
+                auth=dict(
+                    auth_model=auth_model,
+                    auth_backend=auth_backend,
+                    session_ttl=session_ttl,
+                    session_cookie_name=session_cookie_name,
+                    session_secure=session_secure,
+                    superuser_emails=superuser_emails,
+                    session_samesite=session_samesite,
+                ),
+                audit=dict(audit_retention_days=audit_retention_days),
+                behavior=dict(
+                    auto_discover=auto_discover,
+                    skip_models=skip_models,
+                    dashboard_stats=dashboard_stats or [],
+                    dashboard_charts=dashboard_charts,
+                ),
+                storage=dict(storage=storage, uploads_url=uploads_url),
+                nav=dict(
+                    nav_groups=nav_groups or [],
+                    sidebar_builder=sidebar_builder,
+                    require_tags=require_tags,
+                    dashboard_permission=dashboard_permission,
+                    settings_permission=settings_permission,
+                    sidebar_bottom_links=sidebar_bottom_links,
+                ),
+            )
 
         if database is None:
             database = AdminDatabase(
@@ -325,6 +431,7 @@ class Admin:
                 dashboard_permission=config.nav.dashboard_permission,
                 settings_permission=config.nav.settings_permission,
                 sidebar_bottom_links=config.nav.sidebar_bottom_links,
+                template_dirs=config.template_dirs,
             )
 
         self.config = config
@@ -841,11 +948,17 @@ class Admin:
             )
 
     def _init_jinja(self, app: FastAPI) -> None:
-        """Initialise the Jinja2 template environment."""
+        """Initialise the Jinja2 template environment.
+
+        User-provided template dirs (from AdminConfig.template_dirs) are
+        prepended so custom templates override built-in ones.
+        """
         from starlette.templating import Jinja2Templates
 
         templates_dir = Path(__file__).parent.parent / "templates"
-        self._jinja_env = Jinja2Templates(directory=str(templates_dir))
+        user_dirs = list(getattr(self.template, "template_dirs", None) or [])
+        all_dirs = [str(d) for d in user_dirs] + [str(templates_dir)]
+        self._jinja_env = Jinja2Templates(directory=all_dirs)
 
         # Enable autoescape for XSS protection
         self._jinja_env.env.autoescape = True

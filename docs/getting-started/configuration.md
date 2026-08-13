@@ -138,6 +138,7 @@ admin3 = Admin(app=app, engine=engine, backend=MyCustomMongoBackend())
 | `session_ttl` | `int` | `28800` | Session lifetime in seconds (8 hours) |
 | `dark_mode_default` | `bool` | `False` | Start in dark mode |
 
+<!--
 ### Theme
 
 | Option | Type | Default | Description |
@@ -155,6 +156,7 @@ admin3 = Admin(app=app, engine=engine, backend=MyCustomMongoBackend())
 | `paper` | Classic paper aesthetic |
 | `forest` | Green-tinted natural theme |
 | `minimal` | Sharp edges, no decorative elements |
+-->
 
 ### UI Layout
 

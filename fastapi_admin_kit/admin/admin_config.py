@@ -27,6 +27,7 @@ class AdminConfig:
         behavior: BehaviorConfig | None = None,
         storage: StorageConfig | None = None,
         nav: NavConfig | None = None,
+        template_dirs: list[str] | None = None,
         ai_chat: AIChatConfig | None = None,
     ):
         self.ui = ui or UIConfig()
@@ -35,6 +36,7 @@ class AdminConfig:
         self.behavior = behavior or BehaviorConfig()
         self.storage = storage or StorageConfig()
         self.nav = nav or NavConfig()
+        self.template_dirs = template_dirs or []
         self.ai_chat = ai_chat or AIChatConfig()
 
     def validate_all(self) -> None:

@@ -419,16 +419,28 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             if fc.meta.name in {f.name for f in inline_fields}
         ]
 
+        # Custom inline edit template: explicit → auto-discovery → global → default
+        from fastapi_admin_kit.views.renderers import resolve_template
+
+        inline_edit_template = getattr(registered.admin, "inline_edit_template", None)
+        candidates = []
+        if inline_edit_template:
+            candidates.append(inline_edit_template)
+        candidates.append(f"admin/{registered.table_name}/inline_edit.html")
+        candidates += ["admin/inline_edit.html", "partials/inline_edit_form.html"]
+        inline_edit_template = resolve_template(request, candidates)
+
         templates = request.app.state.admin_jinja_env
         return templates.TemplateResponse(
             request,
-            "partials/inline_edit_form.html",
+            inline_edit_template,
             {
                 "obj": obj,
                 "table_name": registered.table_name,
                 "admin_path": request.app.state.admin_config["admin_path"],
                 "display_columns": form_ctx.fieldsets[0].fields,
                 "inline_fields": form_ctx.fieldsets[0].fields,
+                "view": edit_v,
             },
         )
 
@@ -501,10 +513,20 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
                 for fc in form_ctx.fieldsets[0].fields
                 if fc.meta.name in {f.name for f in inline_fields}
             ]
+            # Custom inline edit template: explicit → auto-discovery → global → default
+            from fastapi_admin_kit.views.renderers import resolve_template
+
+            inline_edit_template = getattr(registered.admin, "inline_edit_template", None)
+            candidates = []
+            if inline_edit_template:
+                candidates.append(inline_edit_template)
+            candidates.append(f"admin/{registered.table_name}/inline_edit.html")
+            candidates += ["admin/inline_edit.html", "partials/inline_edit_form.html"]
+            inline_edit_template = resolve_template(request, candidates)
             templates = request.app.state.admin_jinja_env
             return templates.TemplateResponse(
                 request,
-                "partials/inline_edit_form.html",
+                inline_edit_template,
                 {
                     "obj": obj,
                     "table_name": registered.table_name,
@@ -512,6 +534,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
                     "display_columns": form_ctx.fieldsets[0].fields,
                     "inline_fields": form_ctx.fieldsets[0].fields,
                     "errors": errors,
+                    "view": edit_v,
                 },
                 status_code=422,
             )
