@@ -23,6 +23,9 @@ from fastapi_admin_kit.schemas.builtin import (
     AI_USAGE_LOG_SCHEMA,
     AUDIT_LOG_SCHEMA,
     LOGIN_ATTEMPT_SCHEMA,
+    NOTIFICATION_LOG_SCHEMA,
+    NOTIFICATION_PREFERENCE_SCHEMA,
+    NOTIFICATION_SCHEMA,
     PERMISSION_SCHEMA,
     REFRESH_TOKEN_SCHEMA,
     ROLE_SCHEMA,
@@ -87,6 +90,11 @@ Permission = _backend.materialize(PERMISSION_SCHEMA, base=Base)
 AuditLog = _backend.materialize(AUDIT_LOG_SCHEMA, base=Base)
 LoginAttempt = _backend.materialize(LOGIN_ATTEMPT_SCHEMA, base=Base)
 
+# Notification models
+Notification = _backend.materialize(NOTIFICATION_SCHEMA, base=Base)
+NotificationPreference = _backend.materialize(NOTIFICATION_PREFERENCE_SCHEMA, base=Base)
+NotificationLog = _backend.materialize(NOTIFICATION_LOG_SCHEMA, base=Base)
+
 # AI models
 AIUsageLog = _backend.materialize(AI_USAGE_LOG_SCHEMA, base=Base)
 AIConversation = _backend.materialize(AI_CONVERSATION_SCHEMA, base=Base)
@@ -108,6 +116,9 @@ __all__ = [
     "UserTOTP",
     "AuditLog",
     "LoginAttempt",
+    "Notification",
+    "NotificationPreference",
+    "NotificationLog",
     "AIUsageLog",
     "AIConversation",
     "AIMessage",

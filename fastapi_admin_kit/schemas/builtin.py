@@ -259,6 +259,75 @@ USER_TOTP_SCHEMA = Schema(
 )
 
 # ---------------------------------------------------------------------------
+# Notification schemas
+#
+# Follows the AuditLog "log pattern": user_id/user_email are stored as plain
+# indexed columns (no FK) so the tables keep working when a project overrides
+# the user schema via ``auth_model=``.
+# ---------------------------------------------------------------------------
+
+NOTIFICATION_SCHEMA = Schema(
+    table_name="admin_notifications",
+    verbose_name="Notification",
+    verbose_name_plural="Notifications",
+    fields=[
+        Field("id", type="integer", primary_key=True, auto_increment=True),
+        Field("user_id", type="string", max_length=255, nullable=False, index=True),
+        Field("user_email", type="string", max_length=255, nullable=True),
+        Field("title", type="string", max_length=255, nullable=False),
+        Field("body", type="text", nullable=True),
+        Field("channels", type="json", nullable=True),
+        Field("data", type="json", nullable=True),
+        Field("status", type="string", max_length=20, default="pending"),
+        Field("is_read", type="boolean", default=False),
+        Field("read_at", type="datetime", nullable=True),
+        Field("created_at", type="datetime", server_default="now()"),
+    ],
+    indexes=[
+        {"columns": ["user_id", "created_at"], "name": "idx_notifications_user"},
+    ],
+    relations=[],
+)
+
+NOTIFICATION_PREFERENCE_SCHEMA = Schema(
+    table_name="admin_notification_preferences",
+    verbose_name="Notification Preference",
+    verbose_name_plural="Notification Preferences",
+    fields=[
+        Field("id", type="integer", primary_key=True, auto_increment=True),
+        Field("user_id", type="string", max_length=255, nullable=False, index=True),
+        Field("channel", type="string", max_length=50, nullable=False),
+        Field("enabled", type="boolean", default=True),
+        Field("updated_at", type="datetime", server_default="now()"),
+    ],
+    indexes=[
+        {"columns": ["user_id", "channel"], "name": "idx_notif_pref_user_channel", "unique": True},
+    ],
+    relations=[],
+)
+
+NOTIFICATION_LOG_SCHEMA = Schema(
+    table_name="admin_notification_logs",
+    verbose_name="Notification Log",
+    verbose_name_plural="Notification Logs",
+    fields=[
+        Field("id", type="integer", primary_key=True, auto_increment=True),
+        Field("notification_id", type="integer", nullable=False, index=True),
+        Field("user_id", type="string", max_length=255, nullable=True),
+        Field("channel", type="string", max_length=50, nullable=False),
+        Field("provider", type="string", max_length=100, nullable=True),
+        Field("recipient", type="string", max_length=255, nullable=True),
+        Field("status", type="string", max_length=20, nullable=False),
+        Field("error", type="text", nullable=True),
+        Field("created_at", type="datetime", server_default="now()"),
+    ],
+    indexes=[
+        {"columns": ["notification_id", "channel"], "name": "idx_notif_log_notification"},
+    ],
+    relations=[],
+)
+
+# ---------------------------------------------------------------------------
 # AI usage / conversation schemas
 #
 # Mirrors the AuditLog "log pattern": user_id/user_email are stored as

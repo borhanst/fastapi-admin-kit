@@ -40,7 +40,7 @@
       </div>
       {% endif %}
       {% if permissions.can_import %}
-      <div x-data="{ importOpen: false, importFormat: 'csv' }" class="relative">
+      <div x-data="{ importOpen: false, importFormat: 'csv', admin_path: '{{ admin_path | default('/admin') }}' }" class="relative">
         <button type="button" class="btn btn-secondary btn-sm" @click="importOpen = !importOpen">
           {{ icon("arrow-up-tray", size="16px") }} Import
         </button>

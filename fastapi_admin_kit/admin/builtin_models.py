@@ -1,9 +1,68 @@
 """Default ModelAdmin classes for built-in admin models."""
 
+from __future__ import annotations
+
+from typing import Any
+
 from fastapi_admin_kit.modeladmin import ModelAdmin
 from fastapi_admin_kit.types import ExtraField
 from fastapi_admin_kit.widgets.inputs import AutocompleteWidget, PasswordWidget
 from fastapi_admin_kit.widgets.relation import MultiRelationWidget
+
+
+class NotificationAdmin(ModelAdmin):
+    tag = "notifications"
+    icon = "bell"
+    verbose_name = "Notification"
+    verbose_name_plural = "Notifications"
+
+    def get_nav_badge(self, request: Any = None) -> str | None:
+        from sqlalchemy import func, select
+
+        from fastapi_admin_kit.migrations.models import Notification
+
+        try:
+            from fastapi_admin_kit.db import get_db_session
+
+            session = get_db_session(request)
+            if session is None:
+                return None
+            count = session.execute(
+                select(func.count(Notification.id)).where(Notification.is_read.is_(False))
+            ).scalar_one()
+            return str(count) if count > 0 else None
+        except Exception:
+            return None
+
+
+class NotificationPreferenceAdmin(ModelAdmin):
+    tag = "notifications"
+    icon = "eye"
+    verbose_name = "Notification Preference"
+    verbose_name_plural = "Notification Preferences"
+
+
+class NotificationLogAdmin(ModelAdmin):
+    tag = "notifications"
+    icon = "clock"
+    verbose_name = "Notification Log"
+    verbose_name_plural = "Notification Logs"
+
+    def get_nav_badge(self, request: Any = None) -> str | None:
+        from sqlalchemy import func, select
+
+        from fastapi_admin_kit.migrations.models import NotificationLog
+
+        try:
+            from fastapi_admin_kit.db import get_db_session
+
+            session = get_db_session(request)
+            if session is None:
+                return None
+            count = session.execute(select(func.count(NotificationLog.id))).scalar_one()
+            return str(count) if count > 0 else None
+        except Exception:
+            return None
 
 
 async def flush_pending_perm_ops(request):

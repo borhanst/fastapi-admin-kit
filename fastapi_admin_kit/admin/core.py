@@ -186,12 +186,21 @@ class Admin:
         ai_enabled: bool = False,
         is_development: bool = False,
         sidebar_bottom_links: list[dict[str, str]] | None = None,
+        # Notifications
+        notifications_api_path: str | None = None,
+        notifications_list_path: str | None = None,
         # AI chat file attachments
         ai_chat_max_file_size_mb: int = 10,
         ai_chat_allowed_extensions: list[str] | None = None,
     ):
         self.registry = AdminRegistry()
         self._app: FastAPI | None = app
+
+        # Expose the instance on app.state immediately so plugins (e.g.
+        # configure_notifications) can reach the admin before admin.setup()
+        # runs — _wire_app_state() overwrites the same slot at setup time.
+        if app is not None:
+            app.state.admin = self
 
         # Add CSRF middleware early (must be before app starts)
         if app is not None:
@@ -322,6 +331,12 @@ class Admin:
         self.database = database
         self.router = router
         self.template = template
+
+        # Store notification paths on config for template access
+        default_notifications_path = f"{self.router.admin_path}/notifications"
+        default_notifications_list = f"{default_notifications_path}/"
+        self.config.notifications_api_path = notifications_api_path or default_notifications_path
+        self.config.notifications_list_path = notifications_list_path or default_notifications_list
 
         # Backend: defaults to composed SqlAlchemyBackend
         if backend is None:
@@ -848,6 +863,12 @@ class Admin:
         self._jinja_env.env.globals["model_display_name"] = model_display_name
         self._jinja_env.env.globals["registered_models"] = self.registry.all()
         self._jinja_env.env.globals["admin_path"] = self.router.admin_path
+        self._jinja_env.env.globals["notifications_api_path"] = getattr(
+            self.config, "notifications_api_path", f"{self.router.admin_path}/notifications"
+        )
+        self._jinja_env.env.globals["notifications_list_path"] = getattr(
+            self.config, "notifications_list_path", f"{self.router.admin_path}/notifications/"
+        )
         self._jinja_env.env.globals["nav_groups"] = self._nav_groups_built
 
         # CSRF token helper — reads from request.state (set by CSRFMiddleware)
@@ -1041,6 +1062,9 @@ class Admin:
             # UserTOTPAdmin,
             AuditLogAdmin,
             LoginAttemptAdmin,
+            NotificationAdmin,
+            NotificationLogAdmin,
+            NotificationPreferenceAdmin,
             PermissionAdmin,
             RoleAdmin,
             UserAdmin,
@@ -1048,6 +1072,9 @@ class Admin:
         from fastapi_admin_kit.migrations.models import (
             AuditLog,
             LoginAttempt,
+            Notification,
+            NotificationLog,
+            NotificationPreference,
             Permission,
             Role,
             User,
@@ -1074,6 +1101,9 @@ class Admin:
             # (UserTOTP, UserTOTPAdmin),
             (LoginAttempt, LoginAttemptAdmin),
             (AuditLog, AuditLogAdmin),
+            (Notification, NotificationAdmin),
+            (NotificationPreference, NotificationPreferenceAdmin),
+            (NotificationLog, NotificationLogAdmin),
         ]
 
         for model, admin_class in builtin_models:
