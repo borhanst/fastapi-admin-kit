@@ -174,6 +174,9 @@ class MemorySessionBackend:
         pk_field = _pk_field_name(model)
         if pk_field and record.get(pk_field) is None:
             record[pk_field] = _next_id(self._store, model.__tablename__)
+            # Write the auto-assigned pk back onto the object so callers observe
+            # the same post-``add`` id semantics SQLAlchemy exposes after flush.
+            setattr(obj, pk_field, record[pk_field])
         # overwrite if pk exists
         if pk_field and record.get(pk_field) is not None:
             existing = next((r for r in table if r.get(pk_field) == record[pk_field]), None)
@@ -190,6 +193,9 @@ class MemorySessionBackend:
         return None
 
     def rollback(self) -> None:
+        return None
+
+    def close(self) -> None:
         return None
 
     def delete(self, obj: Any) -> None:
@@ -527,10 +533,19 @@ class MemoryDatabaseBackend:
 
     def materialize(self, schema: Schema, base: Any | None = None) -> type:
         cols = {f.name: MemColumn(f.name, f.type, f.primary_key) for f in schema.fields}
+
+        def _init(self: Any, **kwargs: Any) -> None:
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
         cls = type(
             schema.verbose_name or schema.table_name,
             (),
-            {"__tablename__": schema.table_name, "__schema__": schema},
+            {
+                "__tablename__": schema.table_name,
+                "__schema__": schema,
+                "__init__": _init,
+            },
         )
         for name, col in cols.items():
             setattr(cls, name, col)

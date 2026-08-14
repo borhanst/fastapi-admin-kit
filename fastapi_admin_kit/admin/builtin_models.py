@@ -17,19 +17,17 @@ class NotificationAdmin(ModelAdmin):
     verbose_name_plural = "Notifications"
 
     def get_nav_badge(self, request: Any = None) -> str | None:
-        from sqlalchemy import func, select
-
+        from fastapi_admin_kit.db import get_db_session
         from fastapi_admin_kit.migrations.models import Notification
 
         try:
-            from fastapi_admin_kit.db import get_db_session
-
+            query = getattr(request.app.state, "admin_query_adapter", None)
             session = get_db_session(request)
-            if session is None:
+            if query is None or session is None:
                 return None
-            count = session.scalar_one(
-                select(func.count(Notification.id)).where(Notification.is_read.is_(False))
-            )
+            q = query.select(Notification)
+            q = query.where(q, Notification.is_read == False)  # noqa: E712
+            count = session.count(query.count(q))
             return str(count) if count > 0 else None
         except Exception:
             return None
@@ -49,17 +47,16 @@ class NotificationLogAdmin(ModelAdmin):
     verbose_name_plural = "Notification Logs"
 
     def get_nav_badge(self, request: Any = None) -> str | None:
-        from sqlalchemy import func, select
-
+        from fastapi_admin_kit.db import get_db_session
         from fastapi_admin_kit.migrations.models import NotificationLog
 
         try:
-            from fastapi_admin_kit.db import get_db_session
-
+            query = getattr(request.app.state, "admin_query_adapter", None)
             session = get_db_session(request)
-            if session is None:
+            if query is None or session is None:
                 return None
-            count = session.scalar_one(select(func.count(NotificationLog.id)))
+            q = query.select(NotificationLog)
+            count = session.count(query.count(q))
             return str(count) if count > 0 else None
         except Exception:
             return None

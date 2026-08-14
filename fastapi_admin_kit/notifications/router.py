@@ -22,14 +22,12 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
 
 from fastapi_admin_kit.auth.identity import (
     get_current_user_from_bearer,
     get_current_user_from_cookie,
 )
 from fastapi_admin_kit.db import get_db_session
-from fastapi_admin_kit.notifications.models import Notification
 from fastapi_admin_kit.notifications.schemas import (
     BatchSendRequest,
     NotificationOut,
@@ -173,16 +171,14 @@ async def list_notifications(
     user_id = await _current_user_id(request)
     service = _service(request)
     session = _session(request, service)
-    stmt = (
-        select(Notification)
-        .where(Notification.user_id == user_id)
-        .order_by(Notification.id.desc())
-        .limit(limit)
-        .offset(offset)
+    rows = await service.list_notifications(
+        user_id,
+        limit=limit,
+        offset=offset,
+        unread_only=unread_only,
+        session=session,
     )
-    if unread_only:
-        stmt = stmt.where(Notification.is_read.is_(False))
-    return [_serialize(n) for n in await session.all(stmt)]
+    return [_serialize(n) for n in rows]
 
 
 @router.get("/unread-count")
@@ -191,16 +187,7 @@ async def unread_count(request: Request) -> dict[str, int]:
     user_id = await _current_user_id(request)
     service = _service(request)
     session = _session(request, service)
-    from sqlalchemy import func
-
-    return {
-        "count": await session.scalar_one(
-            select(func.count(Notification.id)).where(
-                Notification.user_id == user_id,
-                Notification.is_read.is_(False),
-            )
-        )
-    }
+    return {"count": await service.unread_count(user_id, session=session)}
 
 
 @router.put("/{notification_id}/read")
@@ -209,16 +196,9 @@ async def mark_read(request: Request, notification_id: int) -> dict[str, bool]:
     user_id = await _current_user_id(request)
     service = _service(request)
     session = _session(request, service)
-    notif = await session.scalar_one_or_none(
-        select(Notification).where(
-            Notification.id == notification_id,
-            Notification.user_id == user_id,
-        )
-    )
-    if notif is None:
+    ok = await service.mark_read(notification_id, user_id, session=session)
+    if not ok:
         raise HTTPException(status_code=404, detail="Notification not found.")
-    notif.is_read = True
-    await service._maybe_await(session.commit())
     return {"success": True}
 
 

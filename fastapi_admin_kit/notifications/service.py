@@ -30,19 +30,14 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any
 
 from fastapi_admin_kit.backends import as_session_backend
 from fastapi_admin_kit.notifications.config import NotificationConfig
 from fastapi_admin_kit.notifications.email import EmailProvider
-from fastapi_admin_kit.notifications.models import (
-    Notification,
-    NotificationLog,
-    NotificationPreference,
-)
 from fastapi_admin_kit.notifications.realtime import RealtimeNotificationHub
 from fastapi_admin_kit.notifications.sms import SMSProvider
+from fastapi_admin_kit.notifications.store import NotificationStore
 
 logger = logging.getLogger("fastapi_admin_kit.notifications")
 
@@ -88,10 +83,14 @@ class NotificationService:
         config: NotificationConfig | None = None,
         session_factory: Any | None = None,
         hub: RealtimeNotificationHub | None = None,
+        backend: Any | None = None,
+        models: Any | None = None,
     ) -> None:
         self.config = config or NotificationConfig()
         self.session_factory = session_factory
         self.hub = hub or RealtimeNotificationHub()
+        self._backend = backend
+        self._models = models
         self._sms_providers: dict[str, SMSProvider] = {}
         self._email_providers: dict[str, EmailProvider] = {}
         self._in_app = None
@@ -155,17 +154,7 @@ class NotificationService:
 
         Absence of a preference row means "enabled by default".
         """
-        from sqlalchemy import select
-
-        session = as_session_backend(session)
-        pref = await self._maybe_await(
-            session.scalar_one_or_none(
-                select(NotificationPreference).where(
-                    NotificationPreference.user_id == str(user_id),
-                    NotificationPreference.channel == channel,
-                )
-            )
-        )
+        pref = await self._build_store(session).get_preference(user_id, channel)
         if pref is None:
             return True
         return bool(pref.enabled)
@@ -174,35 +163,13 @@ class NotificationService:
         self, user_id: str | int, channel: str, enabled: bool, session: Any
     ) -> None:
         """Opt *user_id* in/out of *channel*."""
-        from sqlalchemy import select
-
-        session = as_session_backend(session)
-        pref = await self._maybe_await(
-            session.scalar_one_or_none(
-                select(NotificationPreference).where(
-                    NotificationPreference.user_id == str(user_id),
-                    NotificationPreference.channel == channel,
-                )
-            )
-        )
-        if pref is None:
-            pref = NotificationPreference(user_id=str(user_id), channel=channel)
-            session.add(pref)
-        pref.enabled = enabled
-        pref.updated_at = datetime.now(UTC)
-        await self._commit(session)
+        session = self._adapt(session)
+        await self._build_store(session).set_preference(user_id, channel, enabled)
 
     async def get_preferences(self, user_id: str | int, session: Any) -> dict[str, bool]:
         """Return a dict mapping channel -> enabled for *user_id*."""
-        from sqlalchemy import select
-
-        session = as_session_backend(session)
-        prefs = await self._maybe_await(
-            session.all(
-                select(NotificationPreference).where(NotificationPreference.user_id == str(user_id))
-            )
-        )
-        return {pref.channel: bool(pref.enabled) for pref in prefs}
+        session = self._adapt(session)
+        return await self._build_store(session).get_preferences(user_id)
 
     # ------------------------------------------------------------------
     # Send
@@ -303,10 +270,8 @@ class NotificationService:
                         break
 
         if notification_id is not None:
-            notif = await self._maybe_await(session.get(Notification, notification_id))
-            if notif is not None:
-                notif.status = "sent" if any(r.success for r in results) else "failed"
-                await self._commit(session)
+            status = "sent" if any(r.success for r in results) else "failed"
+            await self._build_store(session).set_notification_status(notification_id, status)
 
         if owned_session:
             await self._maybe_await(session.close())
@@ -352,6 +317,37 @@ class NotificationService:
         return results
 
     # ------------------------------------------------------------------
+    # Router-facing reads (in-app history)
+    # ------------------------------------------------------------------
+
+    async def list_notifications(
+        self,
+        user_id: str | int,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        unread_only: bool = False,
+        session: Any = None,
+    ) -> list[Any]:
+        """List the user's in-app notifications, newest first."""
+        session = await self._get_session(session)
+        return await self._build_store(session).list_for_user(
+            user_id, limit=limit, offset=offset, unread_only=unread_only
+        )
+
+    async def unread_count(self, user_id: str | int, *, session: Any = None) -> int:
+        """Return the number of unread in-app notifications for *user_id*."""
+        session = await self._get_session(session)
+        return await self._build_store(session).unread_count(user_id)
+
+    async def mark_read(
+        self, notification_id: int, user_id: str | int, *, session: Any = None
+    ) -> bool:
+        """Mark the user's notification as read.  Returns False when not found."""
+        session = await self._get_session(session)
+        return await self._build_store(session).mark_read(notification_id, user_id)
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
@@ -365,14 +361,14 @@ class NotificationService:
             "session_factory=."
         )
 
-    @staticmethod
-    def _adapt(session: Any) -> Any:
-        """Wrap a raw SQLAlchemy session so sync + async both work via await."""
-        from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
+    def _adapt(self, session: Any) -> Any:
+        """Wrap *session* in the configured backend's SessionBackend adapter
+        so sync + async sessions both work via ``await``."""
+        return as_session_backend(session, backend=self._backend)
 
-        if isinstance(session, SqlAlchemySessionAdapter):
-            return session
-        return SqlAlchemySessionAdapter(session)
+    def _build_store(self, session: Any) -> NotificationStore:
+        """Build a :class:`NotificationStore` over *session* for this operation."""
+        return NotificationStore(session, backend=self._backend, models=self._models)
 
     @staticmethod
     async def _maybe_await(value: Any) -> Any:
@@ -380,9 +376,6 @@ class NotificationService:
         if hasattr(value, "__await__"):
             return await value
         return value
-
-    async def _commit(self, session: Any) -> None:
-        await self._maybe_await(session.commit())
 
     async def _persist_notification(
         self,
@@ -394,20 +387,18 @@ class NotificationService:
         channels: list[str],
         data: dict[str, Any] | None,
     ) -> int:
-        notif = Notification(
+        store = self._build_store(session)
+        notif_id = await store.create_notification(
             user_id=user_id,
-            user_email=email,
+            email=email,
             title=title,
             body=body,
             channels=channels,
             data=data,
-            status="pending",
-            is_read=False,
         )
-        session.add(notif)
-        await self._maybe_await(session.flush())
-        notif_id = int(notif.id)
-        await self._push_in_app(user_id, notif)
+        notif = await store.get_notification(notif_id)
+        if notif is not None:
+            await self._push_in_app(user_id, notif)
         return notif_id
 
     async def _push_in_app(self, user_id: str, notif: Any) -> None:
@@ -548,17 +539,14 @@ class NotificationService:
         error: str | None,
     ) -> None:
         try:
-            session.add(
-                NotificationLog(
-                    notification_id=notification_id or 0,
-                    user_id=user_id,
-                    channel=channel,
-                    provider=provider,
-                    recipient=recipient,
-                    status=status,
-                    error=error,
-                )
+            await self._build_store(session).create_log(
+                notification_id=notification_id,
+                user_id=user_id,
+                channel=channel,
+                provider=provider,
+                recipient=recipient,
+                status=status,
+                error=error,
             )
-            await self._commit(session)
         except Exception:
             logger.exception("Failed to write notification log")
