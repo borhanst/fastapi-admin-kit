@@ -522,12 +522,28 @@ class TestAutoDiscover:
         assert by_table["admin_ai_messages"].admin.tag == "ai"
         assert by_table["admin_ai_usage_log"].admin.tag == "ai"
 
+        # admin_ai_attachments is internal and never shown in the sidebar.
+        assert "admin_ai_attachments" not in by_table
+
+        # The "ai" nav group exists with the 5 extra items (Chat/Dashboard/
+        # Logs/Tools/Agents) plus the three registered model pages.
+        ai_groups = [g for g in admin._nav_groups_built if g.tag == "ai"]
+        assert ai_groups, "expected an 'ai' nav group"
+        ai_urls = {item.url for item in ai_groups[0].items}
+        assert "/admin/ai/chat" in ai_urls
+        assert "/admin/ai/dashboard" in ai_urls
+        assert "/admin/ai/logs" in ai_urls
+        assert "/admin/ai/tools" in ai_urls
+        assert "/admin/ai/agents" in ai_urls
+        assert "/admin/admin_ai_conversations/" in ai_urls
+        assert "/admin/admin_ai_attachments/" not in ai_urls
+
     async def test_ai_disabled_does_not_register_ai_models(self, engine, app):
+        # Use the default auto_discover=True — this is the actual bug scenario.
         admin = Admin(
             app=app,
             engine=engine,
             secret_key="test-secret-key-long-enough-for-security!",
-            auto_discover=False,
         )
         await admin.setup()
 
@@ -536,6 +552,206 @@ class TestAutoDiscover:
         assert "admin_ai_conversations" not in table_names
         assert "admin_ai_messages" not in table_names
         assert "admin_ai_usage_log" not in table_names
+        # Internal table is never registered regardless of the flag.
+        assert "admin_ai_attachments" not in table_names
+
+        # No nav group should contain an /admin/admin_ai_* URL.
+        ai_urls = {item.url for group in admin._nav_groups_built for item in group.items}
+        assert not any(url.startswith("/admin/admin_ai_") for url in ai_urls)
+        # No "Other" bucket group.
+        assert not any(g.tag == "other" for g in admin._nav_groups_built)
+
+    async def test_ai_disabled_has_no_ai_html_routes(self, engine, app):
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+        )
+        await admin.setup()
+        paths = _collect_route_paths(app)
+        assert not any("/admin/admin_ai_conversations/" in p for p in paths)
+        assert not any("/admin/admin_ai_messages/" in p for p in paths)
+        assert not any("/admin/admin_ai_usage_log/" in p for p in paths)
+
+    async def test_json_api_excludes_internal_and_ai_tables(self, engine, app):
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+        )
+        await admin.setup()
+        paths = _collect_route_paths(app)
+        assert not any("/api/admin_ai" in p for p in paths)
+        assert not any("/api/admin_refresh_tokens" in p for p in paths)
+        assert not any("/api/admin_user_permissions" in p for p in paths)
+        assert not any("/api/admin_user_totp" in p for p in paths)
+
+    async def test_notifications_registered_when_ai_off(self, engine, app):
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+        )
+        await admin.setup()
+        table_names = {r.table_name for r in admin.all_registered()}
+        assert "admin_notifications" in table_names
+        assert "admin_notification_preferences" in table_names
+        assert "admin_notification_logs" in table_names
+
+    async def test_ai_tables_not_created_when_disabled(self, app):
+        from sqlalchemy import create_engine
+
+        from fastapi_admin_kit.models.base import Base
+        from fastapi_admin_kit.schemas.builtin import AI_TABLE_NAMES
+
+        engine = create_engine("sqlite:///:memory:")
+        safe_tables = [t for name, t in Base.metadata.tables.items() if name not in AI_TABLE_NAMES]
+        Base.metadata.create_all(bind=engine, tables=safe_tables)
+
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+        )
+        await admin.setup()
+        from sqlalchemy import inspect as sa_inspect
+
+        existing = set(sa_inspect(engine).get_table_names())
+        assert "admin_ai_conversations" not in existing
+        assert "admin_ai_messages" not in existing
+        assert "admin_ai_usage_log" not in existing
+        assert "admin_ai_attachments" not in existing
+
+    async def test_ai_tables_created_when_enabled(self, app):
+        from sqlalchemy import create_engine
+
+        from fastapi_admin_kit.models.base import Base
+        from fastapi_admin_kit.schemas.builtin import AI_TABLE_NAMES
+
+        engine = create_engine("sqlite:///:memory:")
+        safe_tables = [t for name, t in Base.metadata.tables.items() if name not in AI_TABLE_NAMES]
+        Base.metadata.create_all(bind=engine, tables=safe_tables)
+
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            ai_enabled=True,
+        )
+        await admin.setup()
+        from sqlalchemy import inspect as sa_inspect
+
+        existing = set(sa_inspect(engine).get_table_names())
+        assert "admin_ai_conversations" in existing
+        assert "admin_ai_messages" in existing
+        assert "admin_ai_usage_log" in existing
+        assert "admin_ai_attachments" in existing
+
+    async def test_upgrade_path_ai_enabled_later_keeps_data(self, app):
+        """Flip ai_enabled False -> True on the same engine; AI tables appear,
+        pre-existing data survives."""
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+
+        from fastapi_admin_kit.migrations.models import Role, User
+        from fastapi_admin_kit.models.base import Base
+        from fastapi_admin_kit.schemas.builtin import AI_TABLE_NAMES
+
+        # Engine with every admin table EXCEPT the AI ones (simulating an
+        # existing project that was created with ai_enabled=False).
+        engine = create_engine("sqlite:///:memory:")
+        safe_tables = [t for name, t in Base.metadata.tables.items() if name not in AI_TABLE_NAMES]
+        Base.metadata.create_all(bind=engine, tables=safe_tables)
+
+        # Seed with AI disabled first.
+        admin_off = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+        )
+        await admin_off.setup()
+
+        with Session(engine) as s:
+            role = Role(name="Existing")
+            user = User(
+                email="keep@me.com",
+                hashed_password="x",
+                is_superuser=True,
+                is_active=True,
+            )
+            user.roles.append(role)
+            s.add(user)
+            s.commit()
+            seeded_user_id = user.id
+
+        from sqlalchemy import inspect as sa_inspect
+
+        assert "admin_ai_conversations" not in sa_inspect(engine).get_table_names()
+
+        # Now boot a fresh Admin on the SAME engine with AI enabled.
+        admin_on = Admin(
+            app=FastAPI(),
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            ai_enabled=True,
+        )
+        await admin_on.setup()
+
+        existing = set(sa_inspect(engine).get_table_names())
+        assert "admin_ai_conversations" in existing
+        assert "admin_ai_messages" in existing
+        assert "admin_ai_usage_log" in existing
+        assert "admin_ai_attachments" in existing
+
+        # Pre-existing data untouched.
+        with Session(engine) as s:
+            kept = s.get(User, seeded_user_id)
+            assert kept is not None
+            assert kept.email == "keep@me.com"
+            assert s.query(Role).filter_by(name="Existing").count() == 1
+
+    async def test_alembic_metadata_always_includes_ai_tables(self):
+        """get_admin_metadata() is never filtered by ai_enabled."""
+        from fastapi_admin_kit.migrations.models import get_admin_metadata
+
+        tables = set(get_admin_metadata().tables.keys())
+        assert "admin_ai_conversations" in tables
+        assert "admin_ai_messages" in tables
+        assert "admin_ai_usage_log" in tables
+        assert "admin_ai_attachments" in tables
+
+    async def test_preflight_warns_when_ai_enabled_without_tables(self, app, caplog):
+        """ai_enabled=True + SKIP_CREATE_TABLES=true against a DB lacking the
+        AI tables logs a warning and does NOT raise."""
+        import logging
+        import os
+
+        from sqlalchemy import create_engine
+
+        from fastapi_admin_kit.models.base import Base
+        from fastapi_admin_kit.schemas.builtin import AI_TABLE_NAMES
+
+        # Engine with every admin table EXCEPT the AI ones.
+        engine = create_engine("sqlite:///:memory:")
+        safe_tables = [t for name, t in Base.metadata.tables.items() if name not in AI_TABLE_NAMES]
+        Base.metadata.create_all(bind=engine, tables=safe_tables)
+
+        os.environ["SKIP_CREATE_TABLES"] = "true"
+        try:
+            admin = Admin(
+                app=app,
+                engine=engine,
+                secret_key="test-secret-key-long-enough-for-security!",
+                ai_enabled=True,
+            )
+            with caplog.at_level(logging.WARNING):
+                await admin.setup()
+        finally:
+            os.environ.pop("SKIP_CREATE_TABLES", None)
+
+        assert any(
+            "ai_enabled=True but these tables are missing" in rec.message for rec in caplog.records
+        )
 
 
 # ---------------------------------------------------------------------------

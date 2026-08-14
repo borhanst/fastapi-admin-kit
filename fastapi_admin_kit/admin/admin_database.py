@@ -49,42 +49,84 @@ class AdminDatabase:
             self.engine = self.database_config.create_engine()
         return self.engine
 
-    async def _create_tables(self) -> None:
+    async def _create_tables(self, include_ai_tables: bool = True) -> None:
         """Create all admin database tables (async-safe).
 
         If ``use_alembic=True`` (production mode), this method does nothing
         and expects Alembic to manage the schema via migrations.
+
+        When ``include_ai_tables=False`` (AI disabled), the four
+        ``admin_ai_*`` tables are skipped. This is safe because the AI schemas
+        declare ``relations=[]`` and no FK columns (the "log pattern"), so
+        excluding them cannot break ``create_all`` dependency sorting.
         """
         if self.use_alembic:
             logger.info("use_alembic=True: skipping create_all; schema managed by Alembic")
             return
 
-        from sqlalchemy.ext.asyncio import AsyncEngine
-
-        # Import models to register them with metadata
         from fastapi_admin_kit.migrations.models import Base as AdminBase
+        from fastapi_admin_kit.schemas.builtin import AI_TABLE_NAMES
+
+        def _filtered(metadata: Any) -> Any:
+            if include_ai_tables:
+                return None  # create_all(tables=None) == all tables
+            return [t for name, t in metadata.tables.items() if name not in AI_TABLE_NAMES]
+
+        ai_filtered_admin = _filtered(AdminBase.metadata)
+        ai_filtered_base = _filtered(self.base.metadata) if self.base is not None else None
+
+        from sqlalchemy.ext.asyncio import AsyncEngine
 
         if isinstance(self.engine, AsyncEngine):
             # Async engine - use run_sync
             async with self.engine.begin() as conn:
                 # Create admin tables
-                await conn.run_sync(AdminBase.metadata.create_all)
+                await conn.run_sync(
+                    lambda c: AdminBase.metadata.create_all(c, tables=ai_filtered_admin)
+                )
                 # Create user tables if Base is provided
                 if self.base is not None:
-                    await conn.run_sync(self.base.metadata.create_all)
+                    await conn.run_sync(
+                        lambda c: self.base.metadata.create_all(c, tables=ai_filtered_base)
+                    )
                 # Auto-migrate: add missing columns
                 await conn.run_sync(self._auto_migrate, AdminBase.metadata)
                 if self.base is not None:
                     await conn.run_sync(self._auto_migrate, self.base.metadata)
         else:
             # Sync engine - direct call
-            AdminBase.metadata.create_all(bind=self.engine)
+            AdminBase.metadata.create_all(bind=self.engine, tables=ai_filtered_admin)
             if self.base is not None:
-                self.base.metadata.create_all(bind=self.engine)
+                self.base.metadata.create_all(bind=self.engine, tables=ai_filtered_base)
             # Auto-migrate: add missing columns
             self._auto_migrate_sync(AdminBase.metadata)
             if self.base is not None:
                 self._auto_migrate_sync(self.base.metadata)
+
+    async def _missing_tables(self, ai_enabled: bool, names: list[str]) -> set[str]:
+        """Return the subset of ``names`` whose tables do not exist yet.
+
+        Used as a preflight check when AI is enabled but ``create_all`` did not
+        run (Alembic / ``SKIP_CREATE_TABLES=true``). Wrapped in try/except by
+        the caller so a flaky inspector can never block startup.
+        """
+        if not ai_enabled:
+            return set()
+
+        from sqlalchemy import inspect as sa_inspect
+        from sqlalchemy.ext.asyncio import AsyncEngine
+
+        if isinstance(self.engine, AsyncEngine):
+
+            def _check(sync_conn: Any) -> set[str]:
+                inspector = sa_inspect(sync_conn)
+                return {n for n in names if not inspector.has_table(n)}
+
+            async with self.engine.connect() as conn:
+                return await conn.run_sync(_check)
+
+        inspector = sa_inspect(self.engine)
+        return {n for n in names if not inspector.has_table(n)}
 
     def _auto_migrate_sync(self, metadata: Any) -> None:
         """Sync version of auto-migrate."""

@@ -36,13 +36,19 @@ def get_db_session(request: Request) -> Any:
     """Return the per-request ``SqlAlchemySessionAdapter`` (implements ``SessionBackend``).
 
     The session is created by :class:`SessionMiddleware` and stored on
-    ``scope["state"]["admin_db_session"]`` (accessible via
-    ``request.state.admin_db_session``).  Falls back to the legacy
+    ``scope["state"]["admin_db_session"]``.  ``scope["state"]`` may be a plain
+    ``dict`` (uvicorn/Starlette) or a Starlette ``State`` object, so we read it
+    via ``.get(...)`` which works for both.  Falls back to the legacy
     ``app.state.admin_db_session`` when the middleware is not active.
     """
     from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
 
-    session = getattr(request.state, "admin_db_session", None)
+    state = request.state
+    session = (
+        state.get("admin_db_session")
+        if hasattr(state, "get")
+        else getattr(state, "admin_db_session", None)
+    )
     if session is not None:
         if isinstance(session, SqlAlchemySessionAdapter):
             return session
@@ -73,9 +79,12 @@ class SessionMiddleware:
             await self.app(scope, receive, send)
             return
 
-        from starlette.datastructures import State
-
-        state: State = scope.get("state", State())  # type: ignore[assignment]
+        # Ensure the per-request ``state`` mapping exists on the scope. Starlette
+        # only lazily creates ``scope["state"]`` when a Request object is built
+        # (which happens *after* this middleware runs), and in some ASGI servers
+        # ``scope["state"]`` is a plain ``dict`` rather than a ``State``. Use
+        # dict-item assignment below so it works either way.
+        state = scope.setdefault("state", {})  # type: ignore[assignment]
         factory = getattr(state, "admin_session_factory", None)
         if factory is None:
             real_app = scope.get("app")
@@ -86,11 +95,12 @@ class SessionMiddleware:
             if app_state is not None:
                 factory = getattr(app_state, "admin_session_factory", None)
         if factory is None:
+            # No session factory configured — pass through without managing a session.
             await self.app(scope, receive, send)
             return
 
         session = factory()
-        scope["state"]["admin_db_session"] = session  # type: ignore[attr-defined]
+        state["admin_db_session"] = session  # type: ignore[index]
         try:
             await self.app(scope, receive, send)
         except Exception:

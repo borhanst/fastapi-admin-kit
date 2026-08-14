@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from collections.abc import AsyncIterator
@@ -30,6 +31,7 @@ from fastapi_admin_kit.config import (
 )
 from fastapi_admin_kit.exceptions import ConfigError
 from fastapi_admin_kit.registry import AdminRegistry, RegisteredModel
+from fastapi_admin_kit.schemas.builtin import AI_TABLE_NAMES, INTERNAL_TABLE_NAMES
 from fastapi_admin_kit.types import SeedRole
 
 if TYPE_CHECKING:
@@ -40,6 +42,8 @@ if TYPE_CHECKING:
     from fastapi_admin_kit.nav import NavGroupConfig, SidebarBuilder
     from fastapi_admin_kit.storage.base import StorageBackend
     from fastapi_admin_kit.views import ModelAdmin
+
+logger = logging.getLogger(__name__)
 
 
 def _merge_legacy_kwargs_into_config(
@@ -261,8 +265,28 @@ class Admin:
             app.add_exception_handler(403, forbidden_handler)
             app.add_middleware(CSRFMiddleware)
             self._csrf_middleware_added = True
+
+            # Register the per-request session + audit-context middlewares here
+            # (at construction time) rather than in ``setup()``. Starlette builds
+            # ``app.middleware_stack`` on the *first* scope it receives — which is
+            # the lifespan startup event that fires *before* ``setup()`` runs. If
+            # these middlewares were only added in ``setup()``, the stack would
+            # already be frozen and ``add_middleware`` would raise ``RuntimeError``
+            # (silently swallowed), leaving the session middleware out of the live
+            # stack. Without it, DB writes are flushed but never committed.
+            from fastapi_admin_kit.audit.middleware import (
+                AuditContextMiddleware,
+            )
+            from fastapi_admin_kit.db import SessionMiddleware
+
+            app.add_middleware(SessionMiddleware)
+            self._session_middleware_added = True
+            app.add_middleware(AuditContextMiddleware)
+            self._audit_middleware_added = True
         else:
             self._csrf_middleware_added = False
+            self._session_middleware_added = False
+            self._audit_middleware_added = False
 
         # Default auth backend if none provided
         if auth_backend is None:
@@ -631,17 +655,21 @@ class Admin:
                 pass  # Already started — middleware was added in __init__
 
         # Add per-request session middleware
-        if not getattr(self, "_session_middleware_added", False):
+        if app is not None and not getattr(self, "_session_middleware_added", False):
             from fastapi_admin_kit.db import SessionMiddleware
 
             try:
                 app.add_middleware(SessionMiddleware)
                 self._session_middleware_added = True
             except RuntimeError:
-                pass
+                # Stack already built (e.g. the lifespan startup scope). Force a
+                # rebuild on the next request so the middleware is included.
+                app.middleware_stack = None
+                app.add_middleware(SessionMiddleware)
+                self._session_middleware_added = True
 
         # Add audit context middleware
-        if not getattr(self, "_audit_middleware_added", False):
+        if app is not None and not getattr(self, "_audit_middleware_added", False):
             from fastapi_admin_kit.audit.middleware import (
                 AuditContextMiddleware,
             )
@@ -650,7 +678,9 @@ class Admin:
                 app.add_middleware(AuditContextMiddleware)
                 self._audit_middleware_added = True
             except RuntimeError:
-                pass
+                app.middleware_stack = None
+                app.add_middleware(AuditContextMiddleware)
+                self._audit_middleware_added = True
 
         # 0. Validate secret_key strength
         if not self.router.secret_key:
@@ -670,7 +700,25 @@ class Admin:
         # 2. Database tables should be created via Alembic migrations
         skip_create_tables = os.environ.get("SKIP_CREATE_TABLES", "false").lower() == "true"
         if not skip_create_tables:
-            await self.database._create_tables()
+            await self.database._create_tables(include_ai_tables=self._ai_enabled)
+
+        # 2.1 Preflight: if AI is enabled but the tables are genuinely missing
+        # (Alembic / SKIP_CREATE_TABLES mode), warn loudly but never block boot.
+        if self._ai_enabled:
+            try:
+                missing = await self.database._missing_tables(
+                    self._ai_enabled, list(AI_TABLE_NAMES)
+                )
+            except Exception:  # pragma: no cover - inspector failures must not block boot
+                missing = set()
+            if missing:
+                logger.warning(
+                    "ai_enabled=True but these tables are missing: %s. "
+                    "AI chat/usage tracking will fail until the schema is migrated — run "
+                    "`alembic revision --autogenerate && alembic upgrade head` "
+                    "(or `fak migrate admin_ai_conversations` in dev mode).",
+                    ", ".join(sorted(missing)),
+                )
 
         # 3. Seed default roles
         await self.database._seed_roles(self.seed_roles, self.seed_roles_overwrite)
@@ -697,14 +745,14 @@ class Admin:
 
         # 8.1 Auto-discover user models
         if self.config.behavior.auto_discover:
-            self.registry.auto_discover()
+            self.registry.auto_discover(exclude_tables=self._excluded_builtin_tables())
 
         # 8.2 Apply skip_models — mark listed models to hide from admin
         skip_models = self.config.behavior.skip_models
         # Built-in internal models are always hidden from admin
         # Note: model class names match table names (e.g., admin_refresh_tokens)
         default_skip = {"admin_refresh_tokens", "admin_user_permissions", "admin_user_totp"}
-        all_skip = default_skip | skip_models
+        all_skip = default_skip | skip_models | self._excluded_builtin_tables()
         skip_lower = {s.lower() for s in all_skip}
         for registered in self.registry.all():
             model_name = getattr(registered.model, "__name__", "").lower()
@@ -1237,9 +1285,28 @@ class Admin:
     # AI Setup
     # ------------------------------------------------------------------
 
+    def _excluded_builtin_tables(self) -> frozenset[str]:
+        """Tables to hide from auto-discovery / default-skip lists.
+
+        Always excludes internal tables (refresh tokens, user permissions,
+        TOTP secrets, AI attachments). When AI is disabled, also excludes the
+        three user-facing AI tables so they never leak into the sidebar/routes.
+        """
+        excluded = set(INTERNAL_TABLE_NAMES)  # incl. admin_ai_attachments
+        if not self._ai_enabled:
+            excluded |= AI_TABLE_NAMES
+        return frozenset(excluded)
+
     def _add_ai_nav_group(self) -> None:
-        """Add the AI nav group to nav_groups before sidebar build."""
+        """Add the AI nav group to nav_groups before sidebar build.
+
+        Idempotent: skips if an ``ai`` group already exists (setup can run
+        more than once, e.g. across tests).
+        """
         from fastapi_admin_kit.nav import NavGroupConfig, NavItemConfig
+
+        if any(g.tag == "ai" for g in self.config.nav.nav_groups):
+            return
 
         ai_nav = NavGroupConfig(
             tag="ai",

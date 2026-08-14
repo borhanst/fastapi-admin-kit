@@ -45,6 +45,20 @@ The API is mounted at `/admin/api/` by default.
 |--------|----------|-------------|
 | `GET` | `/admin/api/search?q={query}` | Search across models |
 
+## Excluded models
+
+Models whose admin class sets `skip_auto_routes = True` are **not** exposed
+over the JSON API. This includes the built-in internal tables
+(`admin_refresh_tokens`, `admin_user_permissions`, `admin_user_totp`,
+`admin_ai_attachments`) and any model gated behind a feature flag (e.g. the
+`admin_ai_*` tables when `ai_enabled=False`). To opt a custom model out of the
+JSON API, set `skip_auto_routes = True` on its `ModelAdmin`:
+
+```python
+class SecretAdmin(ModelAdmin):
+    skip_auto_routes = True
+```
+
 ## Authentication
 
 ### Token Obtain

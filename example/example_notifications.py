@@ -44,7 +44,6 @@ from fastapi_admin_kit import Admin, ModelAdmin
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
 from fastapi_admin_kit.migrations.models import User
 from fastapi_admin_kit.models import Base
-from fastapi_admin_kit.models import Base as AdminBase
 from fastapi_admin_kit.notifications import (
     NotificationService,
     NotificationTemplate,
@@ -260,11 +259,10 @@ async def lifespan(app: FastAPI):
     """Handle startup and shutdown events."""
     print("Starting FastAPI Admin Kit with Notifications...")
 
-    # Create all tables (user models + admin internals + notification models)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.run_sync(AdminBase.metadata.create_all)
-    print("Database tables ready.")
+    # Admin.setup() creates the schema (user models + admin internals +
+    # notification models); we leave table creation to it so the AI tables
+    # are gated on ai_enabled rather than always created here.
+    print("Database tables will be created by admin.setup().")
 
     # Seed demo data
     async with async_session_maker() as session:

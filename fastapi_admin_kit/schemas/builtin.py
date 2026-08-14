@@ -429,3 +429,49 @@ AI_ATTACHMENT_SCHEMA = Schema(
     ],
     relations=[],
 )
+
+
+# ---------------------------------------------------------------------------
+# Derived table-name sets
+# ---------------------------------------------------------------------------
+
+AI_TABLE_NAMES = frozenset(
+    {
+        AI_USAGE_LOG_SCHEMA.table_name,
+        AI_CONVERSATION_SCHEMA.table_name,
+        AI_MESSAGE_SCHEMA.table_name,
+        AI_ATTACHMENT_SCHEMA.table_name,
+    }
+)
+
+# Tables that are internal (upload blobs, grant rows, 2FA secrets) and must
+# never be exposed in the admin UI sidebar, regardless of feature flags.
+INTERNAL_TABLE_NAMES = frozenset(
+    {
+        REFRESH_TOKEN_SCHEMA.table_name,
+        USER_PERMISSION_SCHEMA.table_name,
+        USER_TOTP_SCHEMA.table_name,
+        AI_ATTACHMENT_SCHEMA.table_name,
+    }
+)
+
+
+__all__ = [
+    "USER_SCHEMA",
+    "ROLE_SCHEMA",
+    "PERMISSION_SCHEMA",
+    "AUDIT_LOG_SCHEMA",
+    "LOGIN_ATTEMPT_SCHEMA",
+    "USER_PERMISSION_SCHEMA",
+    "REFRESH_TOKEN_SCHEMA",
+    "USER_TOTP_SCHEMA",
+    "NOTIFICATION_SCHEMA",
+    "NOTIFICATION_PREFERENCE_SCHEMA",
+    "NOTIFICATION_LOG_SCHEMA",
+    "AI_USAGE_LOG_SCHEMA",
+    "AI_CONVERSATION_SCHEMA",
+    "AI_MESSAGE_SCHEMA",
+    "AI_ATTACHMENT_SCHEMA",
+    "AI_TABLE_NAMES",
+    "INTERNAL_TABLE_NAMES",
+]

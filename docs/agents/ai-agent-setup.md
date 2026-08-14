@@ -166,3 +166,49 @@ Three reference consumers ship with the kit:
   were previously considered/used and have been removed in favour of the
   native protocol above (no vendor dependency, simple debuggable `curl`-able
   streams, framework-agnostic consumption).
+
+## Enabling AI on an existing project
+
+The AI models, the `AI` nav group, the `/admin/ai/*` routes, the chat widget,
+and the four `admin_ai_*` tables only exist when `ai_enabled=True`. If your
+project was created with the default (`ai_enabled=False`, which is the
+default), nothing AI-related is registered and the `admin_ai_*` tables are
+**not** created. Turning AI on later "just works" — your existing data is
+never touched.
+
+Three deployment modes:
+
+**A. Development / auto-create (default `use_alembic=False`)**
+
+Nothing to do. `Admin.setup()` runs `create_all(checkfirst=True)` on every
+startup, so flipping `ai_enabled=True` (optionally with an `AIConfig`) creates
+the four missing `admin_ai_*` tables at the next boot. The AI schemas declare
+`relations=[]` and no foreign keys (the "log pattern" — `user_id` /
+`conversation_id` are plain indexed columns), so there are no FKs to worry
+about, no data backfill, and no table-ordering issues.
+
+**B. Alembic (`use_alembic=True`)**
+
+`migrations/models.py` and `get_admin_metadata()` are deliberately **never
+filtered** by `ai_enabled` — they always materialize the AI schemas, and
+`fak init-alembic` generates an `env.py` whose `target_metadata` is
+`AdminBase.metadata`. Therefore:
+
+- Projects that ran `fak init-alembic --auto-migrate` at the start already
+  have `op.create_table('admin_ai_*')` in their first revision, so the tables
+  exist and flipping the flag needs **no migration at all**.
+- Projects whose database lacks the tables (e.g. an older database used with
+  `--baseline`) get them from the next
+  `alembic revision --autogenerate && alembic upgrade head`. The generated
+  migration is four plain `CREATE TABLE` + index statements.
+
+**C. `SKIP_CREATE_TABLES=true`**
+
+External tooling owns the schema; behaviour is the same as mode B.
+
+In modes B/C, if the app boots with `ai_enabled=True` before the migration is
+applied, the preflight logs a warning naming the missing tables and the
+command to run — it never blocks startup.
+
+**Turning AI back off** never drops anything: the tables and their rows stay,
+they simply disappear from the sidebar and routes again.
