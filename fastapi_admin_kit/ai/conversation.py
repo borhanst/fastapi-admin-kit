@@ -108,7 +108,7 @@ class AIConversationStore:
 
         if conversation_id:
             stmt = self._select(AIConversation).where(AIConversation.id == conversation_id)
-            conv = (await self._exec(stmt)).scalar_one_or_none()
+            conv = await self._sb.scalar_one_or_none(stmt)
             if conv:
                 return conv
 
@@ -133,7 +133,7 @@ class AIConversationStore:
             .order_by(AIConversation.last_message_at.desc().nullslast())
             .limit(50)
         )
-        return list((await self._exec(stmt)).scalars().all())
+        return await self._sb.all(stmt)
 
     async def load(self, conversation_id: str, user: AdminUserProtocol) -> AIConversation | None:
         from fastapi_admin_kit.ai.usage import AIConversation
@@ -142,7 +142,7 @@ class AIConversationStore:
             AIConversation.id == conversation_id,
             AIConversation.user_id == getattr(user, "id", None),
         )
-        return (await self._exec(stmt)).scalar_one_or_none()
+        return await self._sb.scalar_one_or_none(stmt)
 
     async def load_messages(self, conversation_id: str) -> list[Any]:
         from fastapi_admin_kit.ai.usage import AIMessage
@@ -152,7 +152,7 @@ class AIConversationStore:
             .where(AIMessage.conversation_id == conversation_id)
             .order_by(AIMessage.created_at)
         )
-        return list((await self._exec(stmt)).scalars().all())
+        return await self._sb.all(stmt)
 
     async def delete(self, conversation_id: str, user: AdminUserProtocol) -> bool:
         from fastapi_admin_kit.ai.usage import AIAttachment
@@ -168,7 +168,7 @@ class AIConversationStore:
             await self._delete(m)
 
         att_stmt = self._select(AIAttachment).where(AIAttachment.conversation_id == conversation_id)
-        attachments = list((await self._exec(att_stmt)).scalars().all())
+        attachments = await self._sb.all(att_stmt)
         for a in attachments:
             await self._delete(a)
 

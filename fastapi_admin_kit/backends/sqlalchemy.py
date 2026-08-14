@@ -298,6 +298,97 @@ class SqlAlchemySessionAdapter:
             return self._maybe_async(result)
         return result
 
+    def all(self, query: Any, unique: bool = False) -> Any:
+        """Execute *query* and return all rows as ORM objects."""
+        result = self.execute(query)
+        if hasattr(result, "__await__"):
+
+            async def _run() -> list[Any]:
+                r = await result
+                scalars = r.scalars()
+                if unique:
+                    scalars = scalars.unique()
+                return scalars.all()
+
+            return _run()
+        scalars = result.scalars()
+        if unique:
+            scalars = scalars.unique()
+        return scalars.all()
+
+    def first(self, query: Any, unique: bool = False) -> Any | None:
+        """Execute *query* and return the first row as an ORM object, or None."""
+        result = self.execute(query)
+        if hasattr(result, "__await__"):
+
+            async def _run() -> Any | None:
+                r = await result
+                scalars = r.scalars()
+                if unique:
+                    scalars = scalars.unique()
+                return scalars.first()
+
+            return _run()
+        scalars = result.scalars()
+        if unique:
+            scalars = scalars.unique()
+        return scalars.first()
+
+    def rows(self, query: Any) -> Any:
+        """Execute *query* and return all rows as tuples/Rows (no scalar unwrap)."""
+        result = self.execute(query)
+        if hasattr(result, "__await__"):
+
+            async def _run() -> list[Any]:
+                return (await result).all()
+
+            return _run()
+        return result.all()
+
+    def scalar(self, query: Any) -> Any | None:
+        """Execute *query* and return the first column of the first row, or None."""
+        result = self.execute(query)
+        if hasattr(result, "__await__"):
+
+            async def _run() -> Any | None:
+                return (await result).scalar()
+
+            return _run()
+        return result.scalar()
+
+    def scalar_one(self, query: Any) -> Any:
+        """Execute *query* and return the first column of the first (only) row."""
+        result = self.execute(query)
+        if hasattr(result, "__await__"):
+
+            async def _run() -> Any:
+                return (await result).scalar_one()
+
+            return _run()
+        return result.scalar_one()
+
+    def scalar_one_or_none(self, query: Any) -> Any | None:
+        """Execute *query* and return the first column or None (no/one row)."""
+        result = self.execute(query)
+        if hasattr(result, "__await__"):
+
+            async def _run() -> Any | None:
+                return (await result).scalar_one_or_none()
+
+            return _run()
+        return result.scalar_one_or_none()
+
+    def count(self, query: Any) -> int:
+        """Execute a count *query* and return the integer total."""
+        result = self.execute(query)
+        if hasattr(result, "__await__"):
+
+            async def _run() -> int:
+                return (await result).scalar() or 0
+
+            return _run()
+        return result.scalar() or 0
+
     def commit(self) -> Any:
         """Persist all pending changes."""
         result = self._session.commit()
@@ -472,8 +563,8 @@ class SqlAlchemyDatabaseBackend:
             return self._database_config.create_engine()
         raise ValueError("No admin_database or database_config provided")
 
-    def create_tables(self, connection: Any, metadata: Any) -> None:
-        """Issue DDL to create all tables defined in *metadata*.
+    def create_tables(self, connection: Any, metadata: Any, tables: Any = None) -> Any:
+        """Issue DDL to create the given *tables* (or all of *metadata*).
 
         For async engines, ``connection`` should be the engine itself;
         tables are created via ``run_sync``.
@@ -481,50 +572,266 @@ class SqlAlchemyDatabaseBackend:
         from sqlalchemy.ext.asyncio import AsyncEngine
 
         if isinstance(connection, AsyncEngine):
-            import asyncio
 
             async def _create() -> None:
                 async with connection.begin() as conn:
-                    await conn.run_sync(metadata.create_all)
+                    await conn.run_sync(metadata.create_all, tables)
 
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-            if loop and loop.is_running():
-                # We're inside an async context — caller should use run_sync
-                return _create()
-            asyncio.run(_create())
-        else:
-            metadata.create_all(bind=connection)
+            return self._run_async(_create)
+        metadata.create_all(bind=connection, tables=tables)
 
-    def auto_migrate(self, connection: Any, metadata: Any) -> None:
+    def auto_migrate(self, connection: Any, metadata: Any) -> Any:
         """Detect schema drift and add missing columns automatically."""
         from sqlalchemy.ext.asyncio import AsyncEngine
 
         if isinstance(connection, AsyncEngine):
-            if self._admin_database is not None:
-                import asyncio
 
-                async def _migrate() -> None:
-                    async with connection.begin() as conn:
-                        await conn.run_sync(self._admin_database._auto_migrate, metadata)
+            async def _migrate() -> None:
+                async with connection.begin() as conn:
+                    await conn.run_sync(self._auto_migrate, metadata)
 
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-                if loop and loop.is_running():
-                    return _migrate()
-                asyncio.run(_migrate())
-        elif self._admin_database is not None:
-            self._admin_database._auto_migrate_sync(metadata)
+            return self._run_async(_migrate)
+        self._auto_migrate_sync(connection, metadata)
+
+    @staticmethod
+    def _run_async(coro_factory: Any) -> Any:
+        """Run *coro_factory* within the current loop or via ``asyncio.run``."""
+        import asyncio
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop and loop.is_running():
+            return coro_factory()
+        return asyncio.run(coro_factory())
+
+    def _auto_migrate_sync(self, connection: Any, metadata: Any) -> None:
+        """Sync version of auto-migrate (called with a sync connection)."""
+        from sqlalchemy import inspect as sa_inspect
+        from sqlalchemy import text
+
+        from fastapi_admin_kit.admin.admin_database import _validate_identifier
+
+        inspector = sa_inspect(connection)
+        for table_name, table in metadata.tables.items():
+            if not inspector.has_table(table_name):
+                continue
+            safe_table = _validate_identifier(table_name)
+            existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+            for col in table.columns:
+                if col.name not in existing_cols:
+                    safe_col = _validate_identifier(col.name, "column")
+                    col_type = col.type.compile(connection.dialect)
+                    nullable = "NULL" if col.nullable else "NOT NULL"
+                    default = ""
+                    if col.server_default is not None:
+                        default_sql = col.server_default.arg
+                        if hasattr(default_sql, "text"):
+                            default_sql = default_sql.text
+                        default = f" DEFAULT {default_sql}"
+                    elif col.default is not None and col.default.is_seq:
+                        pass
+                    sql = text(
+                        f"""ALTER TABLE {safe_table}
+                        ADD COLUMN {safe_col} {col_type}
+                        {nullable}{default}"""
+                    )
+                    with connection.begin() as conn:
+                        conn.execute(sql)
+
+    def _auto_migrate(self, sync_conn: Any, metadata: Any) -> None:
+        """Add missing columns to existing tables (sync, called via run_sync)."""
+        from sqlalchemy import inspect as sa_inspect
+        from sqlalchemy import text
+
+        from fastapi_admin_kit.admin.admin_database import _validate_identifier
+
+        dialect = sync_conn.dialect if hasattr(sync_conn, "dialect") else None
+        if dialect is None:
+            return
+
+        inspector = sa_inspect(sync_conn)
+        for table_name, table in metadata.tables.items():
+            if not inspector.has_table(table_name):
+                continue
+            safe_table = _validate_identifier(table_name)
+            existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+            for col in table.columns:
+                if col.name not in existing_cols:
+                    safe_col = _validate_identifier(col.name, "column")
+                    col_type = col.type.compile(dialect)
+                    nullable = "NULL" if col.nullable else "NOT NULL"
+                    default = ""
+                    if col.server_default is not None:
+                        default_sql = col.server_default.arg
+                        if hasattr(default_sql, "text"):
+                            default_sql = default_sql.text
+                        default = f" DEFAULT {default_sql}"
+                    elif not col.nullable:
+                        # SQLite requires a default for NOT NULL columns being added
+                        type_defaults = {
+                            "VARCHAR": "''",
+                            "TEXT": "''",
+                            "INTEGER": "0",
+                            "FLOAT": "0.0",
+                            "BOOLEAN": "0",
+                            "DATETIME": "''",
+                        }
+                        sql_type = col_type.upper().split("(")[0]
+                        temp_val = type_defaults.get(sql_type, "''")
+                        default = f" DEFAULT {temp_val}"
+                    sql = text(
+                        f"""ALTER TABLE {safe_table}
+                        ADD COLUMN
+                        {safe_col} {col_type} {nullable}{default}
+                        """
+                    )
+                    sync_conn.execute(sql)
 
     def create_session_factory(self, connection: Any) -> Any:
-        """Create an ``async_sessionmaker`` bound to *connection*."""
-        from fastapi_admin_kit.db import create_session_factory
+        """Return a zero-arg callable yielding a :class:`SessionBackend`."""
+        from sqlalchemy.ext.asyncio import AsyncEngine
 
-        return create_session_factory(connection)
+        if isinstance(connection, AsyncEngine):
+            from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+            sm = async_sessionmaker(
+                bind=connection,
+                class_=AsyncSession,
+                expire_on_commit=False,
+            )
+
+            def factory() -> SqlAlchemySessionAdapter:
+                return SqlAlchemySessionAdapter(sm())
+
+            return factory
+
+        from sqlalchemy.orm import sessionmaker
+
+        sm = sessionmaker(bind=connection, expire_on_commit=False)
+
+        def factory() -> SqlAlchemySessionAdapter:
+            return SqlAlchemySessionAdapter(sm())
+
+        return factory
+
+    def has_tables(self, connection: Any, names: list[str]) -> set[str]:
+        """Return the subset of *names* whose tables do not yet exist."""
+        from sqlalchemy import inspect as sa_inspect
+        from sqlalchemy.ext.asyncio import AsyncEngine
+
+        if isinstance(connection, AsyncEngine):
+
+            def _check(sync_conn: Any) -> set[str]:
+                inspector = sa_inspect(sync_conn)
+                return {n for n in names if not inspector.has_table(n)}
+
+            async def _run() -> set[str]:
+                async with connection.connect() as conn:
+                    return await conn.run_sync(_check)
+
+            return _run()
+        inspector = sa_inspect(connection)
+        return {n for n in names if not inspector.has_table(n)}
+
+    def seed_roles(
+        self,
+        session_factory: Any,
+        seed_roles: list[Any],
+        overwrite: bool = False,
+    ) -> Any:
+        """Seed default roles/permissions using *session_factory*.
+
+        Mirrors the previous ``AdminDatabase._seed_roles`` logic but consumes a
+        backend-agnostic session factory (returns ``SessionBackend`` objects).
+        """
+        from sqlalchemy import delete as sa_delete
+        from sqlalchemy import select as sa_select
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from fastapi_admin_kit.migrations.models import (
+            Permission,
+            Role,
+            admin_role_permissions,
+        )
+
+        session = session_factory()
+        is_async = isinstance(getattr(session, "_session", session), AsyncSession)
+
+        if is_async:
+
+            async def _run_async() -> None:
+                existing = await session.all(sa_select(Role))
+                if existing and not overwrite:
+                    return
+                if overwrite:
+                    await session.execute(sa_delete(admin_role_permissions))
+                    await session.execute(sa_delete(Role))
+                for role_spec in seed_roles:
+                    role = Role(name=role_spec.name, description=role_spec.description)
+                    session.add(role)
+                    await session.flush()
+                    await session.refresh(role, ["permissions"])
+                    if role_spec.permissions:
+                        for table_name, perms in role_spec.permissions.items():
+                            existing_perm = await session.scalar_one_or_none(
+                                sa_select(Permission).filter_by(table_name=table_name)
+                            )
+                            if existing_perm is None:
+                                perm = Permission(
+                                    name=table_name,
+                                    table_name=table_name,
+                                    can_view=perms.get("view", False),
+                                    can_create=perms.get("create", False),
+                                    can_edit=perms.get("edit", False),
+                                    can_delete=perms.get("delete", False),
+                                )
+                                session.add(perm)
+                                await session.flush()
+                            else:
+                                perm = existing_perm
+                            role.permissions.append(perm)
+                await session.commit()
+
+            return _run_async()
+
+        existing = session.all(sa_select(Role))
+        if existing and not overwrite:
+            return None
+        if overwrite:
+            session.execute(sa_delete(admin_role_permissions))
+            session.execute(sa_delete(Role))
+        for role_spec in seed_roles:
+            role = Role(name=role_spec.name, description=role_spec.description)
+            session.add(role)
+            session.flush()
+            if role_spec.permissions:
+                for table_name, perms in role_spec.permissions.items():
+                    existing_perm = session.scalar_one_or_none(
+                        sa_select(Permission).filter_by(table_name=table_name)
+                    )
+                    if existing_perm is None:
+                        perm = Permission(
+                            name=table_name,
+                            table_name=table_name,
+                            can_view=perms.get("view", False),
+                            can_create=perms.get("create", False),
+                            can_edit=perms.get("edit", False),
+                            can_delete=perms.get("delete", False),
+                        )
+                        session.add(perm)
+                        session.flush()
+                    else:
+                        perm = existing_perm
+                    role.permissions.append(perm)
+        session.commit()
+        return None
+
+    @property
+    def session_adapter_class(self) -> type:
+        """Class wrapping a raw connection into a :class:`SessionBackend`."""
+        return SqlAlchemySessionAdapter
 
     def materialize(
         self,

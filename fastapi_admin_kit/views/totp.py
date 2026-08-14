@@ -34,8 +34,9 @@ async def totp_setup_view(
     templates = request.app.state.admin_jinja_env
     session = get_db_session(request)
 
-    result = await session.execute(select(UserTOTP).where(UserTOTP.user_id == user.id))
-    totp_record = result.scalar_one_or_none()
+    totp_record = await session.scalar_one_or_none(
+        select(UserTOTP).where(UserTOTP.user_id == user.id)
+    )
 
     secret = None
     qr_uri = None
@@ -84,8 +85,9 @@ async def totp_enable_post(
 
     code = form.get("code", "").strip()
 
-    result = await session.execute(select(UserTOTP).where(UserTOTP.user_id == user.id))
-    totp_record = result.scalar_one_or_none()
+    totp_record = await session.scalar_one_or_none(
+        select(UserTOTP).where(UserTOTP.user_id == user.id)
+    )
 
     if totp_record is None:
         raise HTTPException(status_code=400, detail="No TOTP setup found.")
@@ -158,8 +160,9 @@ async def totp_disable_post(
             ),
         )
 
-    result = await session.execute(select(UserTOTP).where(UserTOTP.user_id == user.id))
-    totp_record = result.scalar_one_or_none()
+    totp_record = await session.scalar_one_or_none(
+        select(UserTOTP).where(UserTOTP.user_id == user.id)
+    )
 
     if totp_record is None or not totp_record.enabled:
         raise HTTPException(status_code=400, detail="2FA is not enabled.")
@@ -197,8 +200,9 @@ async def totp_regenerate_backup_codes(
     """Generate new backup codes (invalidates old ones)."""
     session = get_db_session(request)
 
-    result = await session.execute(select(UserTOTP).where(UserTOTP.user_id == user.id))
-    totp_record = result.scalar_one_or_none()
+    totp_record = await session.scalar_one_or_none(
+        select(UserTOTP).where(UserTOTP.user_id == user.id)
+    )
 
     if totp_record is None or not totp_record.enabled:
         raise HTTPException(status_code=400, detail="2FA is not enabled.")

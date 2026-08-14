@@ -182,8 +182,7 @@ async def list_notifications(
     )
     if unread_only:
         stmt = stmt.where(Notification.is_read.is_(False))
-    result = await session.execute(stmt)
-    return [_serialize(n) for n in result.scalars()]
+    return [_serialize(n) for n in await session.all(stmt)]
 
 
 @router.get("/unread-count")
@@ -194,13 +193,14 @@ async def unread_count(request: Request) -> dict[str, int]:
     session = _session(request, service)
     from sqlalchemy import func
 
-    result = await session.execute(
-        select(func.count(Notification.id)).where(
-            Notification.user_id == user_id,
-            Notification.is_read.is_(False),
+    return {
+        "count": await session.scalar_one(
+            select(func.count(Notification.id)).where(
+                Notification.user_id == user_id,
+                Notification.is_read.is_(False),
+            )
         )
-    )
-    return {"count": result.scalar_one()}
+    }
 
 
 @router.put("/{notification_id}/read")
@@ -209,13 +209,12 @@ async def mark_read(request: Request, notification_id: int) -> dict[str, bool]:
     user_id = await _current_user_id(request)
     service = _service(request)
     session = _session(request, service)
-    result = await session.execute(
+    notif = await session.scalar_one_or_none(
         select(Notification).where(
             Notification.id == notification_id,
             Notification.user_id == user_id,
         )
     )
-    notif = result.scalar_one_or_none()
     if notif is None:
         raise HTTPException(status_code=404, detail="Notification not found.")
     notif.is_read = True

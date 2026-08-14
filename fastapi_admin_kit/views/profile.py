@@ -80,10 +80,9 @@ async def profile_update(
         )
 
     if email:
-        existing = await session.execute(
+        if await session.scalar_one_or_none(
             select(type(user)).where(type(user).email == email, type(user).id != user.id)
-        )
-        if existing.scalar_one_or_none():
+        ):
             templates = request.app.state.admin_jinja_env
             return templates.TemplateResponse(
                 request,

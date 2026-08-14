@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from fastapi_admin_kit.backends import as_session_backend
 from fastapi_admin_kit.notifications.config import NotificationConfig
 from fastapi_admin_kit.notifications.email import EmailProvider
 from fastapi_admin_kit.notifications.models import (
@@ -156,15 +157,15 @@ class NotificationService:
         """
         from sqlalchemy import select
 
-        result = await self._maybe_await(
-            session.execute(
+        session = as_session_backend(session)
+        pref = await self._maybe_await(
+            session.scalar_one_or_none(
                 select(NotificationPreference).where(
                     NotificationPreference.user_id == str(user_id),
                     NotificationPreference.channel == channel,
                 )
             )
         )
-        pref = result.scalar_one_or_none()
         if pref is None:
             return True
         return bool(pref.enabled)
@@ -175,15 +176,15 @@ class NotificationService:
         """Opt *user_id* in/out of *channel*."""
         from sqlalchemy import select
 
-        result = await self._maybe_await(
-            session.execute(
+        session = as_session_backend(session)
+        pref = await self._maybe_await(
+            session.scalar_one_or_none(
                 select(NotificationPreference).where(
                     NotificationPreference.user_id == str(user_id),
                     NotificationPreference.channel == channel,
                 )
             )
         )
-        pref = result.scalar_one_or_none()
         if pref is None:
             pref = NotificationPreference(user_id=str(user_id), channel=channel)
             session.add(pref)
@@ -195,12 +196,13 @@ class NotificationService:
         """Return a dict mapping channel -> enabled for *user_id*."""
         from sqlalchemy import select
 
-        result = await self._maybe_await(
-            session.execute(
+        session = as_session_backend(session)
+        prefs = await self._maybe_await(
+            session.all(
                 select(NotificationPreference).where(NotificationPreference.user_id == str(user_id))
             )
         )
-        return {pref.channel: bool(pref.enabled) for pref in result.scalars()}
+        return {pref.channel: bool(pref.enabled) for pref in prefs}
 
     # ------------------------------------------------------------------
     # Send

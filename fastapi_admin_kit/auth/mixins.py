@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, ClassVar
 
 from sqlalchemy import Boolean, Column, String
 
+from fastapi_admin_kit.backends import as_session_backend
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -92,6 +94,7 @@ class AuthModelMixin:
         if self.is_superuser:
             return True
 
+        session = as_session_backend(session)
         from sqlalchemy import select
 
         from fastapi_admin_kit.auth.models import (
@@ -120,25 +123,23 @@ class AuthModelMixin:
 
         # Check role-based permissions (use pre-computed role_ids, not redundant join)
         if role_ids:
-            result = await session.execute(
+            for perm in await session.all(
                 select(Permission)
                 .join(
                     admin_role_permissions,
                     Permission.id == admin_role_permissions.c.permission_id,
                 )
                 .where(admin_role_permissions.c.role_id.in_(role_ids))
-            )
-            for perm in result.scalars():
+            ):
                 if perm.table_name == table_name and getattr(perm, attr, False):
                     return True
 
         # Check direct user permissions
-        result = await session.execute(
+        for perm in await session.all(
             select(Permission)
             .join(UserPermission, UserPermission.permission_id == Permission.id)
             .where(UserPermission.user_id == self.id)
-        )
-        for perm in result.scalars():
+        ):
             if perm.table_name == table_name and getattr(perm, attr, False):
                 return True
 

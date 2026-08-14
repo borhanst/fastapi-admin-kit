@@ -148,8 +148,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             base = apply_search_filter(base, registered.model, search_fields, q)
 
         # Execute query
-        result = await session.execute(base)
-        queryset = result.scalars().all()
+        queryset = await session.all(base)
 
         # Instantiate and export
         exporter = export_class(registered)
@@ -398,8 +397,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
                 == cast_pk_value(registered.model, id)
             )
         )
-        result = await session.execute(stmt)
-        obj = result.scalar_one_or_none()
+        obj = await session.scalar_one_or_none(stmt)
         if obj is None:
             raise HTTPException(status_code=404, detail="Not found")
 
@@ -472,8 +470,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
                 == cast_pk_value(registered.model, id)
             )
         )
-        result = await session.execute(stmt)
-        obj = result.scalar_one_or_none()
+        obj = await session.scalar_one_or_none(stmt)
         if obj is None:
             raise HTTPException(status_code=404, detail="Not found")
 
@@ -708,8 +705,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         from fastapi_admin_kit.search_utils import apply_search_filter
 
         query = apply_search_filter(request, select(model), model, search_fields, q).limit(20)
-        result = await session.execute(query)
-        for obj in result.scalars():
+        for obj in await session.all(query):
             label = str(
                 getattr(obj, "name", None)
                 or getattr(obj, "title", None)

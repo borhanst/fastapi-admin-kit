@@ -96,23 +96,24 @@ class AIUsageWriter:
         # Aggregation with func.sum/case is backend-specific and has no
         # QueryBackend equivalent, so the SELECT is built with SQLAlchemy
         # directly; only execution is routed through the session adapter.
-        result = await sb.execute(
-            select(
-                sqlfunc.sum(AIUsageLog.total_tokens).label("total_tokens"),
-                sqlfunc.sum(AIUsageLog.cost).label("total_cost"),
-                sqlfunc.count(AIUsageLog.id).label("total_runs"),
-                sqlfunc.avg(AIUsageLog.latency_ms).label("avg_latency_ms"),
-                sqlfunc.sum(
-                    sqlcase(
-                        (AIUsageLog.success == True, 1),  # noqa: E712
-                        else_=0,
-                    )
-                ).label("success_count"),
+        row = (
+            await sb.rows(
+                select(
+                    sqlfunc.sum(AIUsageLog.total_tokens).label("total_tokens"),
+                    sqlfunc.sum(AIUsageLog.cost).label("total_cost"),
+                    sqlfunc.count(AIUsageLog.id).label("total_runs"),
+                    sqlfunc.avg(AIUsageLog.latency_ms).label("avg_latency_ms"),
+                    sqlfunc.sum(
+                        sqlcase(
+                            (AIUsageLog.success == True, 1),  # noqa: E712
+                            else_=0,
+                        )
+                    ).label("success_count"),
+                )
+                .where(AIUsageLog.agent_name == agent_name)
+                .where(AIUsageLog.timestamp >= cutoff)
             )
-            .where(AIUsageLog.agent_name == agent_name)
-            .where(AIUsageLog.timestamp >= cutoff)
-        )
-        row = result.one()
+        )[0]
         total_runs = row.total_runs or 0
         success_count = row.success_count or 0
         rate = round(success_count / total_runs * 100, 1) if total_runs else 0

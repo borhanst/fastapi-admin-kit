@@ -42,6 +42,7 @@ from sqlalchemy.orm import sessionmaker
 
 from fastapi_admin_kit import Admin, ModelAdmin
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
+from fastapi_admin_kit.backends import SqlAlchemyBackend
 from fastapi_admin_kit.migrations.models import User
 from fastapi_admin_kit.models import Base
 from fastapi_admin_kit.notifications import (
@@ -293,6 +294,7 @@ admin = Admin(
     app=app,
     engine=engine,
     base=Base,
+    backend=SqlAlchemyBackend(),
     title="Admin Panel with Notifications",
     admin_path="/admin",
     dark_mode_default=False,

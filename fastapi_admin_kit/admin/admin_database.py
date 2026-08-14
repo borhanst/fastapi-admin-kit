@@ -75,33 +75,16 @@ class AdminDatabase:
         ai_filtered_admin = _filtered(AdminBase.metadata)
         ai_filtered_base = _filtered(self.base.metadata) if self.base is not None else None
 
-        from sqlalchemy.ext.asyncio import AsyncEngine
-
-        if isinstance(self.engine, AsyncEngine):
-            # Async engine - use run_sync
-            async with self.engine.begin() as conn:
-                # Create admin tables
-                await conn.run_sync(
-                    lambda c: AdminBase.metadata.create_all(c, tables=ai_filtered_admin)
-                )
-                # Create user tables if Base is provided
-                if self.base is not None:
-                    await conn.run_sync(
-                        lambda c: self.base.metadata.create_all(c, tables=ai_filtered_base)
-                    )
-                # Auto-migrate: add missing columns
-                await conn.run_sync(self._auto_migrate, AdminBase.metadata)
-                if self.base is not None:
-                    await conn.run_sync(self._auto_migrate, self.base.metadata)
-        else:
-            # Sync engine - direct call
-            AdminBase.metadata.create_all(bind=self.engine, tables=ai_filtered_admin)
-            if self.base is not None:
-                self.base.metadata.create_all(bind=self.engine, tables=ai_filtered_base)
-            # Auto-migrate: add missing columns
-            self._auto_migrate_sync(AdminBase.metadata)
-            if self.base is not None:
-                self._auto_migrate_sync(self.base.metadata)
+        await self._run_backend(
+            self._backend.create_tables, self.engine, AdminBase.metadata, ai_filtered_admin
+        )
+        if self.base is not None:
+            await self._run_backend(
+                self._backend.create_tables, self.engine, self.base.metadata, ai_filtered_base
+            )
+        await self._run_backend(self._backend.auto_migrate, self.engine, AdminBase.metadata)
+        if self.base is not None:
+            await self._run_backend(self._backend.auto_migrate, self.engine, self.base.metadata)
 
     async def _missing_tables(self, ai_enabled: bool, names: list[str]) -> set[str]:
         """Return the subset of ``names`` whose tables do not exist yet.
@@ -113,199 +96,28 @@ class AdminDatabase:
         if not ai_enabled:
             return set()
 
-        from sqlalchemy import inspect as sa_inspect
-        from sqlalchemy.ext.asyncio import AsyncEngine
-
-        if isinstance(self.engine, AsyncEngine):
-
-            def _check(sync_conn: Any) -> set[str]:
-                inspector = sa_inspect(sync_conn)
-                return {n for n in names if not inspector.has_table(n)}
-
-            async with self.engine.connect() as conn:
-                return await conn.run_sync(_check)
-
-        inspector = sa_inspect(self.engine)
-        return {n for n in names if not inspector.has_table(n)}
-
-    def _auto_migrate_sync(self, metadata: Any) -> None:
-        """Sync version of auto-migrate."""
-        from sqlalchemy import inspect as sa_inspect
-        from sqlalchemy import text
-
-        inspector = sa_inspect(self.engine)
-        for table_name, table in metadata.tables.items():
-            if not inspector.has_table(table_name):
-                continue
-            safe_table = _validate_identifier(table_name)
-            existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
-            for col in table.columns:
-                if col.name not in existing_cols:
-                    safe_col = _validate_identifier(col.name, "column")
-                    col_type = col.type.compile(self.engine.dialect)
-                    nullable = "NULL" if col.nullable else "NOT NULL"
-                    default = ""
-                    if col.server_default is not None:
-                        default_sql = col.server_default.arg
-                        if hasattr(default_sql, "text"):
-                            default_sql = default_sql.text
-                        default = f" DEFAULT {default_sql}"
-                    elif col.default is not None and col.default.is_seq:
-                        pass
-                    sql = text(
-                        f"""ALTER TABLE {safe_table}
-                        ADD COLUMN {safe_col} {col_type}
-                        {nullable}{default}"""
-                    )
-                    with self.engine.begin() as conn:
-                        conn.execute(sql)
-
-    def _auto_migrate(self, sync_conn: Any, metadata: Any) -> None:
-        """Add missing columns to existing tables (sync, called via run_sync)."""
-        from sqlalchemy import inspect as sa_inspect
-        from sqlalchemy import text
-
-        dialect = sync_conn.dialect if hasattr(sync_conn, "dialect") else None
-        if dialect is None:
-            return
-
-        inspector = sa_inspect(sync_conn)
-        for table_name, table in metadata.tables.items():
-            if not inspector.has_table(table_name):
-                continue
-            safe_table = _validate_identifier(table_name)
-            existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
-            for col in table.columns:
-                if col.name not in existing_cols:
-                    safe_col = _validate_identifier(col.name, "column")
-                    col_type = col.type.compile(dialect)
-                    nullable = "NULL" if col.nullable else "NOT NULL"
-                    default = ""
-                    if col.server_default is not None:
-                        default_sql = col.server_default.arg
-                        if hasattr(default_sql, "text"):
-                            default_sql = default_sql.text
-                        default = f" DEFAULT {default_sql}"
-                    elif not col.nullable:
-                        # SQLite requires a default for NOT NULL columns being added
-                        type_defaults = {
-                            "VARCHAR": "''",
-                            "TEXT": "''",
-                            "INTEGER": "0",
-                            "FLOAT": "0.0",
-                            "BOOLEAN": "0",
-                            "DATETIME": "''",
-                        }
-                        sql_type = col_type.upper().split("(")[0]
-                        temp_val = type_defaults.get(sql_type, "''")
-                        default = f" DEFAULT {temp_val}"
-                    sql = text(
-                        f"""ALTER TABLE {safe_table}
-                        ADD COLUMN
-                        {safe_col} {col_type} {nullable}{default}
-                        """
-                    )
-                    sync_conn.execute(sql)
+        result = self._backend.has_tables(self.engine, names)
+        if hasattr(result, "__await__"):
+            result = await result
+        return result
 
     async def _seed_roles(self, seed_roles: list, seed_roles_overwrite: bool = False) -> None:
-        """Seed default roles if none exist (or if overwrite is enabled)."""
-        from sqlalchemy import select
-        from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
-        from sqlalchemy.orm import Session, sessionmaker
+        """Seed default roles if none exist (or if overwrite is enabled).
 
-        from fastapi_admin_kit.migrations.models import Permission, Role
+        Delegates to the backend's ``seed_roles`` with a session factory built
+        from the current engine.
+        """
+        factory = self._backend.create_session_factory(self.engine)
+        result = self._backend.seed_roles(factory, seed_roles, seed_roles_overwrite)
+        if hasattr(result, "__await__"):
+            await result
 
-        is_async = isinstance(self.engine, AsyncEngine)
-
-        if is_async:
-            # Use AsyncSession for async engine
-            session_local = sessionmaker(self.engine, class_=AsyncSession, expire_on_commit=False)
-            async with session_local() as session:
-                # Check existing count
-                result = await session.execute(select(Role))
-                existing_count = len(result.scalars().all())
-
-                if existing_count > 0 and not seed_roles_overwrite:
-                    return
-
-                if seed_roles_overwrite:
-                    await session.execute(select(Role).delete())
-
-                for role_spec in seed_roles:
-                    role = Role(name=role_spec.name, description=role_spec.description)
-                    session.add(role)
-                    await session.flush()  # get role.id
-                    # Eagerly load M2M relationship for async session
-                    await session.refresh(role, ["permissions"])
-
-                    if role_spec.permissions:
-                        for table_name, perms in role_spec.permissions.items():
-                            # Find or create permission for this table
-                            from sqlalchemy import select as sa_select
-
-                            result = await session.execute(
-                                sa_select(Permission).filter_by(table_name=table_name)
-                            )
-                            existing = result.scalar_one_or_none()
-                            if existing is None:
-                                perm = Permission(
-                                    name=table_name,
-                                    table_name=table_name,
-                                    can_view=perms.get("view", False),
-                                    can_create=perms.get("create", False),
-                                    can_edit=perms.get("edit", False),
-                                    can_delete=perms.get("delete", False),
-                                )
-                                session.add(perm)
-                                await session.flush()
-                            else:
-                                perm = existing
-                            # Link permission to role via M2M
-                            role.permissions.append(perm)
-
-                await session.commit()
-        else:
-            # Use sync Session for sync engine
-            session = Session(bind=self.engine)
-            try:
-                existing_count = session.query(Role).count()
-
-                if existing_count > 0 and not seed_roles_overwrite:
-                    return
-
-                if seed_roles_overwrite:
-                    session.query(Role).delete()
-
-                for role_spec in seed_roles:
-                    role = Role(name=role_spec.name, description=role_spec.description)
-                    session.add(role)
-                    session.flush()  # get role.id
-
-                    if role_spec.permissions:
-                        for table_name, perms in role_spec.permissions.items():
-                            # Find or create permission for this table
-                            existing = (
-                                session.query(Permission).filter_by(table_name=table_name).first()
-                            )
-                            if existing is None:
-                                perm = Permission(
-                                    name=table_name,
-                                    table_name=table_name,
-                                    can_view=perms.get("view", False),
-                                    can_create=perms.get("create", False),
-                                    can_edit=perms.get("edit", False),
-                                    can_delete=perms.get("delete", False),
-                                )
-                                session.add(perm)
-                                session.flush()
-                            else:
-                                perm = existing
-                            # Link permission to role via M2M
-                            role.permissions.append(perm)
-
-                session.commit()
-            finally:
-                session.close()
+    @staticmethod
+    async def _run_backend(method: Any, *args: Any) -> None:
+        """Await a backend method that may return a coroutine (async) or None."""
+        result = method(*args)
+        if hasattr(result, "__await__"):
+            await result
 
     def _init_session_backend(
         self, secret_key: str, session_ttl: int, cookie_name: str, secure: bool

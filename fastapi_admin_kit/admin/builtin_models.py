@@ -27,9 +27,9 @@ class NotificationAdmin(ModelAdmin):
             session = get_db_session(request)
             if session is None:
                 return None
-            count = session.execute(
+            count = session.scalar_one(
                 select(func.count(Notification.id)).where(Notification.is_read.is_(False))
-            ).scalar_one()
+            )
             return str(count) if count > 0 else None
         except Exception:
             return None
@@ -59,7 +59,7 @@ class NotificationLogAdmin(ModelAdmin):
             session = get_db_session(request)
             if session is None:
                 return None
-            count = session.execute(select(func.count(NotificationLog.id))).scalar_one()
+            count = session.scalar_one(select(func.count(NotificationLog.id)))
             return str(count) if count > 0 else None
         except Exception:
             return None
@@ -195,12 +195,11 @@ class UserAdmin(ModelAdmin):
         if obj is not None and request is not None:
             try:
                 session = get_db_session(request)
-                result = await session.execute(
+                for up, perm in await session.rows(
                     select(UserPermission, Permission)
                     .join(Permission, UserPermission.permission_id == Permission.id)
                     .where(UserPermission.user_id == obj.id)
-                )
-                for up, perm in result:
+                ):
                     perm_data.append(
                         {
                             "id": perm.id,

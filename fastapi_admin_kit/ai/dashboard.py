@@ -65,7 +65,6 @@ async def ai_chat_upload(
         validate_mime,
     )
     from fastapi_admin_kit.ai.usage import AIAttachment
-    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
     from fastapi_admin_kit.db import flush_with_rollback, get_db_session
 
     admin = _get_admin(request)
@@ -80,13 +79,7 @@ async def ai_chat_upload(
         raise HTTPException(status_code=500, detail="Storage not configured.")
 
     session = get_db_session(request)
-    # Route persistence through the Admin class's backend session adapter.
-    session_backend_class = getattr(request.app.state, "admin_session_backend_class", None)
-    sb = (
-        session_backend_class(session)
-        if session_backend_class is not None
-        else SqlAlchemySessionAdapter(session)
-    )
+    sb = session
     results: list[dict[str, object]] = []
 
     for file in files:

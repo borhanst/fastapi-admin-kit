@@ -6,6 +6,7 @@ import base64
 import json
 from typing import Any
 
+from fastapi_admin_kit.backends import as_session_backend
 from fastapi_admin_kit.pagination.base import BasePagination, PaginationResult
 
 
@@ -39,6 +40,7 @@ class CursorPagination(BasePagination):
         model: Any = None,
         query_adapter: Any = None,
     ) -> PaginationResult:
+        session = as_session_backend(session)
         # Determine cursor column
         if self.cursor_column and model is not None:
             col = getattr(model, self.cursor_column)
@@ -71,12 +73,12 @@ class CursorPagination(BasePagination):
         # Count filtered total
         if query_adapter is not None:
             count_q = query_adapter.count(stmt)
-            total = (await session.execute(count_q)).scalar() or 0
+            total = await session.count(count_q)
         else:
             from sqlalchemy import func, select
 
             count_q = select(func.count()).select_from(stmt.subquery())
-            total = (await session.execute(count_q)).scalar() or 0
+            total = await session.count(count_q)
 
         # Fetch per_page + 1 to detect has_next
         if query_adapter is not None:
@@ -84,8 +86,7 @@ class CursorPagination(BasePagination):
         else:
             stmt = stmt.limit(per_page + 1)
 
-        result = await session.execute(stmt)
-        items = list(result.unique().scalars().all())
+        items = list(await session.all(stmt, unique=True))
 
         # For backward pagination, reverse back to natural order
         if before:

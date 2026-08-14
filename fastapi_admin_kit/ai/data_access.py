@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
+from fastapi_admin_kit.backends import as_session_backend
+
 
 @runtime_checkable
 class DataAccess(Protocol):
@@ -46,13 +48,25 @@ class SqlAlchemyDataAccess:
         # Session-scoped adapter (e.g. SqlAlchemySessionAdapter).  When present
         # every execute/add/flush goes through it; otherwise we fall back to the
         # raw session.  Either way the SQL lives only in this class.
-        self.session_backend = session_backend
+        self.session_backend = session_backend or as_session_backend(session)
 
-    async def _execute(self, stmt: Any) -> Any:
-        """Run *stmt* through the session adapter (or raw session) and await it."""
+    async def _all(self, stmt: Any) -> list[Any]:
+        """Execute *stmt* and return all rows as ORM objects."""
         if self.session_backend is not None:
-            return await self.session_backend.execute(stmt)
-        return await self.session.execute(stmt)
+            return await self.session_backend.all(stmt)
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def _first(self, stmt: Any) -> Any | None:
+        """Execute *stmt* and return the first ORM object, or None."""
+        if self.session_backend is not None:
+            return await self.session_backend.first(stmt)
+        return (await self.session.execute(stmt)).scalars().first()
+
+    async def _scalar_one_or_none(self, stmt: Any) -> Any | None:
+        """Execute *stmt* and return the first column or None."""
+        if self.session_backend is not None:
+            return await self.session_backend.scalar_one_or_none(stmt)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
 
     def _add(self, obj: Any) -> None:
         if self.session_backend is not None:
@@ -104,8 +118,7 @@ class SqlAlchemyDataAccess:
                     continue
             stmt = stmt.limit(limit)
 
-        result = await self._execute(stmt)
-        return list(result.scalars().all())
+        return await self._all(stmt)
 
     async def get_by_pk(self, model: Any, pk: object) -> Any | None:
         pk_col = getattr(model, "id", None)
@@ -114,15 +127,13 @@ class SqlAlchemyDataAccess:
             if pk_col is not None:
                 stmt = self.query_backend.where(stmt, pk_col == pk)
             stmt = self.query_backend.limit(stmt, 1)
-            result = await self._execute(stmt)
-            return result.scalars().first()
+            return await self._first(stmt)
 
         from sqlalchemy import select
 
-        result = await self._execute(
+        return await self._scalar_one_or_none(
             select(model).where(pk_col == pk) if pk_col is not None else select(model)
         )
-        return result.scalar_one_or_none()
 
     async def create_record(self, model: Any, data: dict[str, object]) -> Any:
         obj = model(**data)

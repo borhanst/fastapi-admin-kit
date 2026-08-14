@@ -161,10 +161,9 @@ async def build_inline_formsets(
                                     col = getattr(related_model, order, None)
                                     if col is not None:
                                         stmt = stmt.order_by(col)
-                        result = session.execute(stmt)
-                        if hasattr(result, "__await__"):
-                            result = await result
-                        related_objects = result.scalars().unique().all()
+                        related_objects = session.all(stmt, unique=True)
+                        if hasattr(related_objects, "__await__"):
+                            related_objects = await related_objects
 
                         for rel_obj in related_objects:
                             row_data: dict[str, Any] = {"id": str(getattr(rel_obj, "id", ""))}

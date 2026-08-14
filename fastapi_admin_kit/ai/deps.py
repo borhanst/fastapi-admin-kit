@@ -166,15 +166,10 @@ async def get_admin_deps(request: Request) -> AdminDeps:
     introspection_backend = getattr(state, "admin_introspection_adapter", None)
     audit_backend = getattr(state, "admin_audit_backend", None)
 
-    # The composite backend configured on the Admin class, plus a session
-    # adapter wrapping this request's session.  These let the AI feature's
-    # internal persistence (conversations, messages, usage) use the very same
-    # backend as the rest of the admin instead of raw SQLAlchemy.
+    # The composite backend configured on the Admin class, plus the per-request
+    # session backend (already a SessionBackend via the session middleware).
     backend = getattr(state, "admin_backend", None)
-    session_backend_class = getattr(state, "admin_session_backend_class", None)
-    session_backend = (
-        session_backend_class(db_session) if session_backend_class is not None else None
-    )
+    session_backend = db_session
 
     return AdminDeps(
         session=db_session,

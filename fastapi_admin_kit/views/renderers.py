@@ -606,8 +606,7 @@ class DefaultQueryProvider:
                 stmt,
                 getattr(self.registered.model, self.registered.pk_field) == int_id,
             )
-            result = await session.execute(stmt)
-            return result.scalar_one_or_none()
+            return await session.scalar_one_or_none(stmt)
         elif m2m_rel_names:
             from sqlalchemy import inspect as sa_inspect
             from sqlalchemy import select
@@ -621,6 +620,5 @@ class DefaultQueryProvider:
                 .options(*options)
                 .where(getattr(self.registered.model, self.registered.pk_field) == int_id)
             )
-            result = await session.execute(stmt)
-            return result.scalar_one_or_none()
+            return await session.scalar_one_or_none(stmt)
         return await session.get(self.registered.model, int_id)

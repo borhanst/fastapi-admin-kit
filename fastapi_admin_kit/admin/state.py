@@ -7,12 +7,10 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from jinja2 import Environment
-    from sqlalchemy.ext.asyncio import AsyncSession
 
     from fastapi_admin_kit.admin.core import Admin
     from fastapi_admin_kit.auth.backend import AuthBackend
     from fastapi_admin_kit.auth.session import SignedCookieSessionBackend
-    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyBackend
     from fastapi_admin_kit.registry import AdminRegistry
     from fastapi_admin_kit.storage.base import StorageBackend
 
@@ -30,7 +28,7 @@ class AdminState:
     auth_backend: AuthBackend | None = None
     storage: StorageBackend | None = None
     registry: AdminRegistry | None = None
-    db_session: AsyncSession | None = None
+    db_session: Any = None
     config: dict[str, Any] = field(default_factory=dict)
     jinja_env: Environment | None = None
     admin_instance: Admin | None = None
@@ -38,7 +36,7 @@ class AdminState:
     secret_key: str = ""
     session_samesite: str = "strict"
     # Multi-ORM backend — composes introspection, query, audit, database adapters.
-    backend: SqlAlchemyBackend | None = None
+    backend: Any = None
 
     @classmethod
     def from_request(cls, request: Any) -> AdminState:

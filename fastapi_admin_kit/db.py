@@ -7,42 +7,32 @@ a fresh session for every incoming request.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.requests import Request
 
-
-def create_session_factory(
-    engine: Any,
-) -> async_sessionmaker[AsyncSession]:
-    """Create an ``async_sessionmaker`` bound to *engine*."""
-    return async_sessionmaker(
-        bind=engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
-
-
-def _wrap_session(session: Any) -> Any:
-    """Wrap a raw session in ``SqlAlchemySessionAdapter``."""
-    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
-
-    return SqlAlchemySessionAdapter(session)
+from fastapi_admin_kit.backends import as_session_backend
 
 
 def get_db_session(request: Request) -> Any:
-    """Return the per-request ``SqlAlchemySessionAdapter`` (implements ``SessionBackend``).
+    """Return the per-request ``SessionBackend``.
 
     The session is created by :class:`SessionMiddleware` and stored on
     ``scope["state"]["admin_db_session"]``.  ``scope["state"]`` may be a plain
     ``dict`` (uvicorn/Starlette) or a Starlette ``State`` object, so we read it
     via ``.get(...)`` which works for both.  Falls back to the legacy
     ``app.state.admin_db_session`` when the middleware is not active.
-    """
-    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
 
+    The stored value is normally already a backend-agnostic ``SessionBackend``
+    (returned by the backend's session factory).  A raw ORM session set
+    directly on ``app.state.admin_db_session`` (legacy usage) is coerced into one.
+    """
+    real_app = getattr(request.scope, "app", None) or request.app
+    # The configured backend advertises its own session-adapter class
+    # (stored on app.state by Admin.setup).  We thread it through so a raw
+    # legacy session is wrapped with the *correct* adapter instead of the
+    # SQLAlchemy one — that is what keeps get_db_session ORM-agnostic.
+    adapter_class = getattr(real_app.state, "admin_session_backend_class", None)
     state = request.state
     session = (
         state.get("admin_db_session")
@@ -50,16 +40,11 @@ def get_db_session(request: Request) -> Any:
         else getattr(state, "admin_db_session", None)
     )
     if session is not None:
-        if isinstance(session, SqlAlchemySessionAdapter):
-            return session
-        return _wrap_session(session)
-    real_app = getattr(request.scope, "app", None) or request.app
-    legacy = getattr(real_app.state, "admin_db_session", None)
-    if legacy is not None:
-        if isinstance(legacy, SqlAlchemySessionAdapter):
-            return legacy
-        return _wrap_session(legacy)
-    return _wrap_session(legacy)  # type: ignore[arg-type]
+        return as_session_backend(session, adapter_class=adapter_class)
+    return as_session_backend(
+        getattr(real_app.state, "admin_db_session", None),
+        adapter_class=adapter_class,
+    )
 
 
 class SessionMiddleware:
@@ -125,56 +110,6 @@ class SessionMiddleware:
                 result = session.close()
                 if hasattr(result, "__await__"):
                     await result
-
-
-class SyncSessionWrapper:
-    """Wraps a sync SQLAlchemy Session to provide an async-compatible interface.
-
-    Also implements :class:`SessionBackend` (via ``SqlAlchemySessionAdapter``).
-    """
-
-    def __init__(self, session: Any) -> None:
-        self._session = session
-        from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemySessionAdapter
-
-        self._adapter = SqlAlchemySessionAdapter(session)
-
-    @property
-    def adapter(self) -> Any:
-        return self._adapter
-
-    def get(self, model: type, pk: Any) -> Any | None:
-        return self._adapter.get(model, pk)
-
-    def add(self, obj: Any) -> None:
-        self._adapter.add(obj)
-
-    def flush(self) -> None:
-        self._adapter.flush()
-
-    def delete(self, obj: Any) -> None:
-        self._adapter.delete(obj)
-
-    def refresh(self, obj: Any, attributes: Sequence[str] | None = None) -> None:
-        self._adapter.refresh(obj, attributes)
-
-    def commit(self) -> None:
-        self._adapter.commit()
-
-    def rollback(self) -> None:
-        self._adapter.rollback()
-
-    def close(self) -> None:
-        self._adapter.close()
-
-    async def execute(self, *args: Any, **kwargs: Any) -> Any:
-        return self._session.execute(*args, **kwargs)
-
-    async def merge(self, *args: Any, **kwargs: Any) -> Any:
-        return self._session.merge(*args, **kwargs)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._session, name)
 
 
 async def rollback_if_needed(session: Any) -> None:

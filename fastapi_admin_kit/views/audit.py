@@ -71,7 +71,7 @@ async def audit_list_view(
         count_query = count_query.where(AuditLog.object_id == object_id)
 
     total = await session.scalar(count_query) or 0
-    entries = (await session.execute(query.offset(offset).limit(per_page))).scalars().all()
+    entries = await session.all(query.offset(offset).limit(per_page))
 
     admin_path = request.app.state.admin_config["admin_path"]
 

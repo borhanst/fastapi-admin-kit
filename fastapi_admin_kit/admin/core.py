@@ -35,10 +35,7 @@ from fastapi_admin_kit.schemas.builtin import AI_TABLE_NAMES, INTERNAL_TABLE_NAM
 from fastapi_admin_kit.types import SeedRole
 
 if TYPE_CHECKING:
-    from sqlalchemy.engine import Engine
-
     from fastapi_admin_kit.auth.backend import AuthBackend
-    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyBackend
     from fastapi_admin_kit.nav import NavGroupConfig, SidebarBuilder
     from fastapi_admin_kit.storage.base import StorageBackend
     from fastapi_admin_kit.views import ModelAdmin
@@ -169,7 +166,7 @@ class Admin:
     def __init__(
         self,
         app: FastAPI | None = None,
-        engine: Engine | None = None,
+        engine: Any | None = None,
         database_config: DatabaseConfig | None = None,
         *,
         # Component instances (new API)
@@ -177,7 +174,7 @@ class Admin:
         database: AdminDatabase | None = None,
         router: AdminRouter | None = None,
         template: AdminTemplate | None = None,
-        backend: SqlAlchemyBackend | None = None,
+        backend: Any | None = None,
         # Legacy kwargs for backward compatibility
         base: type | None = None,
         title: str = "FastAPI Admin Kit",
@@ -476,6 +473,19 @@ class Admin:
             backend = SqlAlchemyBackend.from_admin_database(database)
         self.backend = backend
 
+        # Wire the AdminDatabase (engine/base/config) into the backend's
+        # DatabaseBackend adapter.  When a backend is supplied standalone
+        # (e.g. ``backend=SqlAlchemyBackend()``) its ``database`` adapter has no
+        # engine reference, so ``create_connection()``/``create_session_factory()``
+        # would fail.  ``from_admin_database`` already sets this; we only fill it
+        # in when it is missing so a user-provided backend still works.
+        backend_database = getattr(self.backend, "database", None)
+        if (
+            backend_database is not None
+            and getattr(backend_database, "_admin_database", None) is None
+        ):
+            backend_database._admin_database = database
+
         # Inject backend's introspection adapter into the registry's ModelInspector
         self.registry.inspector._adapter = self.backend.introspection
 
@@ -545,7 +555,7 @@ class Admin:
         return self.router.secret_key
 
     @property
-    def engine(self) -> Engine | None:
+    def engine(self) -> Any | None:
         return self.database.engine
 
     @property
@@ -760,20 +770,9 @@ class Admin:
                 registered.admin.skip_auto_routes = True
 
         # 8.3 Attach audit event listeners (after registry is populated)
-        engine = self.database.engine
-        if engine is not None:
-            from sqlalchemy.ext.asyncio import AsyncEngine
-
-            if isinstance(engine, AsyncEngine):
-                from fastapi_admin_kit.db import create_session_factory
-
-                session_factory = create_session_factory(engine)
-                from fastapi_admin_kit.backends.sqlalchemy import (
-                    SqlAlchemyAuditBackend,
-                )
-
-                audit_backend = SqlAlchemyAuditBackend()
-                audit_backend.attach_listeners(session_factory, self.registry)
+        session_factory = getattr(app.state, "admin_session_factory", None)
+        if session_factory is not None:
+            self.backend.audit.attach_listeners(session_factory, self.registry)
 
         # 9. Validate require_tags
         if self.config.nav.require_tags:
@@ -907,21 +906,14 @@ class Admin:
         # Create session factory if engine is available
         db_session = None
         session_factory = None
+        connection = None
         engine = self.database.engine
         if engine is not None:
-            from sqlalchemy.ext.asyncio import AsyncEngine
-
-            if isinstance(engine, AsyncEngine):
-                from fastapi_admin_kit.db import create_session_factory
-
-                session_factory = create_session_factory(engine)
-                # Legacy fallback — a single session for backward compat
-                db_session = session_factory()
-            else:
-                from sqlalchemy.orm import sessionmaker as sync_sessionmaker
-
-                session_factory = sync_sessionmaker(bind=engine, expire_on_commit=False)
-                db_session = session_factory()
+            connection = self.backend.database.create_connection()
+            session_factory = self.backend.database.create_session_factory(connection)
+            # Legacy fallback — a single session for backward compat. It is a
+            # backend-agnostic SessionBackend, exactly like the per-request one.
+            db_session = session_factory()
 
         # Inject auth_model into the backend if provided
         if self.config.auth.auth_backend is not None and self.config.auth.auth_model is not None:
@@ -959,12 +951,9 @@ class Admin:
         # Unified signing-key source for sessions, CSRF, and JWT (see AdminState).
         app.state.admin_secret_key = state.secret_key
         # Multi-ORM backend: store composed backend and derive individual adapters
-        from fastapi_admin_kit.backends.sqlalchemy import (
-            SqlAlchemySessionAdapter,
-        )
-
         app.state.admin_backend = self.backend
-        app.state.admin_session_backend_class = SqlAlchemySessionAdapter
+        app.state.admin_connection = connection
+        app.state.admin_session_backend_class = self.backend.database.session_adapter_class
         app.state.admin_query_adapter = self.backend.query
         app.state.admin_introspection_adapter = self.backend.introspection
         app.state.admin_audit_backend = self.backend.audit

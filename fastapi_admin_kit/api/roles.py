@@ -39,8 +39,7 @@ async def list_roles(
 ) -> list[RoleResponse]:
     """GET /api/roles/ — list all roles (superuser only)."""
     db_session = get_db_session(request)
-    result = await db_session.execute(select(Role))
-    roles = result.scalars().all()
+    roles = await db_session.all(select(Role))
     return [
         RoleResponse(
             id=r.id,
@@ -61,8 +60,7 @@ async def create_role(
     """POST /api/roles/ — create a role (superuser only)."""
     db_session = get_db_session(request)
 
-    existing = await db_session.execute(select(Role).where(Role.name == body.name))
-    if existing.scalar_one_or_none():
+    if await db_session.scalar_one_or_none(select(Role).where(Role.name == body.name)):
         raise HTTPException(status_code=400, detail="Role name already exists.")
 
     role = Role(name=body.name, description=body.description)

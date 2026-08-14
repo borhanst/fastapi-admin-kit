@@ -66,12 +66,16 @@ class BaseView:
         # Instantiate dependencies — DIP: inject via class attributes
         self.query_provider = self.query_provider_class(registered)
         self.form_parser = self.form_parser_class(registered)
-        self.html_renderer = self.html_renderer_class(
-            list_template=self.list_template,
-            create_template=self.create_template,
-            edit_template=self.edit_template,
-            table_name=registered.table_name,
-        ) if self.html_renderer_class else None
+        self.html_renderer = (
+            self.html_renderer_class(
+                list_template=self.list_template,
+                create_template=self.create_template,
+                edit_template=self.edit_template,
+                table_name=registered.table_name,
+            )
+            if self.html_renderer_class
+            else None
+        )
         self.api_renderer = self.api_renderer_class(registered) if self.api_renderer_class else None
         self.model_saver = self.model_saver_class(registered)
         self.list_context_builder = self.list_context_builder_class()
@@ -1422,10 +1426,9 @@ class SearchView(BaseView):
 
                 base = base.limit(limit)
 
-            result = session.execute(base)
-            if hasattr(result, "__await__"):
-                result = await result
-            rows = result.scalars().all()
+            rows = session.all(base)
+            if hasattr(rows, "__await__"):
+                rows = await rows
 
             results = []
             for row in rows:

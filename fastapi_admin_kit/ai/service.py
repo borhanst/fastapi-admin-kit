@@ -249,7 +249,7 @@ class AIChatService:
                 backend = _backend(request)
                 sb = _session_adapter(session)
                 stmt = _select(backend, AIConversation).where(AIConversation.id == conversation_id)
-                existing_conv = (await sb.execute(stmt)).scalar_one_or_none()
+                existing_conv = await sb.scalar_one_or_none(stmt)
                 if existing_conv and existing_conv.message_history:
                     message_history = _deserialize_messages(existing_conv.message_history)
 
@@ -482,7 +482,7 @@ class AIChatService:
             backend = _backend(request)
             sb = _session_adapter(session)
             stmt = _select(backend, AIConversation).where(AIConversation.id == conversation_id)
-            conv = (await sb.execute(stmt)).scalar_one_or_none()
+            conv = await sb.scalar_one_or_none(stmt)
             if conv and conv.message_history:
                 message_history = _deserialize_messages(conv.message_history)
 
@@ -630,7 +630,7 @@ class AIChatService:
             .order_by(AIConversation.last_message_at.desc().nullslast())
             .limit(50)
         )
-        convs = (await sb.execute(stmt)).scalars().all()
+        convs = await sb.all(stmt)
 
         return JSONResponse(
             [
@@ -667,7 +667,7 @@ class AIChatService:
             .where(AIAttachment.conversation_id == conversation_id)
             .order_by(AIAttachment.created_at)
         )
-        attachments = (await sb.execute(att_stmt)).scalars().all()
+        attachments = await sb.all(att_stmt)
 
         attachments_by_message: dict[int, list[dict]] = {}
         for att in attachments:
@@ -747,7 +747,7 @@ class AIChatService:
         if agent:
             stmt = stmt.where(AIUsageLog.agent_name == agent)
         stmt = stmt.offset(offset).limit(limit)
-        rows = (await sb.execute(stmt)).scalars().all()
+        rows = await sb.all(stmt)
 
         return JSONResponse(
             [
@@ -789,7 +789,7 @@ class AIChatService:
             is_error = not bool(success)
             stmt = stmt.where(AIMessage.is_error == is_error)
         stmt = stmt.offset(offset).limit(limit)
-        msgs = (await sb.execute(stmt)).scalars().all()
+        msgs = await sb.all(stmt)
 
         return JSONResponse(
             [

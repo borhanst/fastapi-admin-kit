@@ -26,9 +26,9 @@ async def roles_search(
 
     if ids:
         id_list = [int(i.strip()) for i in ids.split(",") if i.strip().isdigit()]
-        result = await session.execute(select(Role).where(Role.id.in_(id_list)))
+        result = select(Role).where(Role.id.in_(id_list))
     elif q:
-        result = await session.execute(
+        result = (
             select(Role)
             .where(
                 or_(
@@ -39,9 +39,9 @@ async def roles_search(
             .limit(20)
         )
     else:
-        result = await session.execute(select(Role).order_by(Role.name).limit(20))
+        result = select(Role).order_by(Role.name).limit(20)
 
-    roles = result.scalars().all()
+    roles = await session.all(result)
     return JSONResponse(content=[{"id": r.id, "label": r.name} for r in roles])
 
 

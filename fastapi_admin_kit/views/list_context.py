@@ -200,8 +200,7 @@ class ListContextBuilder:
                     else sa_inspect(target).primary_key[0]
                 )
                 q = select(target).order_by(order_col or pk).limit(100)
-            result = await session.execute(q)
-            for obj in result.scalars():
+            for obj in await session.all(q):
                 label = str(
                     getattr(obj, "name", None)
                     or getattr(obj, "title", None)
@@ -273,8 +272,7 @@ class ListContextBuilder:
             from sqlalchemy import select
 
             q = select(col).where(col.isnot(None)).group_by(col).order_by(col).limit(100)
-            result = await session.execute(q)
-            for (val,) in result:
+            for (val,) in await session.rows(q):
                 label = str(val).replace("_", " ").title()
                 choices.append((str(val), label))
         except Exception:

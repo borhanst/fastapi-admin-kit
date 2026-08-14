@@ -113,8 +113,7 @@ class CSVExport(ExportBase):
                 q,
             )
             # Execute the query
-            result = session.execute(queryset)
-            queryset = result.scalars().all()
+            queryset = session.all(queryset)
 
         return self.export(queryset, request)
 

@@ -69,15 +69,14 @@ async def _build_user_permissions(user: Any, db_session: Any) -> dict[str, list[
     # Collect permissions from all assigned roles (OR merge)
     role_ids = getattr(user, "role_ids", [])
     if role_ids:
-        result = await db_session.execute(
+        for perm in await db_session.all(
             select(Permission)
             .join(
                 admin_role_permissions,
                 Permission.id == admin_role_permissions.c.permission_id,
             )
             .where(admin_role_permissions.c.role_id.in_(role_ids))
-        )
-        for perm in result.scalars():
+        ):
             actions = []
             if perm.can_view:
                 actions.append("view")
@@ -93,12 +92,11 @@ async def _build_user_permissions(user: Any, db_session: Any) -> dict[str, list[
     # Merge direct user permission overrides (OR on top)
     user_id = getattr(user, "id", None)
     if user_id is not None:
-        result = await db_session.execute(
+        for up, perm in await db_session.rows(
             select(UserPermission, Permission)
             .join(Permission, UserPermission.permission_id == Permission.id)
             .where(UserPermission.user_id == user_id)
-        )
-        for up, perm in result:
+        ):
             actions = []
             if perm.can_view:
                 actions.append("view")
@@ -227,13 +225,12 @@ async def refresh_token(
     from fastapi_admin_kit.auth.models import RefreshToken, User
 
     refresh_hash = _hash_token(body.refresh_token)
-    result = await db_session.execute(
+    refresh_record = await db_session.scalar_one_or_none(
         select(RefreshToken).where(
             RefreshToken.token_hash == refresh_hash,
             RefreshToken.revoked_at.is_(None),
         )
     )
-    refresh_record = result.scalar_one_or_none()
 
     if refresh_record is None:
         raise HTTPException(status_code=401, detail="Invalid refresh token.")
@@ -242,13 +239,12 @@ async def refresh_token(
         raise HTTPException(status_code=401, detail="Refresh token expired.")
 
     # Load user
-    user_result = await db_session.execute(
+    user = await db_session.scalar_one_or_none(
         select(User).where(
             User.id == refresh_record.user_id,
             User.is_active,
         )
     )
-    user = user_result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=401, detail="User not found or inactive.")
 
@@ -293,13 +289,12 @@ async def api_logout(
             from fastapi_admin_kit.auth.models import RefreshToken
 
             refresh_hash = _hash_token(body.refresh_token)
-            result = await db_session.execute(
+            refresh_record = await db_session.scalar_one_or_none(
                 select(RefreshToken).where(
                     RefreshToken.token_hash == refresh_hash,
                     RefreshToken.revoked_at.is_(None),
                 )
             )
-            refresh_record = result.scalar_one_or_none()
             if refresh_record:
                 refresh_record.revoked_at = datetime.now(UTC)
                 await db_session.flush()

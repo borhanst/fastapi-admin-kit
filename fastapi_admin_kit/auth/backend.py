@@ -5,6 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
+from fastapi_admin_kit.backends import as_session_backend
+
 if TYPE_CHECKING:
     from fastapi_admin_kit.auth.protocol import AdminUserProtocol
 
@@ -56,16 +58,16 @@ class BuiltinAuthBackend(AuthBackend):
     ) -> AdminUserProtocol | None:
         from sqlalchemy import select
 
+        session = as_session_backend(session)
         model = self._get_model()
         field = getattr(model, login_field, None)
         if field is None:
             field = getattr(model, "email", None)
         if field is None:
             return None
-        result = await session.execute(
+        user = await session.scalar_one_or_none(
             select(model).where(field == credential, model.is_active.is_(True))
         )
-        user = result.scalar_one_or_none()
 
         if not user:
             return None
@@ -77,6 +79,7 @@ class BuiltinAuthBackend(AuthBackend):
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
 
+        session = as_session_backend(session)
         model = self._get_model()
         query = select(model).where(model.id == user_id, model.is_active.is_(True))
 
@@ -84,8 +87,7 @@ class BuiltinAuthBackend(AuthBackend):
         if hasattr(model, "roles"):
             query = query.options(selectinload(model.roles))
 
-        result = await session.execute(query)
-        return result.scalar_one_or_none()
+        return await session.scalar_one_or_none(query)
 
     async def on_logout(self, user_id: int | str | None = None) -> None:
         """No-op for built-in backend."""

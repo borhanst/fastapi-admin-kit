@@ -52,15 +52,14 @@ async def inject_sidebar_context(request: Request, context: dict[str, Any]) -> d
 
                 # Load permissions from all roles, merge with OR logic
                 if role_ids:
-                    result = await session.execute(
+                    for perm in await session.all(
                         select(Permission)
                         .join(
                             admin_role_permissions,
                             Permission.id == admin_role_permissions.c.permission_id,
                         )
                         .where(admin_role_permissions.c.role_id.in_(role_ids))
-                    )
-                    for perm in result.scalars():
+                    ):
                         if perm.table_name in permissions_map:
                             existing = permissions_map[perm.table_name]
                             permissions_map[perm.table_name] = PermissionSet(
@@ -79,12 +78,11 @@ async def inject_sidebar_context(request: Request, context: dict[str, Any]) -> d
 
                 # Load direct user permission overrides, merge on top
                 if user_id is not None:
-                    result = await session.execute(
+                    for up, perm in await session.rows(
                         select(UserPermission, Permission)
                         .join(Permission, UserPermission.permission_id == Permission.id)
                         .where(UserPermission.user_id == user_id)
-                    )
-                    for up, perm in result:
+                    ):
                         table = perm.table_name
                         if table in permissions_map:
                             existing = permissions_map[table]
