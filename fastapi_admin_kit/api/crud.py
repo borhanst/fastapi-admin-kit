@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Body, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 
 from fastapi_admin_kit.api.schema_generator import get_or_build_schemas
@@ -75,60 +75,40 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
     response_schema = schemas["response"]
     list_response_schema = schemas["list_response"]
 
-    @router.get(prefix, response_model=list_response_schema)
-    async def list_items(
-        request: Request,
-        page: int = Query(1, ge=1),
-        per_page: int = Query(25, ge=1, le=100),
-        q: str = Query(""),
-        order: str = Query(""),
-        after: str | None = Query(None),
-        before: str | None = Query(None),
-    ):
-        user = await _get_current_user(request)
-        await _check_permission(request, user, table_name, "view")
-        result = await list_v.api_response(
-            request,
-            page=page,
-            per_page=per_page,
-            q=q,
-            order=order,
-            after=after,
-            before=before,
-        )
-        if isinstance(result, JSONResponse):
-            return result
-        return result
-
-    @router.post(prefix, response_model=response_schema, status_code=201)
-    async def create_item(request: Request):
-        user = await _get_current_user(request)
-        await _check_permission(request, user, table_name, "create")
-        result = await create_v.api_response(request)
-        if isinstance(result, JSONResponse):
-            return result
-        return result
-
-    @router.get(f"{prefix}/{{item_id}}", response_model=response_schema)
-    async def retrieve_item(request: Request, item_id: str):
-        user = await _get_current_user(request)
-        await _check_permission(request, user, table_name, "view")
-        result = await edit_v.api_response(request, item_id=item_id)
-        if isinstance(result, JSONResponse):
-            return result
-        return result
-
-    @router.put(f"{prefix}/{{item_id}}", response_model=response_schema)
-    async def update_item(request: Request, item_id: str):
-        user = await _get_current_user(request)
-        await _check_permission(request, user, table_name, "edit")
-        result = await edit_v.api_response(request, item_id=item_id)
-        if isinstance(result, JSONResponse):
-            return result
-        return result
-
-    @router.delete(f"{prefix}/{{item_id}}", status_code=204)
-    async def delete_item(request: Request, item_id: str):
-        user = await _get_current_user(request)
-        await _check_permission(request, user, table_name, "delete")
-        return await delete_v.api_response(request, item_id=item_id)
+    # Add routes with both "api-crud" and model verbose_name tags
+    router.add_api_route(
+        prefix,
+        list_v.api_response if hasattr(list_v, "api_response") else list_v,
+        methods=["GET"],
+        response_model=list_response_schema,
+        tags=["api-crud", registered.verbose_name],
+    )
+    router.add_api_route(
+        prefix,
+        create_v.api_response if hasattr(create_v, "api_response") else create_v,
+        methods=["POST"],
+        response_model=response_schema,
+        status_code=201,
+        tags=["api-crud", registered.verbose_name],
+    )
+    router.add_api_route(
+        f"{prefix}/{{item_id}}",
+        edit_v.api_response if hasattr(edit_v, "api_response") else edit_v,
+        methods=["GET"],
+        response_model=response_schema,
+        tags=["api-crud", registered.verbose_name],
+    )
+    router.add_api_route(
+        f"{prefix}/{{item_id}}",
+        edit_v.api_response if hasattr(edit_v, "api_response") else edit_v,
+        methods=["PUT"],
+        response_model=response_schema,
+        tags=["api-crud", registered.verbose_name],
+    )
+    router.add_api_route(
+        f"{prefix}/{{item_id}}",
+        delete_v.api_response if hasattr(delete_v, "api_response") else delete_v,
+        methods=["DELETE"],
+        status_code=204,
+        tags=["api-crud", registered.verbose_name],
+    )

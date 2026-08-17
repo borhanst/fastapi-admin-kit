@@ -21,7 +21,7 @@ from fastapi_admin_kit.views.class_views import (
 
 
 def build_model_router(registered: RegisteredModel) -> APIRouter:
-    router = APIRouter(prefix=f"/{registered.table_name}")
+    router = APIRouter(prefix=f"/{registered.table_name}", tags=[registered.verbose_name])
 
     # DIP: view classes resolved from ModelAdmin config with defaults
     admin = registered.admin
