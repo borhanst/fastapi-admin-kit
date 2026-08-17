@@ -199,6 +199,10 @@ async def mark_read(request: Request, notification_id: int) -> dict[str, bool]:
     ok = await service.mark_read(notification_id, user_id, session=session)
     if not ok:
         raise HTTPException(status_code=404, detail="Notification not found.")
+    await service.hub.publish(
+        user_id,
+        {"type": "read", "notification_id": notification_id},
+    )
     return {"success": True}
 
 
@@ -240,7 +244,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str | None = None) -
     connection but delivers nothing (safe fallback).
     """
     hub = _hub(websocket)
-    if user_id is None:
+    if user_id is None or user_id == "null":
         token = websocket.query_params.get("token")
         if token:
             try:
@@ -333,7 +337,7 @@ async def sse_stream(request: Request, user_id: str | None = None) -> StreamingR
     Clients with no WebSocket support can connect here and receive Server-Sent
     Events.  Connection drops are handled by the client reconnecting.
     """
-    if user_id is None:
+    if user_id is None or user_id == "null":
         from fastapi_admin_kit.auth.identity import (
             get_current_user_from_bearer,
             get_current_user_from_cookie,

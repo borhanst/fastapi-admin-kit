@@ -297,14 +297,16 @@ class NotificationService:
         """Send a notification to many recipients (batch).
 
         Each dict in *recipients* must contain ``user_id`` and may contain
-        ``email`` and ``phone``.
+        ``email``, ``phone`` and ``channels``.  When *channels* is ``None`` a
+        recipient's own ``channels`` entry is honoured; otherwise *channels*
+        applies to every recipient.
         """
         results: list[NotificationResult] = []
         for recipient in recipients:
             result = await self.notify(
                 recipient["user_id"],
                 message,
-                channels=channels,
+                channels=channels if channels is not None else recipient.get("channels"),
                 title=title,
                 template=template,
                 context=context,

@@ -24,6 +24,7 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import bcrypt
 from fastapi import FastAPI, Request
@@ -217,6 +218,47 @@ class ProductAdmin(ModelAdmin):
     inline_edit_fields = ["name", "price", "stock", "is_active"]
     tag = "catalog"
     icon = "cube"
+
+    async def get_notification_recipients(
+        self, event: str, request: Any = None, obj: Any = None
+    ) -> list[dict[str, Any]] | None:
+        """Custom recipients for product changes.
+
+        Returns every active superuser with email and phone channels,
+        bypassing NotificationPreference lookups. The dispatcher will
+        still check ``exclude_actor`` and config settings, so the actor
+        (the admin who made the change) is never notified about their
+        own action even if they are a superuser.
+        """
+        from fastapi_admin_kit.db import get_db_session
+
+        session = get_db_session(request)
+        superusers = await session.all(
+            select(User).where(
+                User.is_superuser.is_(True),
+                User.is_active.is_(True),
+            )
+        )
+        return [
+            {
+                "id": getattr(user, "id", None),
+                "email": getattr(user, "email", None),
+                "phone": "+1-555-0100",
+                "channels": ["in_app", "email"],
+            }
+            for user in superusers
+        ]
+
+
+class CategoryAdmin(ModelAdmin):
+    list_display = ["id", "name", "is_active"]
+    search_fields = ["name"]
+    ordering = ["-id"]
+    tag = "content"
+    icon = "folder"
+
+    # Use default behaviour: superusers always receive,
+    # regular admins only if they have enabled preferences.
 
 
 async def seed_demo_data(session: AsyncSession) -> None:

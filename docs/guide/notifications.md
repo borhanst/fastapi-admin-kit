@@ -122,6 +122,9 @@ Clients connect via:
 The hub handles connection drops during publish and supports heartbeat /
 stale-connection pruning. Fallback to polling: `GET /api/notifications` lists
 in-app history; `GET /api/notifications/unread-count` returns the badge count.
+Pushed messages are JSON with a `type` field: `{"type": "notification", ...}`
+for new notifications and `{"type": "read", "notification_id": ...}` when a
+notification is marked read (so all open tabs stay in sync).
 
 ## Templates
 

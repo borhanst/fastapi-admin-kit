@@ -18,6 +18,7 @@ from fastapi_admin_kit.admin.builtin_models import flush_pending_perm_ops
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.flash import add_flash
 from fastapi_admin_kit.form.types import FieldError
+from fastapi_admin_kit.notifications.dispatcher import dispatch_model_change
 from fastapi_admin_kit.registry import RegisteredModel
 from fastapi_admin_kit.views.context import DisplayColumn
 from fastapi_admin_kit.views.list_context import ListContextBuilder
@@ -390,6 +391,12 @@ class CreateView(BaseView):
             await self.model_saver.save_inline_objects(request, obj)
 
             self.admin.after_create(obj, request)
+            await dispatch_model_change(
+                request,
+                registered=self.registered,
+                event="create",
+                obj=obj,
+            )
             await flush_pending_perm_ops(request)
             await add_flash(request, "success", f"{self.registered.verbose_name} created.")
         except Exception:
@@ -635,6 +642,12 @@ class CreateView(BaseView):
         await session.flush()
         await self.model_saver.apply_m2m(obj, m2m_data, request)
         self.admin.after_create(obj, request)
+        await dispatch_model_change(
+            request,
+            registered=self.registered,
+            event="create",
+            obj=obj,
+        )
         await flush_pending_perm_ops(request)
         return await self.api_renderer.render(request, self._serialize(obj))
 
@@ -796,6 +809,12 @@ class EditView(BaseView):
             await self.model_saver.save_inline_objects(request, obj)
 
             self.admin.after_update(obj, request)
+            await dispatch_model_change(
+                request,
+                registered=self.registered,
+                event="update",
+                obj=obj,
+            )
             await flush_pending_perm_ops(request)
             await add_flash(request, "success", f"{self.registered.verbose_name} updated.")
         except Exception:
@@ -1144,6 +1163,12 @@ class EditView(BaseView):
             self.admin.on_update(obj, parsed, request)
             await session.flush()
             self.admin.after_update(obj, request)
+            await dispatch_model_change(
+                request,
+                registered=self.registered,
+                event="update",
+                obj=obj,
+            )
             await flush_pending_perm_ops(request)
         except Exception:
             session = get_db_session(request)
@@ -1165,6 +1190,12 @@ class DeleteView(BaseView):
             await session.delete(obj)
             await session.flush()
             self.admin.after_delete(obj, request)
+            await dispatch_model_change(
+                request,
+                registered=self.registered,
+                event="delete",
+                obj=obj,
+            )
             await add_flash(request, "success", f"{self.registered.verbose_name} deleted.")
         except Exception:
             session = get_db_session(request)
@@ -1188,6 +1219,12 @@ class DeleteView(BaseView):
         await session.delete(obj)
         await session.flush()
         self.admin.after_delete(obj, request)
+        await dispatch_model_change(
+            request,
+            registered=self.registered,
+            event="delete",
+            obj=obj,
+        )
         return Response(status_code=204)
 
 
@@ -1218,6 +1255,12 @@ class BulkView(BaseView):
                 obj = await session.get(self.registered.model, pid)
                 if obj:
                     self.admin.on_delete(obj, request)
+                    await dispatch_model_change(
+                        request,
+                        registered=self.registered,
+                        event="delete",
+                        obj=obj,
+                    )
                     await session.delete(obj)
             await session.flush()
         else:
@@ -1271,6 +1314,12 @@ class BulkView(BaseView):
                 obj = await session.get(self.registered.model, pid)
                 if obj:
                     self.admin.on_delete(obj, request)
+                    await dispatch_model_change(
+                        request,
+                        registered=self.registered,
+                        event="delete",
+                        obj=obj,
+                    )
                     await session.delete(obj)
                     deleted += 1
             await session.flush()

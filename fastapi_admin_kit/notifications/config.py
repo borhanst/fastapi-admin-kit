@@ -73,6 +73,27 @@ class TemplateRegistry:
 
 
 @dataclass
+class ChangeNotificationConfig:
+    """Configuration for change notifications (create/update/delete).
+
+    Attributes:
+        enabled: Whether change notifications are active for this model.
+        default_channels: Channels used when no per-recipient channels are specified.
+        events: Which events trigger notifications.
+        exclude_actor: Whether to exclude the actor (the admin who made the change)
+            from receiving their own notifications.
+        template_name: Name of a ``NotificationTemplate`` to use for title/body;
+            if ``None``, fallback title/body are used.
+    """
+
+    enabled: bool = True
+    default_channels: list[str] = field(default_factory=lambda: ["in_app"])
+    events: list[str] = field(default_factory=lambda: ["create", "update", "delete"])
+    exclude_actor: bool = True
+    template_name: str | None = None
+
+
+@dataclass
 class NotificationConfig:
     """Top-level configuration for the notification system.
 
@@ -84,6 +105,7 @@ class NotificationConfig:
         default_sms_provider: Name of the default SMS provider.
         default_email_provider: Name of the default email provider.
         templates: Template registry used by :class:`NotificationService`.
+        change_notifications: Per-model change notification configuration.
     """
 
     default_channels: list[str] = field(default_factory=lambda: ["sms", "email"])
@@ -91,3 +113,4 @@ class NotificationConfig:
     default_sms_provider: str = "twilio"
     default_email_provider: str = "smtp"
     templates: TemplateRegistry = field(default_factory=TemplateRegistry)
+    change_notifications: ChangeNotificationConfig = field(default_factory=ChangeNotificationConfig)

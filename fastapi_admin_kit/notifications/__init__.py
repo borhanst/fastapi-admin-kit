@@ -14,10 +14,12 @@ Public API::
 """
 
 from fastapi_admin_kit.notifications.config import (
+    ChangeNotificationConfig,
     NotificationConfig,
     NotificationTemplate,
     TemplateRegistry,
 )
+from fastapi_admin_kit.notifications.dispatcher import dispatch_model_change
 from fastapi_admin_kit.notifications.email import (
     EmailDeliveryError,
     EmailProvider,
@@ -65,6 +67,8 @@ __all__ = [
     "SMSStatus",
     "TemplateRegistry",
     "TwilioSMSProvider",
+    "ChangeNotificationConfig",
+    "dispatch_model_change",
     "configure_notifications",
     "notifications_router",
 ]

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi_admin_kit.auth.csrf import require_csrf_token
 from fastapi_admin_kit.auth.dependencies import require_permission
 from fastapi_admin_kit.db import get_db_session
+from fastapi_admin_kit.notifications.dispatcher import dispatch_model_change
 from fastapi_admin_kit.registry import RegisteredModel
 from fastapi_admin_kit.views.class_views import (
     BulkView,
@@ -297,6 +298,13 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             flash_msg += f"{result['errors']} error(s)."
         ctx["flash_message"] = flash_msg.strip()
 
+        # Dispatch create notification for imported data
+        await dispatch_model_change(
+            request,
+            registered=registered,
+            event="create",
+        )
+
         templates = request.app.state.admin_jinja_env
         html = templates.TemplateResponse(request, "partials/list_table.html", ctx)
         return html
@@ -569,6 +577,12 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
 
         await session.flush()
         registered.admin.after_update(obj, request)
+        await dispatch_model_change(
+            request,
+            registered=registered,
+            event="update",
+            obj=obj,
+        )
 
         # Reload the entire table to avoid greenlet issues in template rendering
         from fastapi.responses import HTMLResponse

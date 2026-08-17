@@ -809,6 +809,9 @@ document.addEventListener('alpine:init', () => {
     loading: false,
     _pollInterval: null,
     _ws: null,
+    _wsConnected: false,
+    _wsFailures: 0,
+    _wsDisabled: false,
     _wsRetryTimer: null,
     _wsRetryDelay: 1000,
 
@@ -835,7 +838,14 @@ document.addEventListener('alpine:init', () => {
     },
 
     _scheduleWsRetry() {
-      if (this._wsRetryTimer) return;
+      if (this._wsRetryTimer || this._wsDisabled) return;
+      this._wsFailures++;
+      if (this._wsFailures >= 5) {
+        this._wsDisabled = true;
+        this._wsRetryTimer = null;
+        this.fetchLatestNotifications();
+        return;
+      }
       this._wsRetryTimer = setTimeout(() => {
         this._wsRetryTimer = null;
         this.connectWebSocket();
@@ -905,7 +915,10 @@ document.addEventListener('alpine:init', () => {
     startPolling() {
       this._pollInterval = setInterval(() => {
         this.fetchUnreadCount();
-      }, 30000);
+        if (!this._wsConnected) {
+          this.fetchLatestNotifications();
+        }
+      }, 20000);
     },
 
     stopPolling() {
@@ -915,15 +928,38 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    async fetchLatestNotifications() {
+      try {
+        const resp = await fetch(`${this.getApiBase()}/?limit=20`, {
+          credentials: 'include',
+        });
+        if (!resp.ok) return;
+        const list = await resp.json();
+        const known = new Set(this.notifications.map(n => n.id));
+        const fresh = list.filter(n => !known.has(n.id));
+        if (fresh.length) {
+          this.notifications = [...fresh, ...this.notifications];
+          this.unreadCount += fresh.filter(n => !n.is_read).length;
+        }
+      } catch (e) {
+        console.error('Failed to fetch latest notifications:', e);
+      }
+    },
+
     connectWebSocket() {
-      if (this._ws) return;
+      if (this._ws || this._wsDisabled) return;
       try {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}${this.getApiBase()}/ws`;
+        const base = this.getApiBase();
+        const wsUrl = `${protocol}//${window.location.host}${base}/ws`;
         const ws = new WebSocket(wsUrl);
         this._ws = ws;
 
-        ws.onopen = () => { this._wsRetryDelay = 1000; };
+        ws.onopen = () => {
+          this._wsConnected = true;
+          this._wsFailures = 0;
+          this._wsRetryDelay = 1000;
+        };
 
         ws.onmessage = (event) => {
           try {
@@ -933,6 +969,12 @@ document.addEventListener('alpine:init', () => {
               if (!data.notification.is_read) {
                 this.unreadCount++;
               }
+            } else if (data.type === 'read') {
+              const notif = this.notifications.find(n => n.id === data.notification_id);
+              if (notif && !notif.is_read) {
+                notif.is_read = true;
+                this.unreadCount = Math.max(0, this.unreadCount - 1);
+              }
             }
           } catch (e) {
             console.error('Failed to parse WebSocket message:', e);
@@ -940,8 +982,10 @@ document.addEventListener('alpine:init', () => {
         };
 
         ws.onclose = () => {
+          this._wsConnected = false;
           if (this._ws === ws) {
             this._ws = null;
+            this.fetchLatestNotifications();
             this._scheduleWsRetry();
           }
         };

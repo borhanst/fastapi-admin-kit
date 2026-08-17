@@ -83,7 +83,7 @@
             </div>
           </div>
           <form id="import-form" enctype="multipart/form-data"
-                :hx-post="admin_path + '/{{ registered.table_name }}/import/?format=' + importFormat"
+                :hx-post="window.__ADMIN_PATH__ + '/{{ registered.table_name }}/import/?format=' + importFormat"
                 hx-encoding="multipart/form-data"
                 hx-target="#table-wrapper"
                 hx-swap="outerHTML"

@@ -419,6 +419,34 @@ class ModelAdmin:
             return [f for f in all_fields if f.name not in excluded]
         return all_fields
 
+    # ── Notification recipients hook ──────────────────────────────────
+
+    def get_notification_recipients(
+        self, event: str, request: Any = None, obj: Any = None
+    ) -> list[dict[str, Any]] | None:
+        """Get notification recipients for an admin change event.
+
+        The default implementation returns ``None``, which signals the dispatcher
+        to use the built-in default behaviour: superusers always receive notifications,
+        regular admin users receive them only if they have enabled
+        ``NotificationPreference`` rows.
+
+        Subclasses may override this method to customise recipient selection,
+        channels, or to bypass preference lookups entirely.
+
+        Args:
+            event: One of ``"create"``, ``"update"``, or ``"delete"``.
+            request: Current request (optional, for accessing auth context).
+            obj: The affected object instance (optional).
+
+        Returns:
+            ``list[{"id", "email", "phone", "channels"}]`` of recipient dicts,
+            or ``[]`` to disable notifications for this model entirely,
+            or ``None`` to use the default behaviour (superusers always,
+            regular admins only with enabled preferences).
+        """
+        return None
+
     # ── Permission helpers ───────────────────────────────────────────
 
     def has_view_permission(self, request: Any = None) -> bool:
