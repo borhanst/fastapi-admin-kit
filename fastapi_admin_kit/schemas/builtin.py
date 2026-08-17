@@ -444,6 +444,16 @@ AI_TABLE_NAMES = frozenset(
     }
 )
 
+# Tables owned by the notification system (exposed under the "notifications"
+# sidebar group). Hidden from the UI entirely when notifications are disabled.
+NOTIFICATION_TABLE_NAMES = frozenset(
+    {
+        NOTIFICATION_SCHEMA.table_name,
+        NOTIFICATION_PREFERENCE_SCHEMA.table_name,
+        NOTIFICATION_LOG_SCHEMA.table_name,
+    }
+)
+
 # Tables that are internal (upload blobs, grant rows, 2FA secrets) and must
 # never be exposed in the admin UI sidebar, regardless of feature flags.
 INTERNAL_TABLE_NAMES = frozenset(
@@ -473,5 +483,6 @@ __all__ = [
     "AI_MESSAGE_SCHEMA",
     "AI_ATTACHMENT_SCHEMA",
     "AI_TABLE_NAMES",
+    "NOTIFICATION_TABLE_NAMES",
     "INTERNAL_TABLE_NAMES",
 ]

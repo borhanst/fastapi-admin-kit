@@ -233,3 +233,146 @@ def test_explicit_admin_path_respected(engine, async_session_factory, admin_user
 
     assert admin.config.notifications_api_path == "/custom/notifications"
     assert admin.config.notifications_list_path == "/custom/notifications/"
+
+
+# ---------------------------------------------------------------------------
+# Admin auto-configuration (enable_notification default True)
+# ---------------------------------------------------------------------------
+
+
+def test_admin_auto_configures_notifications(engine, async_session_factory, admin_user):
+    """Admin wires up the notification system without configure_notifications()."""
+    app = FastAPI()
+    admin = Admin(app=app, engine=engine, secret_key=SECRET_KEY, auto_discover=False)
+
+    os.environ["SKIP_CREATE_TABLES"] = "true"
+    try:
+        run_async(admin.setup(app))
+    finally:
+        os.environ.pop("SKIP_CREATE_TABLES", None)
+
+    service = getattr(app.state, "notification_service", None)
+    assert service is not None
+    assert isinstance(service, NotificationService)
+
+    # Router mounted at the default admin notifications path and reachable.
+    client = TestClient(app)
+    resp = client.get("/admin/notifications/unread-count")
+    assert resp.status_code == 401  # route exists, requires auth
+    resp = client.get("/api/notifications/unread-count")
+    assert resp.status_code == 404  # not mounted outside the admin path
+
+
+def test_admin_uses_provided_notification_service(engine, async_session_factory, admin_user):
+    """Admin(notification_service=...) mounts the user's service, no manual call."""
+    app = FastAPI()
+    service = NotificationService(session_factory=async_session_factory)
+    admin = Admin(
+        app=app,
+        engine=engine,
+        secret_key=SECRET_KEY,
+        auto_discover=False,
+        notification_service=service,
+        notifications_api_path="/custom/notifications",
+    )
+
+    os.environ["SKIP_CREATE_TABLES"] = "true"
+    try:
+        run_async(admin.setup(app))
+    finally:
+        os.environ.pop("SKIP_CREATE_TABLES", None)
+
+    assert app.state.notification_service is service
+    assert admin._notification_service is service
+    client = TestClient(app)
+    resp = client.get("/custom/notifications/unread-count")
+    assert resp.status_code == 401
+
+
+def test_admin_enable_notification_false(engine, async_session_factory, admin_user):
+    """enable_notification=False disables the auto-mounted notification router."""
+    app = FastAPI()
+    admin = Admin(
+        app=app,
+        engine=engine,
+        secret_key=SECRET_KEY,
+        auto_discover=False,
+        enable_notification=False,
+    )
+
+    os.environ["SKIP_CREATE_TABLES"] = "true"
+    try:
+        run_async(admin.setup(app))
+    finally:
+        os.environ.pop("SKIP_CREATE_TABLES", None)
+
+    assert getattr(app.state, "notification_service", None) is None
+    client = TestClient(app)
+    resp = client.get("/admin/notifications/unread-count")
+    assert resp.status_code == 404
+
+
+def test_admin_does_not_double_mount(engine, async_session_factory, admin_user):
+    """A service already registered via configure_notifications is not re-mounted."""
+    app = FastAPI()
+    admin = Admin(app=app, engine=engine, secret_key=SECRET_KEY, auto_discover=False)
+
+    service = NotificationService(session_factory=async_session_factory)
+    configure_notifications(app, service, prefix="/admin/notifications")
+
+    os.environ["SKIP_CREATE_TABLES"] = "true"
+    try:
+        run_async(admin.setup(app))
+    finally:
+        os.environ.pop("SKIP_CREATE_TABLES", None)
+
+    assert app.state.notification_service is service
+
+
+def test_frontend_flag_disabled_hides_bell(engine, async_session_factory, admin_user):
+    """enable_notification=False: no bell rendered, frontend flag set to false.
+
+    The dropdown JS reads ``window.__NOTIFICATIONS_ENABLED__`` and never polls
+    or opens WebSockets when it is false.
+    """
+    app = FastAPI()
+    admin = Admin(
+        app=app,
+        engine=engine,
+        secret_key=SECRET_KEY,
+        auto_discover=False,
+        enable_notification=False,
+    )
+    os.environ["SKIP_CREATE_TABLES"] = "true"
+    try:
+        run_async(admin.setup(app))
+    finally:
+        os.environ.pop("SKIP_CREATE_TABLES", None)
+
+    client = TestClient(app)
+    client.cookies.set("admin_session", create_session_cookie(admin_user.id))
+    resp = client.get("/admin/")
+    assert resp.status_code == 200, resp.text
+    html = resp.text
+    assert "window.__NOTIFICATIONS_ENABLED__ = false" in html.replace("</script>", "")
+    assert "topbar-notifications" not in html
+    assert "notificationDropdown" not in html
+
+
+def test_frontend_flag_enabled_by_default(engine, async_session_factory, admin_user):
+    """Default enable_notification=True: bell rendered and flag set to true."""
+    app = FastAPI()
+    admin = Admin(app=app, engine=engine, secret_key=SECRET_KEY, auto_discover=False)
+    os.environ["SKIP_CREATE_TABLES"] = "true"
+    try:
+        run_async(admin.setup(app))
+    finally:
+        os.environ.pop("SKIP_CREATE_TABLES", None)
+
+    client = TestClient(app)
+    client.cookies.set("admin_session", create_session_cookie(admin_user.id))
+    resp = client.get("/admin/")
+    assert resp.status_code == 200, resp.text
+    html = resp.text
+    assert "window.__NOTIFICATIONS_ENABLED__ = true" in html.replace("</script>", "")
+    assert "topbar-notifications" in html

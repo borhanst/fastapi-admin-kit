@@ -891,8 +891,8 @@ admin = Admin(
     ai_enabled=True,
     ai=ai_config,
     is_development=True,
-    # Theme
-    theme=ThemeConfig(preset="paper", primary_color="#6366F1"),
+    # notification
+    enable_notification=True,
     # Navigation
     nav_groups=[
         NavGroupConfig(

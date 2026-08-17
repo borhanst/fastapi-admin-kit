@@ -48,7 +48,8 @@
       <span x-show="$store.theme.dark" style="display: none;">{{ icon("sun", size="18px") }}</span>
     </button>
 
-    {# Notifications #}
+    {# Notifications (hidden when notifications are not configured) #}
+    {% if notifications_enabled | default(true) %}
     <div class="topbar-notifications" x-data="notificationDropdown()" x-init="init()">
       <button class="icon-btn relative" @click="open = !open" @click.outside="open = false" title="Notifications">
         {{ icon("bell", size="18px") }}
@@ -100,6 +101,7 @@
         </div>
       </div>
     </div>
+    {% endif %}
 
     {# User avatar dropdown #}
     <div class="topbar-user" x-data="{ open: false }">

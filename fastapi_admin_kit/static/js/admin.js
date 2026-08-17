@@ -816,6 +816,10 @@ document.addEventListener('alpine:init', () => {
     _wsRetryDelay: 1000,
 
     init() {
+      if (window.__NOTIFICATIONS_ENABLED__ === false) {
+        // Notifications not configured — never poll or open WebSockets.
+        return;
+      }
       this.fetchUnreadCount();
       this.startPolling();
 

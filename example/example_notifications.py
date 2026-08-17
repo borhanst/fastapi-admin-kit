@@ -52,7 +52,6 @@ from fastapi_admin_kit.notifications import (
     SMTPEmailProvider,
     TemplateRegistry,
     TwilioSMSProvider,
-    configure_notifications,
 )
 from fastapi_admin_kit.notifications.sms import SMSDeliveryError, SMSProvider, SMSResult, SMSStatus
 
@@ -331,6 +330,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Create and configure the NotificationService (providers, templates, ...)
+service = create_notification_service(async_session_maker)
+
 # Initialize admin
 admin = Admin(
     app=app,
@@ -348,11 +350,11 @@ admin = Admin(
     environment_label="Development",
     environment_color="info",
     mobile_sidebar="overlay",
+    # Notifications are enabled by default (enable_notification=True) and the
+    # admin auto-mounts the router — no configure_notifications() call needed.
+    notification_service=service,
+    notifications_api_path="/api/notifications",
 )
-
-# --- Register notification service and mount API ---
-service = create_notification_service(async_session_maker)
-configure_notifications(app, service, prefix="/api/notifications")
 
 # Register models
 admin.register(Product, ProductAdmin)

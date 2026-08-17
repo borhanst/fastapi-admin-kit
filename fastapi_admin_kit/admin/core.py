@@ -31,7 +31,11 @@ from fastapi_admin_kit.config import (
 )
 from fastapi_admin_kit.exceptions import ConfigError
 from fastapi_admin_kit.registry import AdminRegistry, RegisteredModel
-from fastapi_admin_kit.schemas.builtin import AI_TABLE_NAMES, INTERNAL_TABLE_NAMES
+from fastapi_admin_kit.schemas.builtin import (
+    AI_TABLE_NAMES,
+    INTERNAL_TABLE_NAMES,
+    NOTIFICATION_TABLE_NAMES,
+)
 from fastapi_admin_kit.types import SeedRole
 
 if TYPE_CHECKING:
@@ -235,6 +239,8 @@ class Admin:
         is_development: bool = False,
         sidebar_bottom_links: list[dict[str, str]] | None = None,
         # Notifications
+        enable_notification: bool = True,
+        notification_service: Any | None = None,
         notifications_api_path: str | None = None,
         notifications_list_path: str | None = None,
         # AI chat file attachments
@@ -465,6 +471,11 @@ class Admin:
         default_notifications_list = f"{default_notifications_path}/"
         self.config.notifications_api_path = notifications_api_path or default_notifications_path
         self.config.notifications_list_path = notifications_list_path or default_notifications_list
+
+        # Notifications: auto-wire a service in setup() unless the user has
+        # configured one already (e.g. via configure_notifications).
+        self._enable_notification = enable_notification
+        self._notification_service = notification_service
 
         # Backend: defaults to composed SqlAlchemyBackend
         if backend is None:
@@ -744,6 +755,10 @@ class Admin:
         # 5. Store backends and config on app.state
         self._wire_app_state(app)
 
+        # 5.1 Auto-wire the notification system (mount router + service on
+        # app.state) unless the user configured it manually already.
+        self._setup_notifications(app)
+
         # 6. Mount static files
         self._mount_static(app)
 
@@ -1019,6 +1034,7 @@ class Admin:
         self._jinja_env.env.globals["notifications_list_path"] = getattr(
             self.config, "notifications_list_path", f"{self.router.admin_path}/notifications/"
         )
+        self._jinja_env.env.globals["notifications_enabled"] = self._enable_notification
         self._jinja_env.env.globals["nav_groups"] = self._nav_groups_built
 
         # CSRF token helper — reads from request.state (set by CSRFMiddleware)
@@ -1146,6 +1162,34 @@ class Admin:
 
         app.state.admin_jinja_env = self._jinja_env
 
+    def _setup_notifications(self, app: FastAPI) -> None:
+        """Auto-wire the notification system into the admin.
+
+        When ``enable_notification=True`` (the default) the admin creates a
+        default :class:`NotificationService`, registers it on ``app.state``
+        and mounts the notification router at the configured API path — so
+        users do **not** need to call ``configure_notifications`` themselves.
+
+        A service already configured by the user (via
+        ``configure_notifications()`` or ``Admin(notification_service=...)``)
+        is respected and never double-mounted.
+        """
+        if not self._enable_notification:
+            return
+        if getattr(app.state, "notification_service", None) is not None:
+            return
+
+        from fastapi_admin_kit.notifications.plugin import configure_notifications
+        from fastapi_admin_kit.notifications.service import NotificationService
+
+        service = self._notification_service
+        if service is None:
+            session_factory = getattr(app.state, "admin_session_factory", None)
+            service = NotificationService(session_factory=session_factory)
+            self._notification_service = service
+
+        configure_notifications(app, service, prefix=self.config.notifications_api_path)
+
     def _build_router(self, app: FastAPI) -> None:
         """Build and mount routers for all registered models."""
         if self._router_built:
@@ -1251,10 +1295,17 @@ class Admin:
             # (UserTOTP, UserTOTPAdmin),
             (LoginAttempt, LoginAttemptAdmin),
             (AuditLog, AuditLogAdmin),
-            (Notification, NotificationAdmin),
-            (NotificationPreference, NotificationPreferenceAdmin),
-            (NotificationLog, NotificationLogAdmin),
         ]
+
+        # Notification models are exposed under the "notifications" sidebar
+        # group. Register them only when notifications are enabled so the
+        # group never appears when enable_notification=False.
+        if self._enable_notification:
+            builtin_models += [
+                (Notification, NotificationAdmin),
+                (NotificationPreference, NotificationPreferenceAdmin),
+                (NotificationLog, NotificationLogAdmin),
+            ]
 
         for model, admin_class in builtin_models:
             if model.__tablename__ not in self.registry._models:
@@ -1280,10 +1331,14 @@ class Admin:
         Always excludes internal tables (refresh tokens, user permissions,
         TOTP secrets, AI attachments). When AI is disabled, also excludes the
         three user-facing AI tables so they never leak into the sidebar/routes.
+        When notifications are disabled, also excludes the notification tables
+        so the "notifications" sidebar group never appears.
         """
         excluded = set(INTERNAL_TABLE_NAMES)  # incl. admin_ai_attachments
         if not self._ai_enabled:
             excluded |= AI_TABLE_NAMES
+        if not self._enable_notification:
+            excluded |= NOTIFICATION_TABLE_NAMES
         return frozenset(excluded)
 
     def _add_ai_nav_group(self) -> None:

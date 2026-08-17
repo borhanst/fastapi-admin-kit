@@ -598,6 +598,45 @@ class TestAutoDiscover:
         assert "admin_notification_preferences" in table_names
         assert "admin_notification_logs" in table_names
 
+    async def test_notifications_disabled_does_not_register_notification_models(self, engine, app):
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            enable_notification=False,
+        )
+        await admin.setup()
+
+        table_names = {r.table_name for r in admin.all_registered()}
+        assert "admin_notifications" not in table_names
+        assert "admin_notification_preferences" not in table_names
+        assert "admin_notification_logs" not in table_names
+
+        # No "notifications" sidebar group and no notification URLs.
+        notif_urls = {item.url for group in admin._nav_groups_built for item in group.items}
+        assert not any(url.startswith("/admin/admin_notification") for url in notif_urls)
+        assert not any(g.tag == "notifications" for g in admin._nav_groups_built)
+
+        # No notification routes (model pages or API) are mounted.
+        paths = _collect_route_paths(app)
+        assert not any("/admin/admin_notification" in p for p in paths)
+        assert not any("/notifications" in p for p in paths)
+
+    async def test_notifications_disabled_never_auto_discovered(self, engine, app):
+        admin = Admin(
+            app=app,
+            engine=engine,
+            secret_key="test-secret-key-long-enough-for-security!",
+            enable_notification=False,
+            auto_discover=True,
+        )
+        await admin.setup()
+
+        table_names = {r.table_name for r in admin.all_registered()}
+        assert "admin_notifications" not in table_names
+        assert "admin_notification_preferences" not in table_names
+        assert "admin_notification_logs" not in table_names
+
     async def test_ai_tables_not_created_when_disabled(self, app):
         from sqlalchemy import create_engine
 
