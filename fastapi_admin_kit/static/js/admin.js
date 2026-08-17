@@ -844,6 +844,7 @@ document.addEventListener('alpine:init', () => {
         this._wsDisabled = true;
         this._wsRetryTimer = null;
         this.fetchLatestNotifications();
+        this.startPolling();
         return;
       }
       this._wsRetryTimer = setTimeout(() => {
@@ -913,11 +914,10 @@ document.addEventListener('alpine:init', () => {
     },
 
     startPolling() {
+      if (this._pollInterval) return;
       this._pollInterval = setInterval(() => {
         this.fetchUnreadCount();
-        if (!this._wsConnected) {
-          this.fetchLatestNotifications();
-        }
+        this.fetchLatestNotifications();
       }, 20000);
     },
 
@@ -959,6 +959,7 @@ document.addEventListener('alpine:init', () => {
           this._wsConnected = true;
           this._wsFailures = 0;
           this._wsRetryDelay = 1000;
+          this.stopPolling();
         };
 
         ws.onmessage = (event) => {
@@ -987,6 +988,7 @@ document.addEventListener('alpine:init', () => {
             this._ws = null;
             this.fetchLatestNotifications();
             this._scheduleWsRetry();
+            this.startPolling();
           }
         };
 
