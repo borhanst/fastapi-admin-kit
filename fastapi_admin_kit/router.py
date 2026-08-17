@@ -37,12 +37,14 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         list_v.html_response,
         methods=["GET"],
         dependencies=[Depends(require_permission(registered.table_name, "view"))],
+        include_in_schema=False,
     )
     router.add_api_route(
         "/create",
         create_v.html_response,
         methods=["GET"],
         dependencies=[Depends(require_permission(registered.table_name, "create"))],
+        include_in_schema=False,
     )
     router.add_api_route(
         "/create",
@@ -52,6 +54,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             Depends(require_permission(registered.table_name, "create")),
             Depends(require_csrf_token),
         ],
+        include_in_schema=False,
     )
 
     @router.get("/search")
@@ -99,6 +102,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             Depends(require_permission(registered.table_name, "edit")),
             Depends(require_csrf_token),
         ],
+        include_in_schema=False,
     )
 
     # ── Export Endpoint ─────────────────────────────────────────────
@@ -356,6 +360,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         edit_v.html_response,
         methods=["GET"],
         dependencies=[Depends(require_permission(registered.table_name, "edit"))],
+        include_in_schema=False,
     )
     router.add_api_route(
         "/{id}",
@@ -365,6 +370,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             Depends(require_permission(registered.table_name, "edit")),
             Depends(require_csrf_token),
         ],
+        include_in_schema=False,
     )
     router.add_api_route(
         "/{id}/delete",
@@ -374,6 +380,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             Depends(require_permission(registered.table_name, "delete")),
             Depends(require_csrf_token),
         ],
+        include_in_schema=False,
     )
 
     # ── Inline Edit ───────────────────────────────────────────────

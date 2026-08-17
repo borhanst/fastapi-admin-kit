@@ -1235,6 +1235,7 @@ class Admin:
             dashboard_view,
             methods=["GET"],
             tags=["admin"],
+            include_in_schema=False,
         )
 
         # JSON API for external frontend apps

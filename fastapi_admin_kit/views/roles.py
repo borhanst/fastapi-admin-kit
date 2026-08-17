@@ -75,7 +75,7 @@ async def permissions_search(
     )
 
 
-@router.get("/roles", response_class=HTMLResponse)
+@router.get("/roles", response_class=HTMLResponse, include_in_schema=False)
 async def role_list_view(
     request: Request,
     _: AdminUserProtocol = Depends(require_superuser),
@@ -108,7 +108,7 @@ async def role_list_view(
     )
 
 
-@router.get("/roles/create", response_class=HTMLResponse)
+@router.get("/roles/create", response_class=HTMLResponse, include_in_schema=False)
 async def role_create_view(
     request: Request,
     _: AdminUserProtocol = Depends(require_superuser),
@@ -132,7 +132,7 @@ async def role_create_view(
     )
 
 
-@router.post("/roles", response_class=RedirectResponse)
+@router.post("/roles", response_class=RedirectResponse, include_in_schema=False)
 async def role_create_save_view(
     request: Request,
     _: AdminUserProtocol = Depends(require_superuser),
@@ -179,7 +179,7 @@ async def role_create_save_view(
     )
 
 
-@router.get("/roles/{role_id}", response_class=HTMLResponse)
+@router.get("/roles/{role_id}", response_class=HTMLResponse, include_in_schema=False)
 async def role_edit_view(
     request: Request,
     role_id: int,
@@ -213,7 +213,7 @@ async def role_edit_view(
     )
 
 
-@router.post("/roles/{role_id}", response_class=RedirectResponse)
+@router.post("/roles/{role_id}", response_class=RedirectResponse, include_in_schema=False)
 async def role_save_view(
     request: Request,
     role_id: int,
@@ -257,7 +257,7 @@ async def role_save_view(
     )
 
 
-@router.post("/roles/{role_id}/delete", response_class=RedirectResponse)
+@router.post("/roles/{role_id}/delete", response_class=RedirectResponse, include_in_schema=False)
 async def role_delete_view(
     request: Request,
     role_id: int,
