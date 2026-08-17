@@ -133,4 +133,4 @@ __all__ = [
     "configure_notifications",
     "notifications_router",
 ]
-__version__ = "0.3.2"
+__version__ = "0.4.0"
