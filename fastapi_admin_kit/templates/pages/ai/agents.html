@@ -1,0 +1,228 @@
+{# pages/ai/agents.html — AI Agents Registry #}
+{% extends "base.html" %}
+
+{% block title %}{{ title | default("AI Agents") }}{% endblock %}
+
+{% block head_extra %}
+<style>
+  .ai-agents-page { display: flex; flex-direction: column; gap: 24px; }
+
+  .ai-agents-header h1 {
+    font-family: var(--font-display);
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+    letter-spacing: -0.02em;
+  }
+  .ai-agents-header p {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    margin: 4px 0 0;
+  }
+
+  .ai-agents-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+  }
+
+  .ai-agent-card {
+    background: var(--surface-raised);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    transition: border-color var(--duration-fast) var(--easing-out),
+                box-shadow var(--duration-fast) var(--easing-out);
+    position: relative;
+    overflow: hidden;
+  }
+  .ai-agent-card:hover {
+    border-color: var(--primary-400);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.08);
+  }
+
+  .ai-agent-card-accent {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary-500), var(--info-500));
+  }
+
+  .ai-agent-card-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .ai-agent-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-lg);
+    background: linear-gradient(135deg, var(--primary-500), var(--primary-700));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+  }
+  .ai-agent-avatar .material-symbols-outlined { font-size: 24px; }
+
+  .ai-agent-name {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: var(--text-lg);
+    color: var(--text-primary);
+  }
+
+  .ai-agent-model {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    margin-top: 2px;
+  }
+
+  .ai-agent-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .ai-agent-stat {
+    padding: 12px;
+    background: var(--surface-inset);
+    border-radius: var(--radius-md);
+    text-align: center;
+  }
+
+  .ai-agent-stat-value {
+    font-family: var(--font-mono);
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .ai-agent-stat-label {
+    font-size: var(--text-2xs);
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 2px;
+  }
+
+  .ai-agent-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    padding: 4px 12px;
+    border-radius: var(--radius-full);
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--success-700);
+    margin-top: 16px;
+  }
+  .ai-agent-status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--success-500);
+    animation: logsPulse 2s ease-in-out infinite;
+  }
+  @keyframes logsPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .ai-logs-empty {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 60px 24px; gap: 12px;
+  }
+  .ai-logs-empty-icon {
+    width: 56px; height: 56px; border-radius: var(--radius-lg);
+    background: var(--surface-inset); display: flex;
+    align-items: center; justify-content: center;
+  }
+  .ai-logs-empty-icon .material-symbols-outlined { font-size: 28px; color: var(--text-disabled); }
+  .ai-logs-empty h3 { font-family: var(--font-display); font-size: var(--text-md); font-weight: 600; color: var(--text-secondary); margin: 0; }
+  .ai-logs-empty p { font-size: var(--text-sm); color: var(--text-disabled); margin: 0; }
+
+  @media (max-width: 768px) {
+    .ai-agents-grid { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ai-agents-page" x-data="aiAgents()" x-init="init()">
+  <div class="ai-agents-header">
+    <h1>AI Agents</h1>
+    <p>Configured AI agents, their models, and available tool counts.</p>
+  </div>
+
+  <div class="ai-agents-grid">
+    <template x-if="loading">
+      <template x-for="i in 3" :key="i">
+        <div class="ai-agent-card" style="opacity: 0.6;">
+          <div style="height: 14px; width: 120px; background: var(--surface-inset); border-radius: 4px; margin-bottom: 12px;"></div>
+          <div style="height: 10px; width: 180px; background: var(--surface-inset); border-radius: 4px;"></div>
+        </div>
+      </template>
+    </template>
+
+    <template x-if="!loading && agents.length === 0">
+      <div class="ai-logs-empty" style="grid-column: 1 / -1;">
+        <div class="ai-logs-empty-icon">
+          <span class="material-symbols-outlined">smart_toy</span>
+        </div>
+        <h3>No agents configured</h3>
+        <p>Agents will appear here once AI is set up in the admin config.</p>
+      </div>
+    </template>
+
+    <template x-for="agent in agents" :key="agent.name">
+      <div class="ai-agent-card">
+        <div class="ai-agent-card-accent"></div>
+        <div class="ai-agent-card-header">
+          <div class="ai-agent-avatar">
+            <span class="material-symbols-outlined">smart_toy</span>
+          </div>
+          <div>
+            <div class="ai-agent-name" x-text="agent.name"></div>
+            <div class="ai-agent-model" x-text="agent.model"></div>
+          </div>
+        </div>
+        <div class="ai-agent-stats">
+          <div class="ai-agent-stat">
+            <div class="ai-agent-stat-value" x-text="agent.tools"></div>
+            <div class="ai-agent-stat-label">Tools</div>
+          </div>
+          <div class="ai-agent-stat">
+            <div class="ai-agent-stat-value" x-text="agent.model.split(':').pop()"></div>
+            <div class="ai-agent-stat-label">Model</div>
+          </div>
+        </div>
+        <div class="ai-agent-status">
+          <span class="ai-agent-status-dot"></span>
+          Active
+        </div>
+      </div>
+    </template>
+  </div>
+</div>
+
+<script>
+function aiAgents() {
+  return {
+    agents: [],
+    loading: true,
+    async init() {
+      try {
+        const resp = await fetch(window.__ADMIN_PATH__ + '/ai/agents/api');
+        this.agents = await resp.json();
+      } catch (e) { this.agents = []; }
+      this.loading = false;
+    }
+  };
+}
+</script>
+{% endblock %}

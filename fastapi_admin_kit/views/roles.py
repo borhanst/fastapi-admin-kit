@@ -58,8 +58,7 @@ async def permissions_search(
     if ids:
         id_list = [int(i.strip()) for i in ids.split(",") if i.strip().isdigit()]
         if id_list:
-            result = await session.execute(select(Permission).where(Permission.id.in_(id_list)))
-            perms = result.scalars().all()
+            perms = await session.all(select(Permission).where(Permission.id.in_(id_list)))
             return JSONResponse(
                 content=[{"id": p.id, "name": p.name, "table_name": p.table_name} for p in perms]
             )
@@ -69,8 +68,7 @@ async def permissions_search(
         query = query.where(Permission.name.ilike(f"%{q}%"))
     query = query.order_by(Permission.name).limit(50)
 
-    result = await session.execute(query)
-    perms = result.scalars().all()
+    perms = await session.all(query)
 
     return JSONResponse(
         content=[{"id": p.id, "name": p.name, "table_name": p.table_name} for p in perms]
@@ -86,8 +84,7 @@ async def role_list_view(
     templates = request.app.state.admin_jinja_env
     session = get_db_session(request)
 
-    result = await session.execute(select(Role).options(selectinload(Role.users)))
-    roles = list(result.scalars().all())
+    roles = list(await session.all(select(Role).options(selectinload(Role.users))))
 
     role_data = []
     for role in roles:
@@ -152,8 +149,7 @@ async def role_create_save_view(
     if not name:
         raise HTTPException(status_code=400, detail="Role name is required.")
 
-    existing = await session.execute(select(Role).where(Role.name == name))
-    if existing.scalar_one_or_none():
+    if await session.scalar_one_or_none(select(Role).where(Role.name == name)):
         raise HTTPException(status_code=400, detail="Role name already exists.")
 
     role = Role(name=name, description=description)
@@ -168,8 +164,7 @@ async def role_create_save_view(
     perm_ids = [int(p) for p in perm_ids if str(p).isdigit()]
 
     if perm_ids:
-        result = await session.execute(select(Permission).where(Permission.id.in_(perm_ids)))
-        perms = result.scalars().all()
+        perms = await session.all(select(Permission).where(Permission.id.in_(perm_ids)))
         if perms:
             await session.execute(
                 insert(admin_role_permissions),
@@ -194,10 +189,9 @@ async def role_edit_view(
     templates = request.app.state.admin_jinja_env
     session = get_db_session(request)
 
-    result = await session.execute(
+    role = await session.scalar_one_or_none(
         select(Role).options(selectinload(Role.permissions)).where(Role.id == role_id)
     )
-    role = result.scalar_one_or_none()
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
 
@@ -248,8 +242,7 @@ async def role_save_view(
     )
 
     if perm_ids:
-        result = await session.execute(select(Permission).where(Permission.id.in_(perm_ids)))
-        perms = result.scalars().all()
+        perms = await session.all(select(Permission).where(Permission.id.in_(perm_ids)))
         if perms:
             await session.execute(
                 insert(admin_role_permissions),

@@ -30,23 +30,100 @@ from fastapi_admin_kit.views.file_handler import (
 # ---------------------------------------------------------------------------
 
 
+def _template_exists(request: Request, name: str) -> bool:
+    """Return True if a template can be found in the Jinja environment."""
+    try:
+        env = request.app.state.admin_jinja_env.env
+        env.loader.get_source(env, name)
+        return True
+    except Exception:
+        return False
+
+
+def resolve_template(request: Request, candidates: list[str]) -> str:
+    """Return the first existing candidate template, falling back to the last.
+
+    Order of precedence:
+      1. Explicit template from ModelAdmin (e.g. "admin/users/list.html")
+      2. Auto-discovery: "admin/<table_name>/<view>.html"
+      3. Global override: "admin/<view>.html"
+      4. Built-in default (always present)
+    """
+    for name in candidates:
+        if _template_exists(request, name):
+            return name
+    return candidates[-1]
+
+
 class ListHTMLRenderer:
-    """SRP: Render list view as HTML template."""
+    """SRP: Render list view as HTML template.
+
+    ``list_template`` is the raw ModelAdmin override (may be None); when set it
+    takes precedence. Otherwise auto-discovery checks ``admin/<table>/list.html``
+    then the global ``admin/list.html`` before the built-in default.
+    """
+
+    def __init__(
+        self,
+        list_template: str | None = None,
+        table_name: str | None = None,
+        partial_template: str = "partials/list_table.html",
+        **kwargs: Any,
+    ):
+        self.list_template = list_template
+        self.table_name = table_name
+        self.partial_template = partial_template
 
     async def render(self, request: Request, context: dict[str, Any]) -> Response:
         templates = request.app.state.admin_jinja_env
         is_htmx = request.headers.get("HX-Request") == "true"
-        template = "partials/list_table.html" if is_htmx else "pages/list.html"
+        if is_htmx:
+            template = self.partial_template
+        else:
+            candidates = []
+            if self.list_template:
+                candidates.append(self.list_template)
+            if self.table_name:
+                candidates.append(f"admin/{self.table_name}/list.html")
+            candidates += ["admin/list.html", "pages/list.html"]
+            template = resolve_template(request, candidates)
         return templates.TemplateResponse(request, template, context)
 
 
 class FormHTMLRenderer:
-    """SRP: Render create/edit form as HTML template."""
+    """SRP: Render create/edit form as HTML template.
 
-    async def render(self, request: Request, context: dict[str, Any]) -> Response:
+    ``create_template`` / ``edit_template`` are raw ModelAdmin overrides (may be
+    None); when set they take precedence. Otherwise auto-discovery checks
+    ``admin/<table>/form.html`` then the global ``admin/form.html`` before the
+    built-in default.
+    """
+
+    def __init__(
+        self,
+        create_template: str | None = None,
+        edit_template: str | None = None,
+        table_name: str | None = None,
+        **kwargs: Any,
+    ):
+        self.create_template = create_template
+        self.edit_template = edit_template
+        self.table_name = table_name
+
+    async def render(
+        self, request: Request, context: dict[str, Any], is_create: bool = True
+    ) -> Response:
         templates = request.app.state.admin_jinja_env
         status = 422 if context.get("errors") else 200
-        return templates.TemplateResponse(request, "pages/form.html", context, status_code=status)
+        explicit = self.create_template if is_create else self.edit_template
+        candidates = []
+        if explicit:
+            candidates.append(explicit)
+        if self.table_name:
+            candidates.append(f"admin/{self.table_name}/form.html")
+        candidates += ["admin/form.html", "pages/form.html"]
+        template = resolve_template(request, candidates)
+        return templates.TemplateResponse(request, template, context, status_code=status)
 
 
 # ---------------------------------------------------------------------------
@@ -529,8 +606,7 @@ class DefaultQueryProvider:
                 stmt,
                 getattr(self.registered.model, self.registered.pk_field) == int_id,
             )
-            result = await session.execute(stmt)
-            return result.scalar_one_or_none()
+            return await session.scalar_one_or_none(stmt)
         elif m2m_rel_names:
             from sqlalchemy import inspect as sa_inspect
             from sqlalchemy import select
@@ -544,6 +620,5 @@ class DefaultQueryProvider:
                 .options(*options)
                 .where(getattr(self.registered.model, self.registered.pk_field) == int_id)
             )
-            result = await session.execute(stmt)
-            return result.scalar_one_or_none()
+            return await session.scalar_one_or_none(stmt)
         return await session.get(self.registered.model, int_id)

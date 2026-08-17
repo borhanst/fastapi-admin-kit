@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from fastapi_admin_kit.auth.models import Permission, UserPermission
+from fastapi_admin_kit.backends import as_session_backend
 from fastapi_admin_kit.types import PermissionSet
 
 if TYPE_CHECKING:
@@ -33,7 +34,7 @@ class PermissionChecker:
         *,
         user_snapshot: dict[str, object] | None = None,
     ) -> None:
-        self.session = session
+        self.session = as_session_backend(session)
         self.user = user
         snap = user_snapshot or {}
         self._is_superuser: bool = (
@@ -61,15 +62,14 @@ class PermissionChecker:
 
         from fastapi_admin_kit.auth.models import admin_role_permissions
 
-        result = await self.session.execute(
+        for perm in await self.session.all(
             select(Permission)
             .join(
                 admin_role_permissions,
                 Permission.id == admin_role_permissions.c.permission_id,
             )
             .where(admin_role_permissions.c.role_id.in_(self._role_ids))
-        )
-        for perm in result.scalars():
+        ):
             table = perm.table_name
             if table not in self._role_cache:
                 self._role_cache[table] = PermissionSet()

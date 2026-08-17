@@ -48,6 +48,11 @@ def build_api_router(registry: Any) -> APIRouter:
     router = APIRouter(tags=["api-crud"])
 
     for registered in registry.all():
+        # Respect skip_auto_routes (set for internal/built-in tables and any
+        # model that opts out of auto routes) so internal tables like
+        # admin_refresh_tokens / admin_user_totp are never exposed over JSON API.
+        if getattr(registered.admin, "skip_auto_routes", False):
+            continue
         _register_model_routes(router, registered)
 
     return router

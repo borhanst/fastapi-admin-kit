@@ -127,6 +127,7 @@
   </template>
 
   {% include "partials/command_palette.html" %}
+  {% include "partials/ai_chat_widget.html" %}
 
   {% set _ui2 = ui_config | default({}) %}
   {% if _ui2.custom_js_url | default('') %}
@@ -138,6 +139,8 @@
 
   <script>
     window.__ADMIN_PATH__ = {{ admin_path | default('/admin') | tojson }};
+    window.__NOTIFICATIONS_ENABLED__ = {{ notifications_enabled | default(true) | tojson }};
+    window.__NOTIFICATIONS_API_PATH__ = {{ notifications_api_path | default(admin_path + '/notifications') | tojson }};
   </script>
   <script src="/static/js/htmx-config.js"></script>
   <script src="/static/js/admin.js?v={{ static_version }}"></script>

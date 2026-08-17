@@ -257,3 +257,232 @@ USER_TOTP_SCHEMA = Schema(
         ),
     ],
 )
+
+# ---------------------------------------------------------------------------
+# Notification schemas
+#
+# Follows the AuditLog "log pattern": user_id/user_email are stored as plain
+# indexed columns (no FK) so the tables keep working when a project overrides
+# the user schema via ``auth_model=``.
+# ---------------------------------------------------------------------------
+
+NOTIFICATION_SCHEMA = Schema(
+    table_name="admin_notifications",
+    verbose_name="Notification",
+    verbose_name_plural="Notifications",
+    fields=[
+        Field("id", type="integer", primary_key=True, auto_increment=True),
+        Field("user_id", type="string", max_length=255, nullable=False, index=True),
+        Field("user_email", type="string", max_length=255, nullable=True),
+        Field("title", type="string", max_length=255, nullable=False),
+        Field("body", type="text", nullable=True),
+        Field("channels", type="json", nullable=True),
+        Field("data", type="json", nullable=True),
+        Field("status", type="string", max_length=20, default="pending"),
+        Field("is_read", type="boolean", default=False),
+        Field("read_at", type="datetime", nullable=True),
+        Field("created_at", type="datetime", server_default="now()"),
+    ],
+    indexes=[
+        {"columns": ["user_id", "created_at"], "name": "idx_notifications_user"},
+    ],
+    relations=[],
+)
+
+NOTIFICATION_PREFERENCE_SCHEMA = Schema(
+    table_name="admin_notification_preferences",
+    verbose_name="Notification Preference",
+    verbose_name_plural="Notification Preferences",
+    fields=[
+        Field("id", type="integer", primary_key=True, auto_increment=True),
+        Field("user_id", type="string", max_length=255, nullable=False, index=True),
+        Field("channel", type="string", max_length=50, nullable=False),
+        Field("enabled", type="boolean", default=True),
+        Field("updated_at", type="datetime", server_default="now()"),
+    ],
+    indexes=[
+        {"columns": ["user_id", "channel"], "name": "idx_notif_pref_user_channel", "unique": True},
+    ],
+    relations=[],
+)
+
+NOTIFICATION_LOG_SCHEMA = Schema(
+    table_name="admin_notification_logs",
+    verbose_name="Notification Log",
+    verbose_name_plural="Notification Logs",
+    fields=[
+        Field("id", type="integer", primary_key=True, auto_increment=True),
+        Field("notification_id", type="integer", nullable=False, index=True),
+        Field("user_id", type="string", max_length=255, nullable=True),
+        Field("channel", type="string", max_length=50, nullable=False),
+        Field("provider", type="string", max_length=100, nullable=True),
+        Field("recipient", type="string", max_length=255, nullable=True),
+        Field("status", type="string", max_length=20, nullable=False),
+        Field("error", type="text", nullable=True),
+        Field("created_at", type="datetime", server_default="now()"),
+    ],
+    indexes=[
+        {"columns": ["notification_id", "channel"], "name": "idx_notif_log_notification"},
+    ],
+    relations=[],
+)
+
+# ---------------------------------------------------------------------------
+# AI usage / conversation schemas
+#
+# Mirrors the AuditLog "log pattern": user_id/user_email are stored as
+# plain indexed columns (no FK) so the tables keep working when a project
+# overrides the user schema via ``auth_model=``.
+# ---------------------------------------------------------------------------
+
+AI_USAGE_LOG_SCHEMA = Schema(
+    table_name="admin_ai_usage_log",
+    verbose_name="AI Usage Log",
+    verbose_name_plural="AI Usage Logs",
+    fields=[
+        Field("id", type="integer", primary_key=True, auto_increment=True),
+        Field("agent_name", type="string", max_length=100, nullable=False),
+        Field("model", type="string", max_length=255, nullable=False),
+        Field("user_id", type="integer", nullable=True),
+        Field("user_email", type="string", max_length=255, nullable=True),
+        Field("request_tokens", type="integer", default=0),
+        Field("response_tokens", type="integer", default=0),
+        Field("total_tokens", type="integer", default=0),
+        Field("cost", type="numeric", default=0),
+        Field("tool_calls", type="json", nullable=True),
+        Field("success", type="boolean", default=True),
+        Field("error", type="text", nullable=True),
+        Field("latency_ms", type="integer", nullable=True),
+        Field("timestamp", type="datetime", server_default="now()"),
+    ],
+    indexes=[
+        {"columns": ["agent_name", "timestamp"], "name": "idx_ai_usage_agent"},
+        {"columns": ["user_id"], "name": "idx_ai_usage_user"},
+    ],
+    relations=[],
+)
+
+AI_CONVERSATION_SCHEMA = Schema(
+    table_name="admin_ai_conversations",
+    verbose_name="AI Conversation",
+    verbose_name_plural="AI Conversations",
+    fields=[
+        Field("id", type="string", primary_key=True, max_length=36),
+        Field("agent_name", type="string", max_length=100, nullable=False),
+        Field("user_id", type="integer", nullable=True),
+        Field("user_email", type="string", max_length=255, nullable=True),
+        Field("title", type="string", max_length=255, nullable=True),
+        Field("status", type="string", max_length=20, default="active"),
+        Field("message_history", type="json", nullable=True),
+        Field("total_tokens", type="integer", default=0),
+        Field("total_cost", type="numeric", default=0),
+        Field("turn_count", type="integer", default=0),
+        Field("started_at", type="datetime", server_default="now()"),
+        Field("last_message_at", type="datetime", nullable=True),
+    ],
+    indexes=[
+        {"columns": ["user_id", "last_message_at"], "name": "idx_ai_conv_user"},
+    ],
+    relations=[],
+)
+
+AI_MESSAGE_SCHEMA = Schema(
+    table_name="admin_ai_messages",
+    verbose_name="AI Message",
+    verbose_name_plural="AI Messages",
+    fields=[
+        Field("id", type="integer", primary_key=True, auto_increment=True),
+        Field("conversation_id", type="string", max_length=36, nullable=False),
+        Field("role", type="string", max_length=20, nullable=False),
+        Field("content", type="text", nullable=True),
+        Field("tool_name", type="string", max_length=100, nullable=True),
+        Field("tool_args", type="json", nullable=True),
+        Field("tool_result", type="json", nullable=True),
+        Field("tokens", type="integer", nullable=True),
+        Field("latency_ms", type="integer", nullable=True),
+        Field("error", type="text", nullable=True),
+        Field("is_error", type="boolean", default=False),
+        Field("created_at", type="datetime", server_default="now()"),
+    ],
+    indexes=[
+        {"columns": ["conversation_id", "created_at"], "name": "idx_ai_msg_conv"},
+    ],
+    relations=[],
+)
+
+AI_ATTACHMENT_SCHEMA = Schema(
+    table_name="admin_ai_attachments",
+    verbose_name="AI Attachment",
+    verbose_name_plural="AI Attachments",
+    fields=[
+        Field("id", type="integer", primary_key=True, auto_increment=True),
+        Field("conversation_id", type="string", max_length=36, nullable=True),
+        Field("message_id", type="integer", nullable=True),
+        Field("filename", type="string", max_length=255, nullable=False),
+        Field("file_path", type="string", max_length=500, nullable=False),
+        Field("file_size", type="integer", nullable=True),
+        Field("mime_type", type="string", max_length=100, nullable=True),
+        Field("created_at", type="datetime", server_default="now()"),
+    ],
+    indexes=[
+        {"columns": ["conversation_id", "created_at"], "name": "idx_ai_attach_conv"},
+    ],
+    relations=[],
+)
+
+
+# ---------------------------------------------------------------------------
+# Derived table-name sets
+# ---------------------------------------------------------------------------
+
+AI_TABLE_NAMES = frozenset(
+    {
+        AI_USAGE_LOG_SCHEMA.table_name,
+        AI_CONVERSATION_SCHEMA.table_name,
+        AI_MESSAGE_SCHEMA.table_name,
+        AI_ATTACHMENT_SCHEMA.table_name,
+    }
+)
+
+# Tables owned by the notification system (exposed under the "notifications"
+# sidebar group). Hidden from the UI entirely when notifications are disabled.
+NOTIFICATION_TABLE_NAMES = frozenset(
+    {
+        NOTIFICATION_SCHEMA.table_name,
+        NOTIFICATION_PREFERENCE_SCHEMA.table_name,
+        NOTIFICATION_LOG_SCHEMA.table_name,
+    }
+)
+
+# Tables that are internal (upload blobs, grant rows, 2FA secrets) and must
+# never be exposed in the admin UI sidebar, regardless of feature flags.
+INTERNAL_TABLE_NAMES = frozenset(
+    {
+        REFRESH_TOKEN_SCHEMA.table_name,
+        USER_PERMISSION_SCHEMA.table_name,
+        USER_TOTP_SCHEMA.table_name,
+        AI_ATTACHMENT_SCHEMA.table_name,
+    }
+)
+
+
+__all__ = [
+    "USER_SCHEMA",
+    "ROLE_SCHEMA",
+    "PERMISSION_SCHEMA",
+    "AUDIT_LOG_SCHEMA",
+    "LOGIN_ATTEMPT_SCHEMA",
+    "USER_PERMISSION_SCHEMA",
+    "REFRESH_TOKEN_SCHEMA",
+    "USER_TOTP_SCHEMA",
+    "NOTIFICATION_SCHEMA",
+    "NOTIFICATION_PREFERENCE_SCHEMA",
+    "NOTIFICATION_LOG_SCHEMA",
+    "AI_USAGE_LOG_SCHEMA",
+    "AI_CONVERSATION_SCHEMA",
+    "AI_MESSAGE_SCHEMA",
+    "AI_ATTACHMENT_SCHEMA",
+    "AI_TABLE_NAMES",
+    "NOTIFICATION_TABLE_NAMES",
+    "INTERNAL_TABLE_NAMES",
+]

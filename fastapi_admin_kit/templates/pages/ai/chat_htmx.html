@@ -1,0 +1,198 @@
+{# pages/ai/chat_htmx.html — AI Chat driven by htmx's SSE extension #}
+{# Consumes the native /ai/chat/sse stream via the htmx SSE extension. #}
+{% extends "base.html" %}
+
+{% block title %}AI Chat (htmx){% endblock %}
+
+{% block head_extra %}
+<script src="https://unpkg.com/htmx.org@2.0.4/dist/ext/sse.js"></script>
+<style>
+  .htmx-chat {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+
+  .htmx-chat h1 {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 4px 0;
+  }
+
+  .htmx-chat .subtitle {
+    font-size: var(--text-sm);
+    color: var(--text-tertiary);
+    margin: 0 0 20px 0;
+  }
+
+  .htmx-reply {
+    min-height: 160px;
+    max-height: 50vh;
+    overflow-y: auto;
+    padding: 16px;
+    background: var(--surface-raised);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-sm);
+    line-height: 1.7;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    margin-bottom: 16px;
+  }
+
+  .htmx-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    margin-bottom: 12px;
+  }
+
+  .htmx-status .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--primary-500);
+    animation: typingBounce 1.2s infinite;
+  }
+
+  .htmx-chat-form {
+    display: flex;
+    gap: 8px;
+  }
+
+  .htmx-chat-form textarea {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-base);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    resize: none;
+    outline: none;
+    min-height: 42px;
+    line-height: 1.5;
+  }
+
+  .htmx-chat-form textarea:focus {
+    border-color: var(--primary-500);
+    box-shadow: var(--shadow-focus);
+  }
+
+  .htmx-chat-form button {
+    padding: 0 18px;
+    border: none;
+    border-radius: var(--radius-lg);
+    background: var(--primary-600);
+    color: white;
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .htmx-chat-form button:hover {
+    background: var(--primary-700);
+  }
+
+  .htmx-tip {
+    margin-top: 12px;
+    font-size: var(--text-xs);
+    color: var(--text-disabled);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="htmx-chat">
+  <h1>AI Assistant <small style="font-weight:400;color:var(--text-tertiary)">(htmx)</small></h1>
+  <p class="subtitle">Streaming via htmx SSE extension against <code>/ai/chat/sse</code>.</p>
+
+  <div id="sse-reply" class="htmx-reply" hx-ext="sse" hx-swap="beforeend">
+    <span style="color: var(--text-disabled);">Your reply will stream in here.</span>
+  </div>
+
+  <div class="htmx-status" id="sse-status">
+    <span class="dot" id="sse-dot" style="display:none;"></span>
+    <span id="sse-status-text">Idle</span>
+  </div>
+
+  <div class="htmx-chat-form">
+    <textarea id="htmx-message" rows="1" placeholder="Ask anything about your data..."></textarea>
+    <button type="button" id="htmx-send" onclick="aiHtmxSend()">Send</button>
+  </div>
+
+  <p class="htmx-tip">
+    <code>sse-swap</code> appends <code>delta</code> events into the reply bubble;
+    the <code>done</code> and <code>error</code> events drive the status line via
+    <code>hx-on::sse:*</code>.
+  </p>
+</div>
+
+<script>
+function aiHtmxSend() {
+  const input = document.getElementById('htmx-message');
+  const text = (input.value || '').trim();
+  if (!text || document.getElementById('htmx-send').disabled) return;
+
+  const reply = document.getElementById('sse-reply');
+  const statusText = document.getElementById('sse-status-text');
+  const dot = document.getElementById('sse-dot');
+  const sendBtn = document.getElementById('htmx-send');
+
+  // Replace the streaming region with a fresh instance so the SSE
+  // EventSource is re-created (htmx SSE extension connects on htmx:load).
+  const url = window.__ADMIN_PATH__ +
+    '/ai/chat/sse?agent=default&message=' + encodeURIComponent(text);
+
+  const oldRegion = document.getElementById('sse-region');
+  if (oldRegion) htmx.remove(oldRegion);
+
+  const region = document.createElement('div');
+  region.id = 'sse-region';
+  region.setAttribute('hx-ext', 'sse');
+  region.setAttribute('sse-connect', url);
+  region.setAttribute('sse-swap', 'delta');
+  region.setAttribute('hx-swap', 'beforeend');
+  region.setAttribute('hx-on::sse:done', 'aiHtmxDone()');
+  region.setAttribute('hx-on::sse:error', 'aiHtmxError(event)');
+  reply.appendChild(region);
+
+  reply.innerHTML = '';
+  dot.style.display = '';
+  statusText.textContent = 'Streaming…';
+  sendBtn.disabled = true;
+  input.value = '';
+
+  htmx.process(region);
+}
+
+function aiHtmxDone() {
+  const statusText = document.getElementById('sse-status-text');
+  const dot = document.getElementById('sse-dot');
+  dot.style.display = 'none';
+  statusText.textContent = 'Done';
+  document.getElementById('htmx-send').disabled = false;
+  htmx.remove(document.getElementById('sse-region'));
+}
+
+function aiHtmxError(event) {
+  const statusText = document.getElementById('sse-status-text');
+  const dot = document.getElementById('sse-dot');
+  dot.style.display = 'none';
+  let message = 'Error';
+  try {
+    const payload = JSON.parse(event.data || '{}');
+    message = payload.error || message;
+  } catch (e) {}
+  statusText.textContent = message;
+  document.getElementById('htmx-send').disabled = false;
+  htmx.remove(document.getElementById('sse-region'));
+}
+</script>
+{% endblock %}

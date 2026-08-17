@@ -160,8 +160,7 @@ class ViewContextBuilder:
                     else:
                         pk = sa_inspect(target_model).primary_key[0]
                         q = sa_select(target_model).order_by(pk).limit(100)
-                    result = await session.execute(q)
-                    for obj in result.scalars():
+                    for obj in await session.all(q):
                         label = str(
                             getattr(obj, "name", None)
                             or getattr(obj, "title", None)
@@ -204,8 +203,7 @@ class ViewContextBuilder:
                             .order_by(col)
                             .limit(100)
                         )
-                        result = session.execute(q)
-                        for (val,) in result:
+                        for (val,) in session.rows(q):
                             label = str(val).replace("_", " ").title()
                             choices.append((str(val), label))
                     except Exception:

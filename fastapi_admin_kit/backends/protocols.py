@@ -104,6 +104,43 @@ class SessionBackend(Protocol):
         """Execute a query object and return the result."""
         ...
 
+    def all(self, query: QueryType, unique: bool = False) -> list[Any]:
+        """Execute *query* and return all rows as ORM objects.
+
+        Implementations unwrap the backend-native result object so callers
+        never see a raw result. ``unique=True`` de-duplicates rows produced by
+        joined eager loads.
+        """
+        ...
+
+    def rows(self, query: QueryType) -> list[Any]:
+        """Execute *query* and return all rows as tuples/Rows (no scalar unwrap).
+
+        Use when a query selects multiple columns (``select(A, B)``) and the
+        caller iterates full rows rather than a single scalar column.
+        """
+        ...
+
+    def first(self, query: QueryType, unique: bool = False) -> Any | None:
+        """Execute *query* and return the first row as an ORM object, or None."""
+        ...
+
+    def scalar(self, query: QueryType) -> Any | None:
+        """Execute *query* and return the first column of the first row, or None."""
+        ...
+
+    def scalar_one(self, query: QueryType) -> Any:
+        """Execute *query* and return the first column of the first (only) row."""
+        ...
+
+    def scalar_one_or_none(self, query: QueryType) -> Any | None:
+        """Execute *query* and return the first column or None (no/one row)."""
+        ...
+
+    def count(self, query: QueryType) -> int:
+        """Execute *query* (expected to be a count query) and return the int total."""
+        ...
+
     def commit(self) -> None:
         """Persist all pending changes."""
         ...
@@ -187,10 +224,53 @@ class DatabaseBackend(Protocol):
         """Create and return a new database connection or engine."""
         ...
 
-    def create_tables(self, connection: Any, metadata: Any) -> None:
-        """Issue DDL to create all tables defined in *metadata*."""
+    def create_session_factory(self, connection: Any) -> Any:
+        """Return a zero-arg callable that yields a fresh ``SessionBackend``.
+
+        The returned factory is stored on ``app.state.admin_session_factory``
+        and consumed by the per-request session middleware and any other code
+        that needs a backend-agnostic session.
+        """
+        ...
+
+    def create_tables(self, connection: Any, metadata: Any, tables: Any = None) -> Any:
+        """Issue DDL to create *tables* (or all of *metadata* if None)."""
         ...
 
     def auto_migrate(self, connection: Any, metadata: Any) -> None:
         """Detect schema drift and apply migrations automatically."""
+        ...
+
+    def has_tables(self, connection: Any, names: list[str]) -> set[str]:
+        """Return the subset of *names* whose tables do not yet exist."""
+        ...
+
+    def seed_roles(
+        self,
+        session_factory: Any,
+        seed_roles: list[Any],
+        overwrite: bool = False,
+    ) -> None:
+        """Seed default roles/permissions using *session_factory*.
+
+        Backend-specific (M2M handling differs across ORMs) so each backend
+        implements its own seeding logic.
+        """
+        ...
+
+    def materialize(self, schema: Any, base: Any | None = None) -> type:
+        """Convert a :class:`Schema` into a native model class.
+
+        Returns a model understood by the backend's introspection adapter.
+        """
+        ...
+
+    @property
+    def session_adapter_class(self) -> type:
+        """Class used to wrap a raw per-request connection into a ``SessionBackend``.
+
+        Kept for legacy call sites (e.g. AI persistence) that obtain a raw
+        connection and need to adapt it. Most code uses the session factory
+        directly and never needs this.
+        """
         ...

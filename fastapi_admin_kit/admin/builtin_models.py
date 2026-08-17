@@ -1,9 +1,65 @@
 """Default ModelAdmin classes for built-in admin models."""
 
+from __future__ import annotations
+
+from typing import Any
+
 from fastapi_admin_kit.modeladmin import ModelAdmin
 from fastapi_admin_kit.types import ExtraField
 from fastapi_admin_kit.widgets.inputs import AutocompleteWidget, PasswordWidget
 from fastapi_admin_kit.widgets.relation import MultiRelationWidget
+
+
+class NotificationAdmin(ModelAdmin):
+    tag = "notifications"
+    icon = "bell"
+    verbose_name = "Notification"
+    verbose_name_plural = "Notifications"
+
+    def get_nav_badge(self, request: Any = None) -> str | None:
+        from fastapi_admin_kit.db import get_db_session
+        from fastapi_admin_kit.migrations.models import Notification
+
+        try:
+            query = getattr(request.app.state, "admin_query_adapter", None)
+            session = get_db_session(request)
+            if query is None or session is None:
+                return None
+            q = query.select(Notification)
+            q = query.where(q, Notification.is_read == False)  # noqa: E712
+            count = session.count(query.count(q))
+            return str(count) if count > 0 else None
+        except Exception:
+            return None
+
+
+class NotificationPreferenceAdmin(ModelAdmin):
+    tag = "notifications"
+    icon = "eye"
+    verbose_name = "Notification Preference"
+    verbose_name_plural = "Notification Preferences"
+
+
+class NotificationLogAdmin(ModelAdmin):
+    tag = "notifications"
+    icon = "clock"
+    verbose_name = "Notification Log"
+    verbose_name_plural = "Notification Logs"
+
+    def get_nav_badge(self, request: Any = None) -> str | None:
+        from fastapi_admin_kit.db import get_db_session
+        from fastapi_admin_kit.migrations.models import NotificationLog
+
+        try:
+            query = getattr(request.app.state, "admin_query_adapter", None)
+            session = get_db_session(request)
+            if query is None or session is None:
+                return None
+            q = query.select(NotificationLog)
+            count = session.count(query.count(q))
+            return str(count) if count > 0 else None
+        except Exception:
+            return None
 
 
 async def flush_pending_perm_ops(request):
@@ -136,12 +192,11 @@ class UserAdmin(ModelAdmin):
         if obj is not None and request is not None:
             try:
                 session = get_db_session(request)
-                result = await session.execute(
+                for up, perm in await session.rows(
                     select(UserPermission, Permission)
                     .join(Permission, UserPermission.permission_id == Permission.id)
                     .where(UserPermission.user_id == obj.id)
-                )
-                for up, perm in result:
+                ):
                     perm_data.append(
                         {
                             "id": perm.id,
@@ -271,3 +326,64 @@ class LoginAttemptAdmin(ModelAdmin):
     verbose_name_plural = "Login Attempts"
     list_display = ["id", "email", "ip_address", "success", "note", "timestamp"]
     search_fields = ["email", "ip_address"]
+
+
+class AIConversationAdmin(ModelAdmin):
+    tag = "ai"
+    icon = "chat"
+    verbose_name = "AI Conversation"
+    verbose_name_plural = "AI Conversations"
+    list_display = [
+        "id",
+        "title",
+        "agent_name",
+        "user_email",
+        "turn_count",
+        "total_tokens",
+        "last_message_at",
+    ]
+    search_fields = ["title", "user_email", "agent_name"]
+    list_filter = ["status", "agent_name"]
+    ordering = ["-last_message_at"]
+    readonly_fields = ["message_history"]
+
+
+class AIMessageAdmin(ModelAdmin):
+    tag = "ai"
+    icon = "forum"
+    verbose_name = "AI Message"
+    verbose_name_plural = "AI Messages"
+    list_display = [
+        "id",
+        "conversation_id",
+        "role",
+        "tool_name",
+        "tokens",
+        "is_error",
+        "created_at",
+    ]
+    search_fields = ["content", "tool_name", "conversation_id"]
+    list_filter = ["role", "is_error"]
+    ordering = ["-created_at"]
+    readonly_fields = ["content", "tool_args", "tool_result", "error"]
+
+
+class AIUsageLogAdmin(ModelAdmin):
+    tag = "ai"
+    icon = "monitoring"
+    verbose_name = "AI Usage Log"
+    verbose_name_plural = "AI Usage Logs"
+    list_display = [
+        "id",
+        "agent_name",
+        "model",
+        "user_email",
+        "total_tokens",
+        "cost",
+        "success",
+        "timestamp",
+    ]
+    search_fields = ["agent_name", "model", "user_email"]
+    list_filter = ["success", "agent_name", "model"]
+    ordering = ["-timestamp"]
+    readonly_fields = ["tool_calls", "error"]

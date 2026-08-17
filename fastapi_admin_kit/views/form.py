@@ -32,7 +32,17 @@ def create_form_factory(registered: RegisteredModel):
                 ),
             },
         )
-        return templates.TemplateResponse(request, "pages/form.html", context)
+        # Custom form template: explicit → auto-discovery → global → default
+        from fastapi_admin_kit.views.renderers import resolve_template
+
+        create_template = getattr(registered.admin, "create_template", None)
+        candidates = []
+        if create_template:
+            candidates.append(create_template)
+        candidates.append(f"admin/{registered.table_name}/form.html")
+        candidates += ["admin/form.html", "pages/form.html"]
+        template = resolve_template(request, candidates)
+        return templates.TemplateResponse(request, template, context)
 
     create_form.__name__ = f"create_form_{registered.table_name}"
     return create_form

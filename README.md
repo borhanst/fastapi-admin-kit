@@ -187,7 +187,6 @@ All commands accept `-d DATABASE_URL` or read the `DATABASE_URL` environment var
 
 ```python
 from fastapi_admin_kit import Admin
-from fastapi_admin_kit.config import ThemeConfig
 
 admin = Admin(
     app=app,
@@ -196,7 +195,6 @@ admin = Admin(
     secret_key=SECRET_KEY,
     title="My Admin",           # Admin panel title
     admin_path="/admin",        # URL prefix
-    dark_mode_default=False,    # Dark mode on by default
     # Auth
     auth_backend=BuiltinAuthBackend(),
     # Environment badge

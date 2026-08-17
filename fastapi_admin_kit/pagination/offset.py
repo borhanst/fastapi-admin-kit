@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from fastapi_admin_kit.backends import as_session_backend
 from fastapi_admin_kit.pagination.base import BasePagination, PaginationResult
 
 
@@ -20,14 +21,15 @@ class OffsetPagination(BasePagination):
         query_adapter: Any = None,
         **kw: Any,
     ) -> PaginationResult:
+        session = as_session_backend(session)
         if query_adapter is not None:
             count_q = query_adapter.count(stmt)
-            total = (await session.execute(count_q)).scalar() or 0
+            total = await session.count(count_q)
         else:
             from sqlalchemy import func, select
 
             count_q = select(func.count()).select_from(stmt.subquery())
-            total = (await session.execute(count_q)).scalar() or 0
+            total = await session.count(count_q)
 
         total_pages = max(1, math.ceil(total / per_page))
         page = max(1, min(page, total_pages))
@@ -39,8 +41,7 @@ class OffsetPagination(BasePagination):
         else:
             stmt = stmt.offset(offset).limit(per_page)
 
-        result = await session.execute(stmt)
-        items = list(result.unique().scalars().all())
+        items = list(await session.all(stmt, unique=True))
 
         return PaginationResult(
             items=items,

@@ -93,6 +93,13 @@ class ModelAdmin:
     nav_order: int = 999
     nav_children: list[NavItemConfig] | None = None
 
+    # Template customization (None = auto-discovery → built-in default)
+    list_template: str | None = None
+    create_template: str | None = None
+    edit_template: str | None = None
+    detail_template: str | None = None
+    inline_edit_template: str | None = None
+
     # Route generation
     skip_auto_routes: bool = False
 
@@ -411,6 +418,34 @@ class ModelAdmin:
             excluded = set(self.inline_exclude_fields)
             return [f for f in all_fields if f.name not in excluded]
         return all_fields
+
+    # ── Notification recipients hook ──────────────────────────────────
+
+    def get_notification_recipients(
+        self, event: str, request: Any = None, obj: Any = None
+    ) -> list[dict[str, Any]] | None:
+        """Get notification recipients for an admin change event.
+
+        The default implementation returns ``None``, which signals the dispatcher
+        to use the built-in default behaviour: superusers always receive notifications,
+        regular admin users receive them only if they have enabled
+        ``NotificationPreference`` rows.
+
+        Subclasses may override this method to customise recipient selection,
+        channels, or to bypass preference lookups entirely.
+
+        Args:
+            event: One of ``"create"``, ``"update"``, or ``"delete"``.
+            request: Current request (optional, for accessing auth context).
+            obj: The affected object instance (optional).
+
+        Returns:
+            ``list[{"id", "email", "phone", "channels"}]`` of recipient dicts,
+            or ``[]`` to disable notifications for this model entirely,
+            or ``None`` to use the default behaviour (superusers always,
+            regular admins only with enabled preferences).
+        """
+        return None
 
     # ── Permission helpers ───────────────────────────────────────────
 

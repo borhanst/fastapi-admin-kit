@@ -55,7 +55,7 @@ def dashboard_view_factory(admin: Any):
         stat_cards = []
         for model in models_for_stats:
             count_query = select(func.count()).select_from(model.model)
-            count = (await session.execute(count_query)).scalar()
+            count = await session.count(count_query)
 
             # Trend: count in last 30 days vs previous 30 days
             model_cls = model.model
@@ -70,11 +70,11 @@ def dashboard_view_factory(admin: Any):
                     recent_q = (
                         select(func.count()).select_from(model_cls).where(col >= thirty_days_ago)
                     )
-                    trend_current = (await session.execute(recent_q)).scalar() or 0
+                    trend_current = await session.count(recent_q)
                     older_q = (
                         select(func.count()).select_from(model_cls).where(col < thirty_days_ago)
                     )
-                    trend_previous = (await session.execute(older_q)).scalar() or 0
+                    trend_previous = await session.count(older_q)
                     break
 
             # Calculate trend percentage
@@ -108,7 +108,7 @@ def dashboard_view_factory(admin: Any):
             .order_by(AuditLog.timestamp.desc())
             .limit(10)
         )
-        recent_audit = (await session.execute(audit_query)).scalars().all()
+        recent_audit = await session.all(audit_query)
 
         # Get 5 most recently active models for Quick Actions
         recent_model_query = (
@@ -121,7 +121,7 @@ def dashboard_view_factory(admin: Any):
             .order_by(func.max(AuditLog.timestamp).desc())
             .limit(5)
         )
-        recent_model_rows = (await session.execute(recent_model_query)).all()
+        recent_model_rows = await session.rows(recent_model_query)
         model_lookup = {m.table_name: m for m in registered_models}
         recent_activity_models = [
             model_lookup[row.table_name]
@@ -163,7 +163,7 @@ def dashboard_view_factory(admin: Any):
         total_count = 0
         for i, model in enumerate(registered_models):
             count_query = select(func.count()).select_from(model.model)
-            count = (await session.execute(count_query)).scalar() or 0
+            count = await session.count(count_query)
             total_count += count
             overview_data.append(
                 {

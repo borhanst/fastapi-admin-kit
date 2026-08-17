@@ -800,6 +800,251 @@ document.addEventListener('alpine:init', () => {
     },
   }));
 
+/* ── Notification Dropdown ──────────────────────────────────────────── */
+
+  Alpine.data('notificationDropdown', () => ({
+    open: false,
+    unreadCount: 0,
+    notifications: [],
+    loading: false,
+    _pollInterval: null,
+    _ws: null,
+    _wsConnected: false,
+    _wsFailures: 0,
+    _wsDisabled: false,
+    _wsRetryTimer: null,
+    _wsRetryDelay: 1000,
+
+    init() {
+      if (window.__NOTIFICATIONS_ENABLED__ === false) {
+        // Notifications not configured — never poll or open WebSockets.
+        return;
+      }
+      this.fetchUnreadCount();
+      this.startPolling();
+
+      this.$watch('open', (val) => {
+        if (val) {
+          this.fetchNotifications();
+        }
+      });
+
+      this.connectWebSocket();
+    },
+
+    destroy() {
+      this.stopPolling();
+      this.disconnectWebSocket();
+    },
+
+    getApiBase() {
+      return window.__NOTIFICATIONS_API_PATH__ || `${window.__ADMIN_PATH__}/notifications`;
+    },
+
+    _scheduleWsRetry() {
+      if (this._wsRetryTimer || this._wsDisabled) return;
+      this._wsFailures++;
+      if (this._wsFailures >= 5) {
+        this._wsDisabled = true;
+        this._wsRetryTimer = null;
+        this.fetchLatestNotifications();
+        this.startPolling();
+        return;
+      }
+      this._wsRetryTimer = setTimeout(() => {
+        this._wsRetryTimer = null;
+        this.connectWebSocket();
+      }, this._wsRetryDelay);
+      this._wsRetryDelay = Math.min(this._wsRetryDelay * 2, 30000);
+    },
+
+    async fetchUnreadCount() {
+      try {
+        const resp = await fetch(`${this.getApiBase()}/unread-count`, {
+          credentials: 'include',
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          this.unreadCount = data.count || 0;
+        }
+      } catch (e) {
+        console.error('Failed to fetch unread count:', e);
+      }
+    },
+
+    async fetchNotifications() {
+      this.loading = true;
+      try {
+        const resp = await fetch(`${this.getApiBase()}/?limit=20`, {
+          credentials: 'include',
+        });
+        if (resp.ok) {
+          this.notifications = await resp.json();
+        }
+      } catch (e) {
+        console.error('Failed to fetch notifications:', e);
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async markRead(notificationId) {
+      try {
+        const resp = await fetch(`${this.getApiBase()}/${notificationId}/read`, {
+          method: 'PUT',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || '',
+          },
+        });
+        if (resp.ok) {
+          const notif = this.notifications.find(n => n.id === notificationId);
+          if (notif && !notif.is_read) {
+            notif.is_read = true;
+            this.unreadCount = Math.max(0, this.unreadCount - 1);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to mark notification as read:', e);
+      }
+    },
+
+    async markAllRead() {
+      const unreadIds = this.notifications.filter(n => !n.is_read).map(n => n.id);
+      for (const id of unreadIds) {
+        await this.markRead(id);
+      }
+    },
+
+    startPolling() {
+      if (this._pollInterval) return;
+      this._pollInterval = setInterval(() => {
+        this.fetchUnreadCount();
+        this.fetchLatestNotifications();
+      }, 20000);
+    },
+
+    stopPolling() {
+      if (this._pollInterval) {
+        clearInterval(this._pollInterval);
+        this._pollInterval = null;
+      }
+    },
+
+    async fetchLatestNotifications() {
+      try {
+        const resp = await fetch(`${this.getApiBase()}/?limit=20`, {
+          credentials: 'include',
+        });
+        if (!resp.ok) return;
+        const list = await resp.json();
+        const known = new Set(this.notifications.map(n => n.id));
+        const fresh = list.filter(n => !known.has(n.id));
+        if (fresh.length) {
+          this.notifications = [...fresh, ...this.notifications];
+          this.unreadCount += fresh.filter(n => !n.is_read).length;
+        }
+      } catch (e) {
+        console.error('Failed to fetch latest notifications:', e);
+      }
+    },
+
+    connectWebSocket() {
+      if (this._ws || this._wsDisabled) return;
+      try {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const base = this.getApiBase();
+        const wsUrl = `${protocol}//${window.location.host}${base}/ws`;
+        const ws = new WebSocket(wsUrl);
+        this._ws = ws;
+
+        ws.onopen = () => {
+          this._wsConnected = true;
+          this._wsFailures = 0;
+          this._wsRetryDelay = 1000;
+          this.stopPolling();
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'notification') {
+              this.notifications.unshift(data.notification);
+              if (!data.notification.is_read) {
+                this.unreadCount++;
+              }
+            } else if (data.type === 'read') {
+              const notif = this.notifications.find(n => n.id === data.notification_id);
+              if (notif && !notif.is_read) {
+                notif.is_read = true;
+                this.unreadCount = Math.max(0, this.unreadCount - 1);
+              }
+            }
+          } catch (e) {
+            console.error('Failed to parse WebSocket message:', e);
+          }
+        };
+
+        ws.onclose = () => {
+          this._wsConnected = false;
+          if (this._ws === ws) {
+            this._ws = null;
+            this.fetchLatestNotifications();
+            this._scheduleWsRetry();
+            this.startPolling();
+          }
+        };
+
+        ws.onerror = () => {
+          try { ws.close(); } catch (e) { /* noop */ }
+        };
+      } catch (e) {
+        console.error('WebSocket connection failed:', e);
+        this._ws = null;
+        this._scheduleWsRetry();
+      }
+    },
+
+    disconnectWebSocket() {
+      if (this._wsRetryTimer) {
+        clearTimeout(this._wsRetryTimer);
+        this._wsRetryTimer = null;
+      }
+      if (this._ws) {
+        this._ws.close();
+        this._ws = null;
+      }
+    },
+
+    getIcon(notification) {
+      const icons = {
+        info: 'info',
+        success: 'check_circle',
+        warning: 'warning',
+        error: 'error',
+        default: 'notifications',
+      };
+      return icons[notification.channels?.[0]] || icons.default;
+    },
+
+    formatTime(isoString) {
+      if (!isoString) return '';
+      const date = new Date(isoString);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      return date.toLocaleDateString();
+    },
+  }));
+
 });
 
 /* ── HTMX Loading Bar ────────────────────────────────────────────── */

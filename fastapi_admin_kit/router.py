@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi_admin_kit.auth.csrf import require_csrf_token
 from fastapi_admin_kit.auth.dependencies import require_permission
 from fastapi_admin_kit.db import get_db_session
+from fastapi_admin_kit.notifications.dispatcher import dispatch_model_change
 from fastapi_admin_kit.registry import RegisteredModel
 from fastapi_admin_kit.views.class_views import (
     BulkView,
@@ -148,8 +149,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             base = apply_search_filter(base, registered.model, search_fields, q)
 
         # Execute query
-        result = await session.execute(base)
-        queryset = result.scalars().all()
+        queryset = await session.all(base)
 
         # Instantiate and export
         exporter = export_class(registered)
@@ -298,6 +298,13 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             flash_msg += f"{result['errors']} error(s)."
         ctx["flash_message"] = flash_msg.strip()
 
+        # Dispatch create notification for imported data
+        await dispatch_model_change(
+            request,
+            registered=registered,
+            event="create",
+        )
+
         templates = request.app.state.admin_jinja_env
         html = templates.TemplateResponse(request, "partials/list_table.html", ctx)
         return html
@@ -398,8 +405,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
                 == cast_pk_value(registered.model, id)
             )
         )
-        result = await session.execute(stmt)
-        obj = result.scalar_one_or_none()
+        obj = await session.scalar_one_or_none(stmt)
         if obj is None:
             raise HTTPException(status_code=404, detail="Not found")
 
@@ -419,16 +425,28 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             if fc.meta.name in {f.name for f in inline_fields}
         ]
 
+        # Custom inline edit template: explicit → auto-discovery → global → default
+        from fastapi_admin_kit.views.renderers import resolve_template
+
+        inline_edit_template = getattr(registered.admin, "inline_edit_template", None)
+        candidates = []
+        if inline_edit_template:
+            candidates.append(inline_edit_template)
+        candidates.append(f"admin/{registered.table_name}/inline_edit.html")
+        candidates += ["admin/inline_edit.html", "partials/inline_edit_form.html"]
+        inline_edit_template = resolve_template(request, candidates)
+
         templates = request.app.state.admin_jinja_env
         return templates.TemplateResponse(
             request,
-            "partials/inline_edit_form.html",
+            inline_edit_template,
             {
                 "obj": obj,
                 "table_name": registered.table_name,
                 "admin_path": request.app.state.admin_config["admin_path"],
                 "display_columns": form_ctx.fieldsets[0].fields,
                 "inline_fields": form_ctx.fieldsets[0].fields,
+                "view": edit_v,
             },
         )
 
@@ -460,8 +478,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
                 == cast_pk_value(registered.model, id)
             )
         )
-        result = await session.execute(stmt)
-        obj = result.scalar_one_or_none()
+        obj = await session.scalar_one_or_none(stmt)
         if obj is None:
             raise HTTPException(status_code=404, detail="Not found")
 
@@ -501,10 +518,20 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
                 for fc in form_ctx.fieldsets[0].fields
                 if fc.meta.name in {f.name for f in inline_fields}
             ]
+            # Custom inline edit template: explicit → auto-discovery → global → default
+            from fastapi_admin_kit.views.renderers import resolve_template
+
+            inline_edit_template = getattr(registered.admin, "inline_edit_template", None)
+            candidates = []
+            if inline_edit_template:
+                candidates.append(inline_edit_template)
+            candidates.append(f"admin/{registered.table_name}/inline_edit.html")
+            candidates += ["admin/inline_edit.html", "partials/inline_edit_form.html"]
+            inline_edit_template = resolve_template(request, candidates)
             templates = request.app.state.admin_jinja_env
             return templates.TemplateResponse(
                 request,
-                "partials/inline_edit_form.html",
+                inline_edit_template,
                 {
                     "obj": obj,
                     "table_name": registered.table_name,
@@ -512,6 +539,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
                     "display_columns": form_ctx.fieldsets[0].fields,
                     "inline_fields": form_ctx.fieldsets[0].fields,
                     "errors": errors,
+                    "view": edit_v,
                 },
                 status_code=422,
             )
@@ -549,6 +577,12 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
 
         await session.flush()
         registered.admin.after_update(obj, request)
+        await dispatch_model_change(
+            request,
+            registered=registered,
+            event="update",
+            obj=obj,
+        )
 
         # Reload the entire table to avoid greenlet issues in template rendering
         from fastapi.responses import HTMLResponse
@@ -685,8 +719,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         from fastapi_admin_kit.search_utils import apply_search_filter
 
         query = apply_search_filter(request, select(model), model, search_fields, q).limit(20)
-        result = await session.execute(query)
-        for obj in result.scalars():
+        for obj in await session.all(query):
             label = str(
                 getattr(obj, "name", None)
                 or getattr(obj, "title", None)

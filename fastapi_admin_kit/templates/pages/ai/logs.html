@@ -1,0 +1,1098 @@
+{# pages/ai/logs.html — AI Operation Logs #}
+{% extends "base.html" %}
+
+{% block title %}{{ title | default("AI Logs") }}{% endblock %}
+
+{% block head_extra %}
+<style>
+  .ai-logs-page {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  /* ── Header ─────────────────────────────────────────────────── */
+  .ai-logs-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .ai-logs-header h1 {
+    font-family: var(--font-display);
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+    letter-spacing: -0.02em;
+  }
+
+  .ai-logs-header p {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    margin: 4px 0 0;
+  }
+
+  .ai-logs-live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success-500);
+    display: inline-block;
+    margin-right: 6px;
+    animation: logsPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes logsPulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+    50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+  }
+
+  /* ── Stat chips ─────────────────────────────────────────────── */
+  .ai-logs-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+  }
+
+  .ai-stat-chip {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--surface-raised);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-lg);
+    transition: border-color var(--duration-fast) var(--easing-out),
+                box-shadow var(--duration-fast) var(--easing-out);
+  }
+
+  .ai-stat-chip:hover {
+    border-color: var(--primary-400);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.08);
+  }
+
+  .ai-stat-chip-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .ai-stat-chip-icon .material-symbols-outlined {
+    font-size: 18px;
+  }
+
+  .ai-stat-chip-icon--emerald {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--primary-600);
+  }
+
+  .ai-stat-chip-icon--blue {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--info-700);
+  }
+
+  .ai-stat-chip-icon--amber {
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--warning-700);
+  }
+
+  .ai-stat-chip-icon--red {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger-700);
+  }
+
+  .ai-stat-chip-icon--violet {
+    background: rgba(139, 92, 246, 0.1);
+    color: #7C3AED;
+  }
+
+  .ai-stat-chip-value {
+    font-family: var(--font-mono);
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1;
+  }
+
+  .ai-stat-chip-label {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    margin-top: 2px;
+  }
+
+  /* ── Filter bar ─────────────────────────────────────────────── */
+  .ai-logs-filters {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    background: var(--surface-raised);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-lg);
+    flex-wrap: wrap;
+  }
+
+  .ai-logs-filters label {
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .ai-filter-select,
+  .ai-filter-input {
+    padding: 7px 12px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-md);
+    background: var(--surface-base);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-family: var(--font-body);
+    outline: none;
+    transition: border-color var(--duration-fast) var(--easing-out);
+  }
+
+  .ai-filter-select:focus,
+  .ai-filter-input:focus {
+    border-color: var(--primary-500);
+    box-shadow: var(--shadow-focus);
+  }
+
+  .ai-filter-select {
+    cursor: pointer;
+    padding-right: 30px;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+  }
+
+  .ai-filter-input {
+    min-width: 160px;
+  }
+
+  .ai-filter-divider {
+    width: 1px;
+    height: 24px;
+    background: var(--surface-border);
+    flex-shrink: 0;
+  }
+
+  .ai-filter-reset {
+    padding: 7px 14px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--easing-out);
+    font-family: var(--font-body);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .ai-filter-reset:hover {
+    border-color: var(--danger-500);
+    color: var(--danger-700);
+    background: var(--danger-50);
+  }
+
+  .ai-filter-reset .material-symbols-outlined {
+    font-size: 15px;
+  }
+
+  /* ── Log stream ─────────────────────────────────────────────── */
+  .ai-logs-stream {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--surface-raised);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  .ai-log-entry {
+    display: grid;
+    grid-template-columns: 40px 1fr auto;
+    gap: 16px;
+    align-items: start;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--surface-border);
+    transition: background var(--duration-fast) var(--easing-out);
+    cursor: pointer;
+    position: relative;
+  }
+
+  .ai-log-entry:last-child {
+    border-bottom: none;
+  }
+
+  .ai-log-entry:hover {
+    background: var(--surface-inset);
+  }
+
+  .ai-log-entry.expanded {
+    background: var(--surface-inset);
+  }
+
+  /* Timeline dot */
+  .ai-log-timeline {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 4px;
+  }
+
+  .ai-log-timeline-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .ai-log-timeline-dot--success {
+    background: var(--success-500);
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15);
+  }
+
+  .ai-log-timeline-dot--error {
+    background: var(--danger-500);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+  }
+
+  .ai-log-timeline-line {
+    width: 1px;
+    flex: 1;
+    min-height: 20px;
+    background: var(--surface-border);
+    margin-top: 6px;
+  }
+
+  /* Main content */
+  .ai-log-body {
+    min-width: 0;
+  }
+
+  .ai-log-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .ai-log-agent-name {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+  }
+
+  .ai-log-model {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-inset);
+    color: var(--text-secondary);
+    border: 1px solid var(--surface-border);
+  }
+
+  .ai-log-status-badge {
+    font-size: var(--text-2xs);
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .ai-log-status-badge--success {
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--success-700);
+  }
+
+  .ai-log-status-badge--error {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger-700);
+  }
+
+  .ai-log-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+
+  .ai-log-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+  }
+
+  .ai-log-meta-item .material-symbols-outlined {
+    font-size: 13px;
+  }
+
+  .ai-log-meta-item--tokens {
+    font-family: var(--font-mono);
+    color: var(--primary-600);
+    font-weight: 500;
+  }
+
+  .ai-log-meta-item--cost {
+    font-family: var(--font-mono);
+    color: var(--warning-700);
+    font-weight: 500;
+  }
+
+  .ai-log-user {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    margin-top: 4px;
+  }
+
+  /* Right side — timestamp */
+  .ai-log-timestamp {
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .ai-log-time {
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
+    color: var(--text-tertiary);
+  }
+
+  .ai-log-date {
+    font-size: var(--text-2xs);
+    color: var(--text-disabled);
+    margin-top: 2px;
+  }
+
+  /* ── Expanded detail panel ──────────────────────────────────── */
+  .ai-log-detail {
+    grid-column: 1 / -1;
+    padding: 16px 0 0;
+    animation: logDetailIn 0.2s var(--easing-out);
+  }
+
+  @keyframes logDetailIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .ai-log-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--surface-base);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-md);
+  }
+
+  .ai-log-detail-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .ai-log-detail-label {
+    font-size: var(--text-2xs);
+    font-weight: 500;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .ai-log-detail-value {
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    word-break: break-all;
+  }
+
+  .ai-log-detail-value--text {
+    font-family: var(--font-body);
+  }
+
+  .ai-log-tool-calls {
+    margin-top: 12px;
+    padding: 14px 16px;
+    background: var(--surface-base);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-md);
+  }
+
+  .ai-log-tool-calls-title {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .ai-log-tool-calls-title .material-symbols-outlined {
+    font-size: 14px;
+  }
+
+  .ai-log-tool-call {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 10px;
+    background: var(--surface-raised);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-sm);
+    margin-bottom: 6px;
+  }
+
+  .ai-log-tool-call:last-child {
+    margin-bottom: 0;
+  }
+
+  .ai-log-tool-call-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-sm);
+    background: rgba(139, 92, 246, 0.1);
+    color: #7C3AED;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .ai-log-tool-call-icon .material-symbols-outlined {
+    font-size: 14px;
+  }
+
+  .ai-log-tool-call-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ai-log-tool-call-name {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+  }
+
+  .ai-log-tool-call-args {
+    font-size: var(--text-2xs);
+    color: var(--text-tertiary);
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ── Error block ────────────────────────────────────────────── */
+  .ai-log-error-block {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: rgba(239, 68, 68, 0.04);
+    border: 1px solid rgba(239, 68, 68, 0.15);
+    border-radius: var(--radius-md);
+    font-size: var(--text-xs);
+    color: var(--danger-700);
+    font-family: var(--font-mono);
+    line-height: 1.6;
+    word-break: break-all;
+  }
+
+  /* ── Empty state ────────────────────────────────────────────── */
+  .ai-logs-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 24px;
+    gap: 12px;
+  }
+
+  .ai-logs-empty-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-lg);
+    background: var(--surface-inset);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ai-logs-empty-icon .material-symbols-outlined {
+    font-size: 28px;
+    color: var(--text-disabled);
+  }
+
+  .ai-logs-empty h3 {
+    font-family: var(--font-display);
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  .ai-logs-empty p {
+    font-size: var(--text-sm);
+    color: var(--text-disabled);
+    margin: 0;
+  }
+
+  /* ── Pagination ─────────────────────────────────────────────── */
+  .ai-logs-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    background: var(--surface-raised);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-lg);
+  }
+
+  .ai-logs-page-info {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+  }
+
+  .ai-logs-page-info strong {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .ai-logs-page-btns {
+    display: flex;
+    gap: 6px;
+  }
+
+  .ai-logs-page-btn {
+    padding: 6px 14px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--easing-out);
+    font-family: var(--font-body);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .ai-logs-page-btn:hover:not(:disabled) {
+    border-color: var(--primary-500);
+    color: var(--primary-600);
+  }
+
+  .ai-logs-page-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .ai-logs-page-btn .material-symbols-outlined {
+    font-size: 16px;
+  }
+
+  /* ── Loading skeleton ───────────────────────────────────────── */
+  .ai-log-skeleton {
+    display: grid;
+    grid-template-columns: 40px 1fr auto;
+    gap: 16px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--surface-border);
+  }
+
+  .ai-skeleton-pulse {
+    background: linear-gradient(90deg, var(--surface-inset) 25%, var(--surface-border) 50%, var(--surface-inset) 75%);
+    background-size: 200% 100%;
+    animation: skeletonPulse 1.5s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+  }
+
+  @keyframes skeletonPulse {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  .ai-skeleton-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-top: 6px;
+  }
+
+  .ai-skeleton-line {
+    height: 12px;
+    border-radius: var(--radius-sm);
+  }
+
+  .ai-skeleton-line--sm { width: 60px; height: 10px; }
+  .ai-skeleton-line--md { width: 140px; }
+  .ai-skeleton-line--lg { width: 220px; }
+
+  /* ── Responsive ─────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    .ai-logs-header { flex-direction: column; align-items: flex-start; }
+    .ai-logs-filters { flex-direction: column; align-items: stretch; }
+    .ai-filter-divider { width: 100%; height: 1px; }
+    .ai-filter-reset { margin-left: 0; }
+    .ai-log-entry { grid-template-columns: 32px 1fr; gap: 12px; }
+    .ai-log-timestamp { grid-column: 2; text-align: left; margin-top: 4px; }
+    .ai-log-detail-grid { grid-template-columns: 1fr; }
+    .ai-logs-stats { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ai-logs-page" x-data="aiLogs()" x-init="init()">
+  {# ── Header ────────────────────────────────────────────────── #}
+  <div class="ai-logs-header">
+    <div>
+      <h1>AI Logs</h1>
+      <p>Trace every AI operation — tokens, latency, tool calls, and costs.</p>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <button @click="refreshLogs()" class="btn btn-secondary btn-sm" :disabled="loading">
+        <span class="material-symbols-outlined" style="font-size: 16px;">refresh</span>
+        Refresh
+      </button>
+      <span class="ai-logs-live-dot"></span>
+      <span style="font-size: var(--text-xs); color: var(--text-tertiary);">Live</span>
+    </div>
+  </div>
+
+  {# ── Stats ─────────────────────────────────────────────────── #}
+  <div class="ai-logs-stats">
+    <div class="ai-stat-chip">
+      <div class="ai-stat-chip-icon ai-stat-chip-icon--emerald">
+        <span class="material-symbols-outlined">analytics</span>
+      </div>
+      <div>
+        <div class="ai-stat-chip-value" x-text="stats.total_runs.toLocaleString()">—</div>
+        <div class="ai-stat-chip-label">Total Runs</div>
+      </div>
+    </div>
+    <div class="ai-stat-chip">
+      <div class="ai-stat-chip-icon ai-stat-chip-icon--blue">
+        <span class="material-symbols-outlined">token</span>
+      </div>
+      <div>
+        <div class="ai-stat-chip-value" x-text="stats.total_tokens.toLocaleString()">—</div>
+        <div class="ai-stat-chip-label">Total Tokens</div>
+      </div>
+    </div>
+    <div class="ai-stat-chip">
+      <div class="ai-stat-chip-icon ai-stat-chip-icon--amber">
+        <span class="material-symbols-outlined">attach_money</span>
+      </div>
+      <div>
+        <div class="ai-stat-chip-value" x-text="'$' + stats.total_cost.toFixed(4)">—</div>
+        <div class="ai-stat-chip-label">Total Cost</div>
+      </div>
+    </div>
+    <div class="ai-stat-chip">
+      <div class="ai-stat-chip-icon ai-stat-chip-icon--violet">
+        <span class="material-symbols-outlined">speed</span>
+      </div>
+      <div>
+        <div class="ai-stat-chip-value" x-text="stats.avg_latency + 'ms'">—</div>
+        <div class="ai-stat-chip-label">Avg Latency</div>
+      </div>
+    </div>
+    <div class="ai-stat-chip">
+      <div class="ai-stat-chip-icon ai-stat-chip-icon--red">
+        <span class="material-symbols-outlined">check_circle</span>
+      </div>
+      <div>
+        <div class="ai-stat-chip-value" x-text="stats.success_rate + '%'">—</div>
+        <div class="ai-stat-chip-label">Success Rate</div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Filters ───────────────────────────────────────────────── #}
+  <div class="ai-logs-filters">
+    <label>Filter</label>
+
+    <select class="ai-filter-select" x-model="filters.agent" @change="applyFilters()">
+      <option value="">All Agents</option>
+      <template x-for="a in agents" :key="a">
+        <option :value="a" x-text="a"></option>
+      </template>
+    </select>
+
+    <select class="ai-filter-select" x-model="filters.status" @change="applyFilters()">
+      <option value="">All Status</option>
+      <option value="success">Success</option>
+      <option value="error">Error</option>
+    </select>
+
+    <select class="ai-filter-select" x-model="filters.period" @change="applyFilters()">
+      <option value="">All Time</option>
+      <option value="hour">Last Hour</option>
+      <option value="day">Last 24 Hours</option>
+      <option value="week">Last 7 Days</option>
+    </select>
+
+    <div class="ai-filter-divider"></div>
+
+    <input type="text" class="ai-filter-input" placeholder="Search user email..."
+           x-model="filters.search" @input.debounce.300ms="applyFilters()">
+
+    <button class="ai-filter-reset" @click="resetFilters()">
+      <span class="material-symbols-outlined">restart_alt</span>
+      Reset
+    </button>
+  </div>
+
+  {# ── Log stream ────────────────────────────────────────────── #}
+  <div class="ai-logs-stream">
+    {# Loading skeletons #}
+    <template x-if="loading && logs.length === 0">
+      <div>
+        <template x-for="i in 5" :key="i">
+          <div class="ai-log-skeleton">
+            <div class="ai-skeleton-pulse ai-skeleton-dot"></div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div class="ai-skeleton-pulse ai-skeleton-line ai-skeleton-line--md"></div>
+              <div class="ai-skeleton-pulse ai-skeleton-line ai-skeleton-line--lg"></div>
+            </div>
+            <div class="ai-skeleton-pulse ai-skeleton-line ai-skeleton-line--sm"></div>
+          </div>
+        </template>
+      </div>
+    </template>
+
+    {# Empty state #}
+    <template x-if="!loading && logs.length === 0">
+      <div class="ai-logs-empty">
+        <div class="ai-logs-empty-icon">
+          <span class="material-symbols-outlined">receipt_long</span>
+        </div>
+        <h3>No logs yet</h3>
+        <p>AI operations will appear here once agents start running.</p>
+      </div>
+    </template>
+
+    {# Log entries #}
+    <template x-for="(log, idx) in logs" :key="log.id">
+      <div>
+        <div class="ai-log-entry"
+             :class="{ 'expanded': expandedId === log.id }"
+             @click="toggleDetail(log.id)">
+
+          {# Timeline #}
+          <div class="ai-log-timeline">
+            <div class="ai-log-timeline-dot"
+                 :class="log.success ? 'ai-log-timeline-dot--success' : 'ai-log-timeline-dot--error'"></div>
+            <div class="ai-log-timeline-line" x-show="idx < logs.length - 1"></div>
+          </div>
+
+          {# Body #}
+          <div class="ai-log-body">
+            <div class="ai-log-title-row">
+              <span class="ai-log-agent-name" x-text="log.agent_name"></span>
+              <span class="ai-log-model" x-text="log.model"></span>
+              <span class="ai-log-status-badge"
+                    :class="log.success ? 'ai-log-status-badge--success' : 'ai-log-status-badge--error'"
+                    x-text="log.success ? 'OK' : 'ERR'"></span>
+            </div>
+
+            <div class="ai-log-meta">
+              <span class="ai-log-meta-item ai-log-meta-item--tokens">
+                <span class="material-symbols-outlined">token</span>
+                <span x-text="log.total_tokens.toLocaleString() + ' tok'"></span>
+              </span>
+              <span class="ai-log-meta-item ai-log-meta-item--cost">
+                <span class="material-symbols-outlined">attach_money</span>
+                <span x-text="'$' + (log.cost || 0).toFixed(4)"></span>
+              </span>
+              <span class="ai-log-meta-item">
+                <span class="material-symbols-outlined">speed</span>
+                <span x-text="log.latency_ms + 'ms'"></span>
+              </span>
+              <span class="ai-log-meta-item" x-show="log.tool_calls && log.tool_calls.length > 0">
+                <span class="material-symbols-outlined">build</span>
+                <span x-text="(log.tool_calls || []).length + ' tool' + ((log.tool_calls || []).length !== 1 ? 's' : '')"></span>
+              </span>
+            </div>
+
+            <div class="ai-log-user" x-show="log.user_email">
+              <span class="material-symbols-outlined" style="font-size: 12px; vertical-align: -2px;">person</span>
+              <span x-text="log.user_email"></span>
+            </div>
+          </div>
+
+          {# Timestamp #}
+          <div class="ai-log-timestamp">
+            <div class="ai-log-time" x-text="formatTime(log.timestamp)"></div>
+            <div class="ai-log-date" x-text="formatDate(log.timestamp)"></div>
+          </div>
+        </div>
+
+        {# Expanded detail #}
+        <div class="ai-log-detail" x-show="expandedId === log.id" x-collapse x-cloak>
+          <div class="ai-log-detail-grid">
+            <div class="ai-log-detail-field">
+              <span class="ai-log-detail-label">Log ID</span>
+              <span class="ai-log-detail-value" x-text="'#' + log.id"></span>
+            </div>
+            <div class="ai-log-detail-field">
+              <span class="ai-log-detail-label">Agent</span>
+              <span class="ai-log-detail-value" x-text="log.agent_name"></span>
+            </div>
+            <div class="ai-log-detail-field">
+              <span class="ai-log-detail-label">Model</span>
+              <span class="ai-log-detail-value" x-text="log.model"></span>
+            </div>
+            <div class="ai-log-detail-field">
+              <span class="ai-log-detail-label">User</span>
+              <span class="ai-log-detail-value ai-log-detail-value--text" x-text="log.user_email || '—'"></span>
+            </div>
+            <div class="ai-log-detail-field">
+              <span class="ai-log-detail-label">Request Tokens</span>
+              <span class="ai-log-detail-value" x-text="(log.request_tokens || 0).toLocaleString()"></span>
+            </div>
+            <div class="ai-log-detail-field">
+              <span class="ai-log-detail-label">Response Tokens</span>
+              <span class="ai-log-detail-value" x-text="(log.response_tokens || 0).toLocaleString()"></span>
+            </div>
+            <div class="ai-log-detail-field">
+              <span class="ai-log-detail-label">Total Tokens</span>
+              <span class="ai-log-detail-value" x-text="log.total_tokens.toLocaleString()"></span>
+            </div>
+            <div class="ai-log-detail-field">
+              <span class="ai-log-detail-label">Cost</span>
+              <span class="ai-log-detail-value" x-text="'$' + (log.cost || 0).toFixed(6)"></span>
+            </div>
+            <div class="ai-log-detail-field">
+              <span class="ai-log-detail-label">Latency</span>
+              <span class="ai-log-detail-value" x-text="log.latency_ms + 'ms'"></span>
+            </div>
+            <div class="ai-log-detail-field">
+              <span class="ai-log-detail-label">Timestamp</span>
+              <span class="ai-log-detail-value ai-log-detail-value--text" x-text="log.timestamp"></span>
+            </div>
+          </div>
+
+          {# Tool calls #}
+          <div class="ai-log-tool-calls" x-show="log.tool_calls && log.tool_calls.length > 0">
+            <div class="ai-log-tool-calls-title">
+              <span class="material-symbols-outlined">build</span>
+              Tool Calls
+            </div>
+            <template x-for="(tc, ti) in (log.tool_calls || [])" :key="ti">
+              <div class="ai-log-tool-call">
+                <div class="ai-log-tool-call-icon">
+                  <span class="material-symbols-outlined">terminal</span>
+                </div>
+                <div class="ai-log-tool-call-body">
+                  <div class="ai-log-tool-call-name" x-text="tc.name || tc.tool_name || 'unknown'"></div>
+                  <div class="ai-log-tool-call-args" x-text="tc.args ? JSON.stringify(tc.args) : (tc.tool_args ? JSON.stringify(tc.tool_args) : '—')"></div>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          {# Error block #}
+          <div class="ai-log-error-block" x-show="log.error" x-text="log.error"></div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  {# ── Pagination ────────────────────────────────────────────── #}
+  <div class="ai-logs-pagination" x-show="logs.length > 0">
+    <div class="ai-logs-page-info">
+      Showing <strong x-text="offset + 1"></strong>–<strong x-text="Math.min(offset + limit, totalLogs)"></strong>
+      of <strong x-text="totalLogs"></strong> logs
+    </div>
+    <div class="ai-logs-page-btns">
+      <button class="ai-logs-page-btn" @click="prevPage()" :disabled="offset === 0">
+        <span class="material-symbols-outlined">chevron_left</span>
+        Previous
+      </button>
+      <button class="ai-logs-page-btn" @click="nextPage()" :disabled="offset + limit >= totalLogs">
+        Next
+        <span class="material-symbols-outlined">chevron_right</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+function aiLogs() {
+  return {
+    logs: [],
+    agents: [],
+    loading: true,
+    expandedId: null,
+    offset: 0,
+    limit: 50,
+    totalLogs: 0,
+    stats: {
+      total_runs: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      avg_latency: 0,
+      success_rate: 0
+    },
+    filters: {
+      agent: '',
+      status: '',
+      period: '',
+      search: ''
+    },
+
+    async init() {
+      await Promise.all([
+        this.loadLogs(),
+        this.loadAgents()
+      ]);
+    },
+
+    async loadLogs() {
+      this.loading = true;
+      try {
+        const params = new URLSearchParams({
+          limit: this.limit,
+          offset: this.offset
+        });
+        if (this.filters.agent) params.set('agent', this.filters.agent);
+
+        const resp = await fetch(window.__ADMIN_PATH__ + '/ai/logs/api?' + params.toString());
+        let data = await resp.json();
+
+        // Client-side filters
+        if (this.filters.status === 'success') {
+          data = data.filter(l => l.success);
+        } else if (this.filters.status === 'error') {
+          data = data.filter(l => !l.success);
+        }
+
+        if (this.filters.search) {
+          const q = this.filters.search.toLowerCase();
+          data = data.filter(l => (l.user_email || '').toLowerCase().includes(q));
+        }
+
+        if (this.filters.period) {
+          const now = Date.now();
+          const ms = { hour: 3600000, day: 86400000, week: 604800000 }[this.filters.period] || 0;
+          data = data.filter(l => l.timestamp && (new Date(l.timestamp).getTime() > now - ms));
+        }
+
+        this.logs = data;
+        this.totalLogs = data.length;
+
+        // Compute stats from loaded data
+        if (data.length > 0) {
+          this.stats.total_runs = data.length;
+          this.stats.total_tokens = data.reduce((s, l) => s + (l.total_tokens || 0), 0);
+          this.stats.total_cost = data.reduce((s, l) => s + (l.cost || 0), 0);
+          this.stats.avg_latency = Math.round(data.reduce((s, l) => s + (l.latency_ms || 0), 0) / data.length);
+          this.stats.success_rate = Math.round(data.filter(l => l.success).length / data.length * 100);
+        } else {
+          this.stats = { total_runs: 0, total_tokens: 0, total_cost: 0, avg_latency: 0, success_rate: 0 };
+        }
+      } catch (e) {
+        console.error('Failed to load logs:', e);
+        this.logs = [];
+      }
+      this.loading = false;
+    },
+
+    async loadAgents() {
+      try {
+        const resp = await fetch(window.__ADMIN_PATH__ + '/ai/logs/api?limit=500');
+        const data = await resp.json();
+        const agentSet = new Set(data.map(l => l.agent_name).filter(Boolean));
+        this.agents = [...agentSet].sort();
+      } catch (e) {
+        this.agents = [];
+      }
+    },
+
+    applyFilters() {
+      this.offset = 0;
+      this.loadLogs();
+    },
+
+    resetFilters() {
+      this.filters = { agent: '', status: '', period: '', search: '' };
+      this.offset = 0;
+      this.loadLogs();
+    },
+
+    refreshLogs() {
+      this.loadLogs();
+    },
+
+    toggleDetail(id) {
+      this.expandedId = this.expandedId === id ? null : id;
+    },
+
+    prevPage() {
+      this.offset = Math.max(0, this.offset - this.limit);
+      this.loadLogs();
+    },
+
+    nextPage() {
+      this.offset += this.limit;
+      this.loadLogs();
+    },
+
+    parseDate(ts) {
+      if (!ts) return null;
+      // Handle "YYYY-MM-DD HH:MM:SS" format from server
+      if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(ts)) {
+        return new Date(ts.replace(' ', 'T') + 'Z');
+      }
+      return new Date(ts);
+    },
+
+    formatTime(ts) {
+      const d = this.parseDate(ts);
+      if (!d || isNaN(d)) return ts || '';
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    },
+
+    formatDate(ts) {
+      const d = this.parseDate(ts);
+      if (!d || isNaN(d)) return '';
+      const today = new Date();
+      if (d.toDateString() === today.toDateString()) return 'Today';
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+      return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    }
+  };
+}
+</script>
+{% endblock %}

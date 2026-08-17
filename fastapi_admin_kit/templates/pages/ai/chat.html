@@ -1,0 +1,1152 @@
+{# pages/ai/chat.html — Full-page AI Chat Interface with Conversation History #}
+{% extends "base.html" %}
+
+{% block title %}AI Chat{% endblock %}
+
+{% block head_extra %}
+<style>
+  .ai-chat-layout {
+    display: flex;
+    height: calc(100vh - var(--topbar-height) - 2px);
+    margin: 0 calc(-1 * var(--content-padding));
+    margin-top: calc(-1 * var(--content-padding));
+  }
+
+  .ai-chat-sidebar {
+    width: 280px;
+    border-right: 1px solid var(--surface-border);
+    background: var(--surface-raised);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
+  .ai-chat-sidebar-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--surface-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .ai-chat-sidebar-header h3 {
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+  }
+
+  .ai-chat-new-btn {
+    padding: 6px 12px;
+    border: 1px solid var(--primary-500);
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--primary-600);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all var(--duration-fast) var(--easing-out);
+    font-family: var(--font-body);
+  }
+
+  .ai-chat-new-btn:hover {
+    background: var(--primary-50);
+  }
+
+  .ai-chat-new-btn .material-symbols-outlined {
+    font-size: 14px;
+  }
+
+  .ai-chat-sidebar-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .ai-chat-conv-item {
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--easing-out);
+    margin-bottom: 2px;
+    position: relative;
+  }
+
+  .ai-chat-conv-item:hover {
+    background: var(--surface-inset);
+  }
+
+  .ai-chat-conv-item.active {
+    background: var(--primary-50);
+    border: 1px solid var(--primary-200);
+  }
+
+  .ai-chat-conv-title {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 20px;
+  }
+
+  .ai-chat-conv-meta {
+    font-size: var(--text-2xs);
+    color: var(--text-disabled);
+    margin-top: 2px;
+  }
+
+  .ai-chat-conv-delete {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    color: var(--text-disabled);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: all var(--duration-fast) var(--easing-out);
+  }
+
+  .ai-chat-conv-item:hover .ai-chat-conv-delete {
+    opacity: 1;
+  }
+
+  .ai-chat-conv-delete:hover {
+    background: var(--error-50);
+    color: var(--error-500);
+  }
+
+  .ai-chat-conv-delete .material-symbols-outlined {
+    font-size: 14px;
+  }
+
+  .ai-chat-sidebar-empty {
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--text-disabled);
+    font-size: var(--text-xs);
+  }
+
+  .ai-chat-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .ai-chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px var(--content-padding);
+    background: var(--surface-raised);
+    border-bottom: 1px solid var(--surface-border);
+    flex-shrink: 0;
+  }
+
+  .ai-chat-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .ai-chat-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-lg);
+    background: linear-gradient(135deg, var(--primary-500), var(--primary-700));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+  }
+
+  .ai-chat-avatar .material-symbols-outlined {
+    font-size: 18px;
+  }
+
+  .ai-chat-header-info h1 {
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    line-height: 1.3;
+  }
+
+  .ai-chat-header-info p {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    margin: 0;
+  }
+
+  .ai-chat-agent-select {
+    padding: 5px 10px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-md);
+    background: var(--surface-base);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+    font-family: var(--font-body);
+    cursor: pointer;
+    outline: none;
+  }
+
+  .ai-chat-agent-select:focus {
+    border-color: var(--primary-500);
+  }
+
+  .ai-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px var(--content-padding);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .ai-chat-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--text-disabled);
+  }
+
+  .ai-chat-empty-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--radius-xl);
+    background: var(--surface-inset);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ai-chat-empty-icon .material-symbols-outlined {
+    font-size: 32px;
+    color: var(--text-disabled);
+  }
+
+  .ai-chat-empty h3 {
+    font-family: var(--font-display);
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  .ai-chat-empty p {
+    font-size: var(--text-sm);
+    color: var(--text-disabled);
+    max-width: 320px;
+    text-align: center;
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  .ai-chat-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    margin-top: 4px;
+  }
+
+  .ai-chat-suggestion {
+    padding: 6px 14px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-full);
+    background: var(--surface-raised);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--easing-out);
+    font-family: var(--font-body);
+  }
+
+  .ai-chat-suggestion:hover {
+    border-color: var(--primary-500);
+    color: var(--primary-600);
+    background: var(--primary-50);
+  }
+
+  .ai-chat-msg {
+    display: flex;
+    gap: 10px;
+    max-width: 720px;
+    animation: chatMsgIn 0.2s var(--easing-out);
+  }
+
+  .ai-chat-msg-wrapper--user {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    margin-left: auto;
+  }
+
+  .ai-chat-msg--user {
+    flex-direction: row-reverse;
+  }
+
+  .ai-chat-msg-time {
+    font-size: var(--text-2xs);
+    color: var(--text-disabled);
+    margin-top: 3px;
+    padding: 0 4px;
+  }
+
+  .ai-chat-msg-time.ai-chat-msg--user {
+    text-align: right;
+  }
+
+  .ai-chat-msg-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: var(--text-xs);
+    font-weight: 600;
+  }
+
+  .ai-chat-msg--ai .ai-chat-msg-avatar {
+    background: linear-gradient(135deg, var(--primary-500), var(--primary-700));
+    color: white;
+  }
+
+  .ai-chat-msg--user .ai-chat-msg-avatar {
+    background: var(--surface-inset);
+    color: var(--text-secondary);
+  }
+
+  .ai-chat-msg-body {
+    padding: 10px 14px;
+    border-radius: var(--radius-lg);
+    font-size: var(--text-sm);
+    line-height: 1.7;
+    color: var(--text-primary);
+  }
+
+  .ai-chat-msg--ai .ai-chat-msg-body {
+    background: var(--surface-raised);
+    border: 1px solid var(--surface-border);
+    border-top-left-radius: var(--radius-sm);
+  }
+
+  .ai-chat-msg--user .ai-chat-msg-body {
+    background: var(--primary-600);
+    color: white;
+    border-top-right-radius: var(--radius-sm);
+  }
+
+  .ai-chat-msg-body p { margin: 0 0 6px 0; }
+  .ai-chat-msg-body p:last-child { margin-bottom: 0; }
+  .ai-chat-msg-body code {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    padding: 2px 5px;
+    border-radius: var(--radius-sm);
+    background: rgba(0,0,0,0.06);
+  }
+
+  [data-theme="dark"] .ai-chat-msg-body code {
+    background: rgba(255,255,255,0.1);
+  }
+
+  .ai-chat-msg--user .ai-chat-msg-body code {
+    background: rgba(255,255,255,0.2);
+    color: white;
+  }
+
+  .ai-chat-typing {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 0;
+  }
+
+  .ai-chat-typing-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--text-disabled);
+    animation: typingBounce 1.2s infinite;
+  }
+
+  .ai-chat-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .ai-chat-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+  .ai-chat-input-bar {
+    padding: 12px var(--content-padding);
+    background: var(--surface-raised);
+    border-top: 1px solid var(--surface-border);
+    flex-shrink: 0;
+  }
+
+  .ai-chat-input-wrapper {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  .ai-chat-input-field {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-base);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-family: var(--font-body);
+    resize: none;
+    outline: none;
+    min-height: 40px;
+    max-height: 140px;
+    line-height: 1.5;
+    transition: border-color var(--duration-fast) var(--easing-out);
+  }
+
+  .ai-chat-input-field::placeholder {
+    color: var(--text-disabled);
+  }
+
+  .ai-chat-input-field:focus {
+    border-color: var(--primary-500);
+    box-shadow: var(--shadow-focus);
+  }
+
+  .ai-chat-send-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-lg);
+    border: none;
+    background: var(--primary-600);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all var(--duration-fast) var(--easing-out);
+  }
+
+  .ai-chat-send-btn:hover {
+    background: var(--primary-700);
+    transform: scale(1.05);
+  }
+
+  .ai-chat-send-btn:active {
+    transform: scale(0.95);
+  }
+
+  .ai-chat-send-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .ai-chat-send-btn .material-symbols-outlined {
+    font-size: 18px;
+    pointer-events: none;
+  }
+
+  @keyframes chatMsgIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes typingBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-3px); opacity: 1; }
+  }
+
+  .ai-tool-call {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    margin: 4px 0;
+    background: linear-gradient(135deg, var(--primary-50), var(--primary-100));
+    border: 1px solid var(--primary-200);
+    border-radius: var(--radius-md);
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
+  }
+
+  [data-theme="dark"] .ai-tool-call {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.15));
+    border-color: rgba(99, 102, 241, 0.3);
+  }
+
+  .ai-tool-icon {
+    font-size: 12px;
+  }
+
+  .ai-tool-name {
+    font-weight: 600;
+    color: var(--primary-700);
+  }
+
+  [data-theme="dark"] .ai-tool-name {
+    color: var(--primary-300);
+  }
+
+  .ai-tool-args {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-left: 4px;
+    padding-left: 8px;
+    border-left: 1px solid var(--primary-200);
+  }
+
+  [data-theme="dark"] .ai-tool-args {
+    border-left-color: rgba(99, 102, 241, 0.3);
+  }
+
+  .ai-tool-arg-key {
+    color: var(--text-secondary);
+  }
+
+  .ai-tool-arg-val {
+    color: var(--primary-600);
+  }
+
+  [data-theme="dark"] .ai-tool-arg-val {
+    color: var(--primary-400);
+  }
+
+  .ai-tool-call--error {
+    background: linear-gradient(135deg, var(--error-50), var(--error-100));
+    border-color: var(--error-200);
+  }
+
+  [data-theme="dark"] .ai-tool-call--error {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.15));
+    border-color: rgba(239, 68, 68, 0.3);
+  }
+
+  .ai-tool-result {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: var(--surface-inset);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--surface-border);
+  }
+
+  .ai-tool-result--error {
+    background: var(--error-50);
+    border-color: var(--error-200);
+  }
+
+  [data-theme="dark"] .ai-tool-result--error {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+  }
+
+  .ai-tool-result-label {
+    font-size: var(--text-2xs);
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+  }
+
+  .ai-tool-result-content {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .ai-chat-pending-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px var(--content-padding);
+    background: var(--surface-raised);
+    border-top: 1px solid var(--surface-border);
+  }
+
+  .ai-chat-pending-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+    border: 1px solid var(--surface-border);
+    font-size: var(--text-2xs);
+    color: var(--text-secondary);
+  }
+
+  .ai-chat-pending-file-name {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ai-chat-pending-file-remove {
+    border: none;
+    background: transparent;
+    color: var(--text-disabled);
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+  }
+
+  .ai-chat-pending-file-remove:hover {
+    color: var(--error-500);
+    background: var(--error-50);
+  }
+
+  .ai-chat-pending-file-remove .material-symbols-outlined {
+    font-size: 14px;
+  }
+
+  .ai-chat-attachment-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    margin-top: 6px;
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+    border: 1px solid var(--surface-border);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: all var(--duration-fast) var(--easing-out);
+  }
+
+  .ai-chat-attachment-card:hover {
+    border-color: var(--primary-500);
+    color: var(--primary-600);
+  }
+
+  .ai-chat-attachment-card .material-symbols-outlined {
+    font-size: 16px;
+  }
+
+  .ai-chat-attachment-card img {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+  }
+
+  .ai-chat-file-preview {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+  }
+
+  [data-theme="dark"] .ai-chat-attachment-card {
+    background: rgba(255,255,255,0.05);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ai-chat-layout" x-data="aiChat()" x-init="init()">
+  <div class="ai-chat-sidebar">
+    <div class="ai-chat-sidebar-header">
+      <h3>Conversations</h3>
+      <button class="ai-chat-new-btn" @click="newChat()">
+        <span class="material-symbols-outlined">add</span>
+        New
+      </button>
+    </div>
+    <div class="ai-chat-sidebar-list">
+      <template x-if="conversations.length === 0">
+        <div class="ai-chat-sidebar-empty">No conversations yet</div>
+      </template>
+      <template x-for="conv in conversations" :key="conv.id">
+        <div
+          class="ai-chat-conv-item"
+          :class="conversationId === conv.id ? 'active' : ''"
+          @click="loadConversation(conv.id)"
+        >
+          <div class="ai-chat-conv-title" x-text="conv.title"></div>
+          <div class="ai-chat-conv-meta">
+            <span x-text="conv.turn_count + ' turns'"></span>
+            <template x-if="conv.last_message_at">
+              <span x-text="' · ' + timeAgo(conv.last_message_at)"></span>
+            </template>
+          </div>
+          <button class="ai-chat-conv-delete" @click.stop="deleteConversation(conv.id)" title="Delete">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <div class="ai-chat-main">
+    <div class="ai-chat-header">
+      <div class="ai-chat-header-left">
+        <div class="ai-chat-avatar">
+          <span class="material-symbols-outlined">smart_toy</span>
+        </div>
+        <div class="ai-chat-header-info">
+          <h1>AI Assistant</h1>
+          <p x-text="conversationId ? 'Resuming conversation' : 'Ask anything about your data'"></p>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <select class="ai-chat-agent-select" x-model="selectedAgent">
+          <template x-for="agent in agents" :key="agent.name">
+            <option :value="agent.name" x-text="agent.name"></option>
+          </template>
+        </select>
+      </div>
+    </div>
+
+    <div class="ai-chat-messages" x-ref="messagesContainer">
+      <template x-if="messages.length === 0">
+        <div class="ai-chat-empty">
+          <div class="ai-chat-empty-icon">
+            <span class="material-symbols-outlined">auto_awesome</span>
+          </div>
+          <h3>How can I help?</h3>
+          <p>Ask questions about your data, generate reports, or manage records using natural language.</p>
+          <div class="ai-chat-suggestions">
+            <button class="ai-chat-suggestion" @click="sendSuggestion('Show me a summary of all users')">Show users summary</button>
+            <button class="ai-chat-suggestion" @click="sendSuggestion('Generate a report of recent activity')">Recent activity report</button>
+            <button class="ai-chat-suggestion" @click="sendSuggestion('What tools are available?')">Available tools</button>
+          </div>
+        </div>
+      </template>
+
+      <template x-for="(msg, idx) in messages" :key="idx">
+        <div class="ai-chat-msg-wrapper" :class="msg.role === 'user' ? 'ai-chat-msg-wrapper--user' : ''">
+          <div class="ai-chat-msg" :class="msg.role === 'user' ? 'ai-chat-msg--user' : 'ai-chat-msg--ai'">
+            <div class="ai-chat-msg-avatar">
+              <template x-if="msg.role === 'assistant'">
+                <span class="material-symbols-outlined" style="font-size: 14px;">smart_toy</span>
+              </template>
+              <template x-if="msg.role === 'user'">
+                <span class="material-symbols-outlined" style="font-size: 14px;">person</span>
+              </template>
+            </div>
+            <div>
+              <div class="ai-chat-msg-body" x-html="formatMessage(msg.content)"></div>
+              <template x-if="msg.attachments && msg.attachments.length">
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+                  <template x-for="att in msg.attachments" :key="att.id">
+                    <a class="ai-chat-attachment-card" :href="att.url" target="_blank" rel="noopener">
+                      <template x-if="att.mime_type && att.mime_type.startsWith('image/')">
+                        <img :src="att.url" :alt="att.filename" class="ai-chat-file-preview">
+                      </template>
+                      <template x-if="!att.mime_type || !att.mime_type.startsWith('image/')">
+                        <span class="material-symbols-outlined">description</span>
+                      </template>
+                      <span x-text="att.filename"></span>
+                    </a>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </div>
+          <div class="ai-chat-msg-time" :class="msg.role === 'user' ? 'ai-chat-msg--user' : ''" x-text="msg.time"></div>
+        </div>
+      </template>
+
+      <template x-if="isTyping && !streamingStarted">
+        <div class="ai-chat-msg ai-chat-msg--ai">
+          <div class="ai-chat-msg-avatar" style="background: linear-gradient(135deg, var(--primary-500), var(--primary-700)); color: white;">
+            <span class="material-symbols-outlined" style="font-size: 14px;">smart_toy</span>
+          </div>
+          <div class="ai-chat-msg-body">
+            <div class="ai-chat-typing">
+              <div class="ai-chat-typing-dot"></div>
+              <div class="ai-chat-typing-dot"></div>
+              <div class="ai-chat-typing-dot"></div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <div class="ai-chat-input-bar">
+      <div class="ai-chat-pending-files" x-show="pendingFiles.length > 0" x-cloak>
+        <template x-for="(file, idx) in pendingFiles" :key="idx">
+          <div class="ai-chat-pending-file">
+            <span class="ai-chat-pending-file-name" x-text="file.name"></span>
+            <button class="ai-chat-pending-file-remove" @click="removeFile(idx)" title="Remove">
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+        </template>
+      </div>
+      <div class="ai-chat-input-wrapper">
+        <input type="file" multiple accept=".pdf,.xlsx,.xls,.docx,.doc,.csv,.png,.jpg,.jpeg,.gif,.webp" x-ref="fileInput" @change="addFiles($event)" class="hidden">
+        <button class="ai-chat-attach-btn" @click="$refs.fileInput.click()" :disabled="isTyping" title="Attach files" style="width:40px;height:40px;border-radius:var(--radius-lg);border:1px solid var(--surface-border);background:transparent;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all var(--duration-fast) var(--easing-out);">
+          <span class="material-symbols-outlined">attach_file</span>
+        </button>
+        <textarea
+          class="ai-chat-input-field"
+          x-model="userInput"
+          @keydown.enter.prevent="sendMessage()"
+          placeholder="Type your message..."
+          rows="1"
+          x-ref="chatInput"
+          :disabled="isTyping"
+        ></textarea>
+        <button
+          class="ai-chat-send-btn"
+          @click="sendMessage()"
+          :disabled="!canSend() || isTyping"
+          title="Send message"
+        >
+          <span class="material-symbols-outlined">arrow_upward</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function aiChat() {
+  return {
+    messages: [],
+    userInput: '',
+    isTyping: false,
+    streamingStarted: false,
+    selectedAgent: 'default',
+    agents: [],
+    conversationId: null,
+    conversations: [],
+    pendingFiles: [],
+
+    get canSend() {
+      return (this.userInput.trim() || this.pendingFiles.length > 0) && !this.isTyping;
+    },
+
+    async init() {
+      await this.loadAgents();
+      await this.loadConversations();
+      this.$nextTick(() => {
+        this.autoResize(this.$refs.chatInput);
+        this.$refs.chatInput?.focus();
+      });
+    },
+
+    async loadAgents() {
+      try {
+        const resp = await fetch(window.__ADMIN_PATH__ + '/ai/agents/api');
+        this.agents = await resp.json();
+        if (this.agents.length && !this.agents.find(a => a.name === this.selectedAgent)) {
+          this.selectedAgent = this.agents[0].name;
+        }
+      } catch (e) {
+        this.agents = [{ name: 'default', model: 'unknown', tools: 0 }];
+      }
+    },
+
+    async loadConversations() {
+      try {
+        const resp = await fetch(window.__ADMIN_PATH__ + '/ai/conversations');
+        this.conversations = await resp.json();
+      } catch (e) {
+        this.conversations = [];
+      }
+    },
+
+    async loadConversation(id) {
+      this.conversationId = id;
+      this.messages = [];
+      try {
+        const resp = await fetch(window.__ADMIN_PATH__ + '/ai/conversations/' + id);
+        const msgs = await resp.json();
+        this.messages = msgs
+          .filter(m => m.role !== 'tool')
+          .map(m => {
+            const time = m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+            return { role: m.role, content: m.content, time, attachments: m.attachments || [] };
+          });
+        this.scrollToBottom();
+      } catch (e) {
+        this.messages = [];
+      }
+    },
+
+    async deleteConversation(id) {
+      try {
+        await fetch(window.__ADMIN_PATH__ + '/ai/conversations/' + id, { method: 'DELETE' });
+        this.conversations = this.conversations.filter(c => c.id !== id);
+        if (this.conversationId === id) {
+          this.newChat();
+        }
+      } catch (e) {}
+    },
+
+    newChat() {
+      this.messages = [];
+      this.conversationId = null;
+      this.pendingFiles = [];
+      this.$refs.chatInput?.focus();
+    },
+
+    addFiles(event) {
+      const input = event.target;
+      if (!input.files) return;
+      for (const file of input.files) {
+        this.pendingFiles.push(file);
+      }
+      input.value = '';
+    },
+
+    removeFile(index) {
+      this.pendingFiles.splice(index, 1);
+    },
+
+    formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    },
+
+    async uploadFiles() {
+      if (!this.pendingFiles.length) return [];
+      const form = new FormData();
+      for (const file of this.pendingFiles) {
+        form.append('files', file);
+      }
+      const resp = await fetch(window.__ADMIN_PATH__ + '/ai/chat/upload', {
+        method: 'POST',
+        body: form,
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => null);
+        throw new Error(err?.detail || err?.error || 'Upload failed');
+      }
+      return await resp.json();
+    },
+
+    async sendMessage() {
+      const text = this.userInput.trim();
+      if (!this.canSend) return;
+
+      let uploadedAttachments = [];
+      if (this.pendingFiles.length > 0) {
+        try {
+          uploadedAttachments = await this.uploadFiles();
+        } catch (e) {
+          this.addMessage('assistant', 'Upload failed: ' + e.message);
+          return;
+        } finally {
+          this.pendingFiles = [];
+        }
+      }
+
+      const parts = [];
+      if (text) parts.push({ type: 'text', text });
+      for (const att of uploadedAttachments) {
+        parts.push({ type: 'file', url: att.url, mimeType: att.mime_type, filename: att.filename });
+      }
+
+      this.addMessage('user', text || '[file attachment]', uploadedAttachments);
+      this.userInput = '';
+      this.isTyping = true;
+      this.streamingStarted = false;
+      this.scrollToBottom();
+
+      if (!this.conversationId) {
+        this.conversationId = (crypto.randomUUID && crypto.randomUUID()) || ('conv-' + Date.now());
+      }
+
+      try {
+        const msgId = 'msg-' + Date.now();
+        const body = {
+          id: this.conversationId,
+          trigger: 'submit-message',
+          messages: [{ id: msgId, role: 'user', parts }],
+          agent: this.selectedAgent,
+          page_url: window.location.pathname
+        };
+
+        const resp = await fetch(window.__ADMIN_PATH__ + '/ai/chat/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+          body: JSON.stringify(body)
+        });
+
+        if (!resp.ok || !resp.body) {
+          this.isTyping = false;
+          const err = await resp.json().catch(() => null);
+          this.addMessage('assistant', 'Error: ' + ((err && err.error) || resp.statusText));
+          return;
+        }
+
+        const reply = { role: 'assistant', content: '', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+        this.messages.push(reply);
+        const activeReply = this.messages[this.messages.length - 1];
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split('\n');
+          buffer = chunks.pop();
+          for (const chunk of chunks) {
+            this.processStreamChunk(chunk, activeReply);
+          }
+        }
+        if (buffer.trim()) this.processStreamChunk(buffer, activeReply);
+        this.isTyping = false;
+        this.streamingStarted = false;
+        await this.loadConversations();
+      } catch (e) {
+        this.isTyping = false;
+        this.streamingStarted = false;
+        this.addMessage('assistant', 'Request failed: ' + e.message);
+      }
+
+      this.scrollToBottom();
+    },
+
+    processStreamChunk(chunk, reply) {
+      const lines = chunk.split('\n');
+      for (let line of lines) {
+        line = line.trim();
+        if (!line || line === '[DONE]') continue;
+        if (line.startsWith('data: ')) {
+          line = line.slice(6).trim();
+        }
+
+        try {
+          if (line.startsWith('{')) {
+            const data = JSON.parse(line);
+            if (data.type === 'text-delta') {
+              if (!this.streamingStarted) this.streamingStarted = true;
+              reply.content += data.delta || '';
+              this.scrollToBottom();
+            } else if (data.type === 'error') {
+              if (!this.streamingStarted) this.streamingStarted = true;
+              reply.content += '\n\n**Error:** ' + (data.errorText || data.error || 'Unknown error');
+              this.scrollToBottom();
+            }
+          } else if (line.startsWith('0:')) {
+            const delta = JSON.parse(line.slice(2));
+            if (!this.streamingStarted) this.streamingStarted = true;
+            reply.content += delta || '';
+            this.scrollToBottom();
+          }
+        } catch (e) {}
+      }
+    },
+
+    sendSuggestion(text) {
+      this.userInput = text;
+      this.sendMessage();
+    },
+
+    addMessage(role, content, attachments = []) {
+      const now = new Date();
+      const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      this.messages.push({ role, content, time, attachments });
+    },
+
+    formatMessage(text) {
+      if (!text) return '';
+
+      const placeholders = [];
+      let html = text.replace(/<function=(\w+)\s*(\{[^}]*\})?\s*>\s*<\/function>/g, (match, toolName, argsJson) => {
+        let argsHtml = '';
+        if (argsJson) {
+          try {
+            const args = JSON.parse(argsJson);
+            const argsStr = Object.entries(args)
+              .map(([k, v]) => `<span class="ai-tool-arg-key">${k}</span>: <span class="ai-tool-arg-val">${JSON.stringify(v)}</span>`)
+              .join(', ');
+            argsHtml = `<div class="ai-tool-args">${argsStr}</div>`;
+          } catch (e) {
+            argsHtml = `<div class="ai-tool-args"><code>${argsJson}</code></div>`;
+          }
+        }
+        const ph = `__TOOL_PH_${placeholders.length}__`;
+        placeholders.push(`<div class="ai-tool-call"><span class="ai-tool-icon">⚡</span><span class="ai-tool-name">${toolName}</span>${argsHtml}</div>`);
+        return ph;
+      });
+
+      html = html
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\n/g, '<br>');
+
+      placeholders.forEach((tc, i) => {
+        html = html.replace(`__TOOL_PH_${i}__`, tc);
+      });
+
+      return html;
+    },
+
+    timeAgo(dateStr) {
+      if (!dateStr) return '';
+      const now = new Date();
+      const then = new Date(dateStr);
+      const diffMs = now - then;
+      const mins = Math.floor(diffMs / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return mins + 'm ago';
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return hrs + 'h ago';
+      const days = Math.floor(hrs / 24);
+      return days + 'd ago';
+    },
+
+    scrollToBottom() {
+      this.$nextTick(() => {
+        const el = this.$refs.messagesContainer;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+    },
+
+    autoResize(el) {
+      if (!el) return;
+      el.addEventListener('input', () => {
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+      });
+    }
+  };
+}
+</script>
+{% endblock %}

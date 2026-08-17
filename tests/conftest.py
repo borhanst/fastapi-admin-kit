@@ -94,8 +94,16 @@ def admin_app(app, engine, admin_user):
     import os
 
     from fastapi_admin_kit import Admin
+    from fastapi_admin_kit.storage.local import LocalStorageBackend
 
-    admin = Admin(app=app, engine=engine, secret_key=SECRET_KEY, auto_discover=False)
+    admin = Admin(
+        app=app,
+        engine=engine,
+        secret_key=SECRET_KEY,
+        auto_discover=False,
+        storage=LocalStorageBackend(),
+        ai_enabled=True,
+    )
     os.environ["SKIP_CREATE_TABLES"] = "true"
     try:
         asyncio.run(admin.setup(app))

@@ -174,6 +174,8 @@ class AdminRegistry:
         table_name = model.__tablename__
         if admin.verbose_name:
             verbose_name = admin.verbose_name
+        elif getattr(model, "verbose_name", None):
+            verbose_name = model.verbose_name
         else:
             class_name = getattr(model, "__name__", None)
             if class_name and not class_name.startswith("_"):
@@ -182,6 +184,8 @@ class AdminRegistry:
                 verbose_name = table_name.replace("_", " ").title()
         if admin.verbose_name_plural:
             verbose_name_plural = admin.verbose_name_plural
+        elif getattr(model, "verbose_name_plural", None):
+            verbose_name_plural = model.verbose_name_plural
         elif (
             verbose_name.endswith("y")
             and len(verbose_name) > 1
@@ -223,28 +227,42 @@ class AdminRegistry:
         """
         return list(self._models.values())
 
-    def auto_discover(self) -> list[RegisteredModel]:
+    def auto_discover(
+        self, exclude_tables: set[str] | frozenset[str] | None = None
+    ) -> list[RegisteredModel]:
         """Scan all subclasses of DeclarativeBase and register unregistered ones.
 
         Also discovers SQLModel subclasses if SQLModel is installed.
+
+        Args:
+            exclude_tables: Optional set/frozenset of ``__tablename__`` values to
+                skip during discovery (e.g. built-in internal or gated tables).
 
         Returns:
             A list of newly registered models.
         """
         from sqlalchemy.orm import DeclarativeBase
 
+        exclude_tables = exclude_tables or set()
         discovered: list[RegisteredModel] = []
         seen: set[type] = set()
+
+        def _maybe_register(cls: type) -> None:
+            if cls in seen:
+                return
+            seen.add(cls)
+            table_name = getattr(cls, "__tablename__", None)
+            if table_name is None or table_name in self._models:
+                return
+            if table_name in exclude_tables:
+                return
+            discovered.append(self.register(cls))
 
         # Discover SQLAlchemy DeclarativeBase subclasses
         for subclass in _all_declarative_subclasses(DeclarativeBase):
             if hasattr(subclass, "registry"):
                 for mapper in subclass.registry.mappers:
-                    cls = mapper.class_
-                    if cls not in seen:
-                        seen.add(cls)
-                        if hasattr(cls, "__tablename__") and cls.__tablename__ not in self._models:
-                            discovered.append(self.register(cls))
+                    _maybe_register(mapper.class_)
 
         # Discover SQLModel subclasses (if installed)
         try:
@@ -253,14 +271,7 @@ class AdminRegistry:
             for subclass in _all_declarative_subclasses(SQLModel):
                 if hasattr(subclass, "registry"):
                     for mapper in subclass.registry.mappers:
-                        cls = mapper.class_
-                        if cls not in seen:
-                            seen.add(cls)
-                            if (
-                                hasattr(cls, "__tablename__")
-                                and cls.__tablename__ not in self._models
-                            ):
-                                discovered.append(self.register(cls))
+                        _maybe_register(mapper.class_)
         except ImportError:
             pass
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from collections.abc import AsyncIterator
@@ -18,6 +19,7 @@ from fastapi_admin_kit.admin.admin_database import AdminDatabase
 from fastapi_admin_kit.admin.admin_router import AdminRouter
 from fastapi_admin_kit.admin.admin_template import AdminTemplate
 from fastapi_admin_kit.config import (
+    AIChatConfig,
     AuditConfig,
     AuthConfig,
     BehaviorConfig,
@@ -29,16 +31,67 @@ from fastapi_admin_kit.config import (
 )
 from fastapi_admin_kit.exceptions import ConfigError
 from fastapi_admin_kit.registry import AdminRegistry, RegisteredModel
+from fastapi_admin_kit.schemas.builtin import (
+    AI_TABLE_NAMES,
+    INTERNAL_TABLE_NAMES,
+    NOTIFICATION_TABLE_NAMES,
+)
 from fastapi_admin_kit.types import SeedRole
 
 if TYPE_CHECKING:
-    from sqlalchemy.engine import Engine
-
     from fastapi_admin_kit.auth.backend import AuthBackend
-    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyBackend
     from fastapi_admin_kit.nav import NavGroupConfig, SidebarBuilder
     from fastapi_admin_kit.storage.base import StorageBackend
     from fastapi_admin_kit.views import ModelAdmin
+
+logger = logging.getLogger(__name__)
+
+
+def _merge_legacy_kwargs_into_config(
+    config: AdminConfig,
+    *,
+    ui: dict[str, Any],
+    auth: dict[str, Any],
+    audit: dict[str, Any],
+    behavior: dict[str, Any],
+    storage: dict[str, Any],
+    nav: dict[str, Any],
+) -> AdminConfig:
+    """Merge explicitly-provided legacy Admin() kwargs into a user-supplied config.
+
+    When the caller passes both a full ``AdminConfig`` *and* legacy keyword
+    arguments (e.g. ``title=``, ``auth_backend=``), the legacy kwargs must not be
+    silently dropped. Each value is applied to the config only when the config's
+    corresponding field is still at its own default — so an explicitly
+    configured ``config.ui`` / ``config.auth`` always wins over a legacy default.
+    """
+    import inspect
+
+    # Helper: apply legacy values for a sub-config, skipping anything that
+    # matches the sub-config's own default.
+    def _merge(sub_config: Any, legacy_values: dict[str, Any]) -> None:
+        try:
+            defaults = {
+                name: param.default
+                for name, param in inspect.signature(sub_config.__class__).parameters.items()
+                if param.default is not inspect.Parameter.empty
+            }
+        except Exception:
+            defaults = {}
+        for key, value in legacy_values.items():
+            if key not in defaults:
+                continue
+            current = getattr(sub_config, key, None)
+            if current == defaults[key]:
+                setattr(sub_config, key, value)
+
+    _merge(config.ui, ui)
+    _merge(config.auth, auth)
+    _merge(config.audit, audit)
+    _merge(config.behavior, behavior)
+    _merge(config.storage, storage)
+    _merge(config.nav, nav)
+    return config
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +170,7 @@ class Admin:
     def __init__(
         self,
         app: FastAPI | None = None,
-        engine: Engine | None = None,
+        engine: Any | None = None,
         database_config: DatabaseConfig | None = None,
         *,
         # Component instances (new API)
@@ -125,7 +178,7 @@ class Admin:
         database: AdminDatabase | None = None,
         router: AdminRouter | None = None,
         template: AdminTemplate | None = None,
-        backend: SqlAlchemyBackend | None = None,
+        backend: Any | None = None,
         # Legacy kwargs for backward compatibility
         base: type | None = None,
         title: str = "FastAPI Admin Kit",
@@ -180,10 +233,28 @@ class Admin:
         mobile_sidebar: str = "overlay",
         dashboard_permission: str | None = None,
         settings_permission: str | None = None,
+        # AI
+        ai: Any = None,
+        ai_enabled: bool = False,
+        is_development: bool = False,
         sidebar_bottom_links: list[dict[str, str]] | None = None,
+        # Notifications
+        enable_notification: bool = True,
+        notification_service: Any | None = None,
+        notifications_api_path: str | None = None,
+        notifications_list_path: str | None = None,
+        # AI chat file attachments
+        ai_chat_max_file_size_mb: int = 10,
+        ai_chat_allowed_extensions: list[str] | None = None,
     ):
         self.registry = AdminRegistry()
         self._app: FastAPI | None = app
+
+        # Expose the instance on app.state immediately so plugins (e.g.
+        # configure_notifications) can reach the admin before admin.setup()
+        # runs — _wire_app_state() overwrites the same slot at setup time.
+        if app is not None:
+            app.state.admin = self
 
         # Add CSRF middleware early (must be before app starts)
         if app is not None:
@@ -197,8 +268,28 @@ class Admin:
             app.add_exception_handler(403, forbidden_handler)
             app.add_middleware(CSRFMiddleware)
             self._csrf_middleware_added = True
+
+            # Register the per-request session + audit-context middlewares here
+            # (at construction time) rather than in ``setup()``. Starlette builds
+            # ``app.middleware_stack`` on the *first* scope it receives — which is
+            # the lifespan startup event that fires *before* ``setup()`` runs. If
+            # these middlewares were only added in ``setup()``, the stack would
+            # already be frozen and ``add_middleware`` would raise ``RuntimeError``
+            # (silently swallowed), leaving the session middleware out of the live
+            # stack. Without it, DB writes are flushed but never committed.
+            from fastapi_admin_kit.audit.middleware import (
+                AuditContextMiddleware,
+            )
+            from fastapi_admin_kit.db import SessionMiddleware
+
+            app.add_middleware(SessionMiddleware)
+            self._session_middleware_added = True
+            app.add_middleware(AuditContextMiddleware)
+            self._audit_middleware_added = True
         else:
             self._csrf_middleware_added = False
+            self._session_middleware_added = False
+            self._audit_middleware_added = False
 
         # Default auth backend if none provided
         if auth_backend is None:
@@ -264,6 +355,82 @@ class Admin:
                     settings_permission=settings_permission,
                     sidebar_bottom_links=sidebar_bottom_links,
                 ),
+                ai_chat=AIChatConfig(
+                    max_file_size_mb=ai_chat_max_file_size_mb,
+                    allowed_extensions=ai_chat_allowed_extensions
+                    or [
+                        ".pdf",
+                        ".xlsx",
+                        ".xls",
+                        ".docx",
+                        ".doc",
+                        ".csv",
+                        ".png",
+                        ".jpg",
+                        ".jpeg",
+                        ".gif",
+                        ".webp",
+                    ],
+                ),
+            )
+        else:
+            config = _merge_legacy_kwargs_into_config(
+                config,
+                ui=dict(
+                    title=title,
+                    logo_url=logo_url,
+                    favicon_url=favicon_url,
+                    primary_color=primary_color,
+                    primary_color_dark=primary_color_dark,
+                    dark_mode_default=dark_mode_default,
+                    per_page_default=per_page_default,
+                    theme=theme,
+                    sidebar_style=sidebar_style,
+                    sidebar_position=sidebar_position,
+                    table_style=table_style,
+                    table_row_height=table_row_height,
+                    form_layout=form_layout,
+                    form_spacing=form_spacing,
+                    dashboard_grid=dashboard_grid,
+                    dashboard_card_style=dashboard_card_style,
+                    dashboard_stat_size=dashboard_stat_size,
+                    content_width=content_width,
+                    topbar_style=topbar_style,
+                    custom_css=custom_css,
+                    custom_css_url=custom_css_url,
+                    custom_js=custom_js,
+                    custom_js_url=custom_js_url,
+                    show_history=show_history,
+                    show_view_on_site=show_view_on_site,
+                    environment_label=environment_label,
+                    environment_color=environment_color,
+                    mobile_sidebar=mobile_sidebar,
+                ),
+                auth=dict(
+                    auth_model=auth_model,
+                    auth_backend=auth_backend,
+                    session_ttl=session_ttl,
+                    session_cookie_name=session_cookie_name,
+                    session_secure=session_secure,
+                    superuser_emails=superuser_emails,
+                    session_samesite=session_samesite,
+                ),
+                audit=dict(audit_retention_days=audit_retention_days),
+                behavior=dict(
+                    auto_discover=auto_discover,
+                    skip_models=skip_models,
+                    dashboard_stats=dashboard_stats or [],
+                    dashboard_charts=dashboard_charts,
+                ),
+                storage=dict(storage=storage, uploads_url=uploads_url),
+                nav=dict(
+                    nav_groups=nav_groups or [],
+                    sidebar_builder=sidebar_builder,
+                    require_tags=require_tags,
+                    dashboard_permission=dashboard_permission,
+                    settings_permission=settings_permission,
+                    sidebar_bottom_links=sidebar_bottom_links,
+                ),
             )
 
         if database is None:
@@ -291,6 +458,7 @@ class Admin:
                 dashboard_permission=config.nav.dashboard_permission,
                 settings_permission=config.nav.settings_permission,
                 sidebar_bottom_links=config.nav.sidebar_bottom_links,
+                template_dirs=config.template_dirs,
             )
 
         self.config = config
@@ -298,12 +466,36 @@ class Admin:
         self.router = router
         self.template = template
 
+        # Store notification paths on config for template access
+        default_notifications_path = f"{self.router.admin_path}/notifications"
+        default_notifications_list = f"{default_notifications_path}/"
+        self.config.notifications_api_path = notifications_api_path or default_notifications_path
+        self.config.notifications_list_path = notifications_list_path or default_notifications_list
+
+        # Notifications: auto-wire a service in setup() unless the user has
+        # configured one already (e.g. via configure_notifications).
+        self._enable_notification = enable_notification
+        self._notification_service = notification_service
+
         # Backend: defaults to composed SqlAlchemyBackend
         if backend is None:
             from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyBackend
 
             backend = SqlAlchemyBackend.from_admin_database(database)
         self.backend = backend
+
+        # Wire the AdminDatabase (engine/base/config) into the backend's
+        # DatabaseBackend adapter.  When a backend is supplied standalone
+        # (e.g. ``backend=SqlAlchemyBackend()``) its ``database`` adapter has no
+        # engine reference, so ``create_connection()``/``create_session_factory()``
+        # would fail.  ``from_admin_database`` already sets this; we only fill it
+        # in when it is missing so a user-provided backend still works.
+        backend_database = getattr(self.backend, "database", None)
+        if (
+            backend_database is not None
+            and getattr(backend_database, "_admin_database", None) is None
+        ):
+            backend_database._admin_database = database
 
         # Inject backend's introspection adapter into the registry's ModelInspector
         self.registry.inspector._adapter = self.backend.introspection
@@ -314,6 +506,15 @@ class Admin:
 
         # Built sidebar (populated during setup)
         self._nav_groups_built: list[Any] = []
+
+        # AI
+        if ai_enabled and ai is None:
+            from fastapi_admin_kit.ai.config import AIConfig
+
+            ai = AIConfig()
+        self._ai_config = ai
+        self._ai_enabled = ai_enabled
+        self.is_development = is_development
 
         # Internal state (populated during setup)
         self._session_backend: Any = None
@@ -365,7 +566,7 @@ class Admin:
         return self.router.secret_key
 
     @property
-    def engine(self) -> Engine | None:
+    def engine(self) -> Any | None:
         return self.database.engine
 
     @property
@@ -475,17 +676,21 @@ class Admin:
                 pass  # Already started — middleware was added in __init__
 
         # Add per-request session middleware
-        if not getattr(self, "_session_middleware_added", False):
+        if app is not None and not getattr(self, "_session_middleware_added", False):
             from fastapi_admin_kit.db import SessionMiddleware
 
             try:
                 app.add_middleware(SessionMiddleware)
                 self._session_middleware_added = True
             except RuntimeError:
-                pass
+                # Stack already built (e.g. the lifespan startup scope). Force a
+                # rebuild on the next request so the middleware is included.
+                app.middleware_stack = None
+                app.add_middleware(SessionMiddleware)
+                self._session_middleware_added = True
 
         # Add audit context middleware
-        if not getattr(self, "_audit_middleware_added", False):
+        if app is not None and not getattr(self, "_audit_middleware_added", False):
             from fastapi_admin_kit.audit.middleware import (
                 AuditContextMiddleware,
             )
@@ -494,7 +699,9 @@ class Admin:
                 app.add_middleware(AuditContextMiddleware)
                 self._audit_middleware_added = True
             except RuntimeError:
-                pass
+                app.middleware_stack = None
+                app.add_middleware(AuditContextMiddleware)
+                self._audit_middleware_added = True
 
         # 0. Validate secret_key strength
         if not self.router.secret_key:
@@ -514,7 +721,25 @@ class Admin:
         # 2. Database tables should be created via Alembic migrations
         skip_create_tables = os.environ.get("SKIP_CREATE_TABLES", "false").lower() == "true"
         if not skip_create_tables:
-            await self.database._create_tables()
+            await self.database._create_tables(include_ai_tables=self._ai_enabled)
+
+        # 2.1 Preflight: if AI is enabled but the tables are genuinely missing
+        # (Alembic / SKIP_CREATE_TABLES mode), warn loudly but never block boot.
+        if self._ai_enabled:
+            try:
+                missing = await self.database._missing_tables(
+                    self._ai_enabled, list(AI_TABLE_NAMES)
+                )
+            except Exception:  # pragma: no cover - inspector failures must not block boot
+                missing = set()
+            if missing:
+                logger.warning(
+                    "ai_enabled=True but these tables are missing: %s. "
+                    "AI chat/usage tracking will fail until the schema is migrated — run "
+                    "`alembic revision --autogenerate && alembic upgrade head` "
+                    "(or `fak migrate admin_ai_conversations` in dev mode).",
+                    ", ".join(sorted(missing)),
+                )
 
         # 3. Seed default roles
         await self.database._seed_roles(self.seed_roles, self.seed_roles_overwrite)
@@ -530,6 +755,10 @@ class Admin:
         # 5. Store backends and config on app.state
         self._wire_app_state(app)
 
+        # 5.1 Auto-wire the notification system (mount router + service on
+        # app.state) unless the user configured it manually already.
+        self._setup_notifications(app)
+
         # 6. Mount static files
         self._mount_static(app)
 
@@ -541,14 +770,14 @@ class Admin:
 
         # 8.1 Auto-discover user models
         if self.config.behavior.auto_discover:
-            self.registry.auto_discover()
+            self.registry.auto_discover(exclude_tables=self._excluded_builtin_tables())
 
         # 8.2 Apply skip_models — mark listed models to hide from admin
         skip_models = self.config.behavior.skip_models
         # Built-in internal models are always hidden from admin
         # Note: model class names match table names (e.g., admin_refresh_tokens)
         default_skip = {"admin_refresh_tokens", "admin_user_permissions", "admin_user_totp"}
-        all_skip = default_skip | skip_models
+        all_skip = default_skip | skip_models | self._excluded_builtin_tables()
         skip_lower = {s.lower() for s in all_skip}
         for registered in self.registry.all():
             model_name = getattr(registered.model, "__name__", "").lower()
@@ -556,24 +785,17 @@ class Admin:
                 registered.admin.skip_auto_routes = True
 
         # 8.3 Attach audit event listeners (after registry is populated)
-        engine = self.database.engine
-        if engine is not None:
-            from sqlalchemy.ext.asyncio import AsyncEngine
-
-            if isinstance(engine, AsyncEngine):
-                from fastapi_admin_kit.db import create_session_factory
-
-                session_factory = create_session_factory(engine)
-                from fastapi_admin_kit.backends.sqlalchemy import (
-                    SqlAlchemyAuditBackend,
-                )
-
-                audit_backend = SqlAlchemyAuditBackend()
-                audit_backend.attach_listeners(session_factory, self.registry)
+        session_factory = getattr(app.state, "admin_session_factory", None)
+        if session_factory is not None:
+            self.backend.audit.attach_listeners(session_factory, self.registry)
 
         # 9. Validate require_tags
         if self.config.nav.require_tags:
             self._validate_tags()
+
+        # 9.1 Add AI nav group before building sidebar
+        if self._ai_enabled:
+            self._add_ai_nav_group()
 
         # 10. Build sidebar structure (once at startup)
         self._nav_groups_built = self._build_sidebar()
@@ -583,6 +805,10 @@ class Admin:
 
         # 11. Build and mount routers
         self._build_router(app)
+
+        # 12. Setup AI routes if enabled
+        if self._ai_enabled:
+            self._setup_ai_routes(app)
 
     # ------------------------------------------------------------------
     # Register
@@ -695,21 +921,14 @@ class Admin:
         # Create session factory if engine is available
         db_session = None
         session_factory = None
+        connection = None
         engine = self.database.engine
         if engine is not None:
-            from sqlalchemy.ext.asyncio import AsyncEngine
-
-            if isinstance(engine, AsyncEngine):
-                from fastapi_admin_kit.db import create_session_factory
-
-                session_factory = create_session_factory(engine)
-                # Legacy fallback — a single session for backward compat
-                db_session = session_factory()
-            else:
-                from sqlalchemy.orm import sessionmaker as sync_sessionmaker
-
-                session_factory = sync_sessionmaker(bind=engine, expire_on_commit=False)
-                db_session = session_factory()
+            connection = self.backend.database.create_connection()
+            session_factory = self.backend.database.create_session_factory(connection)
+            # Legacy fallback — a single session for backward compat. It is a
+            # backend-agnostic SessionBackend, exactly like the per-request one.
+            db_session = session_factory()
 
         # Inject auth_model into the backend if provided
         if self.config.auth.auth_backend is not None and self.config.auth.auth_model is not None:
@@ -747,12 +966,9 @@ class Admin:
         # Unified signing-key source for sessions, CSRF, and JWT (see AdminState).
         app.state.admin_secret_key = state.secret_key
         # Multi-ORM backend: store composed backend and derive individual adapters
-        from fastapi_admin_kit.backends.sqlalchemy import (
-            SqlAlchemySessionAdapter,
-        )
-
         app.state.admin_backend = self.backend
-        app.state.admin_session_backend_class = SqlAlchemySessionAdapter
+        app.state.admin_connection = connection
+        app.state.admin_session_backend_class = self.backend.database.session_adapter_class
         app.state.admin_query_adapter = self.backend.query
         app.state.admin_introspection_adapter = self.backend.introspection
         app.state.admin_audit_backend = self.backend.audit
@@ -784,11 +1000,17 @@ class Admin:
             )
 
     def _init_jinja(self, app: FastAPI) -> None:
-        """Initialise the Jinja2 template environment."""
+        """Initialise the Jinja2 template environment.
+
+        User-provided template dirs (from AdminConfig.template_dirs) are
+        prepended so custom templates override built-in ones.
+        """
         from starlette.templating import Jinja2Templates
 
         templates_dir = Path(__file__).parent.parent / "templates"
-        self._jinja_env = Jinja2Templates(directory=str(templates_dir))
+        user_dirs = list(getattr(self.template, "template_dirs", None) or [])
+        all_dirs = [str(d) for d in user_dirs] + [str(templates_dir)]
+        self._jinja_env = Jinja2Templates(directory=all_dirs)
 
         # Enable autoescape for XSS protection
         self._jinja_env.env.autoescape = True
@@ -806,6 +1028,13 @@ class Admin:
         self._jinja_env.env.globals["model_display_name"] = model_display_name
         self._jinja_env.env.globals["registered_models"] = self.registry.all()
         self._jinja_env.env.globals["admin_path"] = self.router.admin_path
+        self._jinja_env.env.globals["notifications_api_path"] = getattr(
+            self.config, "notifications_api_path", f"{self.router.admin_path}/notifications"
+        )
+        self._jinja_env.env.globals["notifications_list_path"] = getattr(
+            self.config, "notifications_list_path", f"{self.router.admin_path}/notifications/"
+        )
+        self._jinja_env.env.globals["notifications_enabled"] = self._enable_notification
         self._jinja_env.env.globals["nav_groups"] = self._nav_groups_built
 
         # CSRF token helper — reads from request.state (set by CSRFMiddleware)
@@ -872,6 +1101,11 @@ class Admin:
             "bolt": "bolt",
             "cog-": "settings",
             "cog-6-tooth": "settings",
+            "smart_toy": "smart_toy",
+            "monitoring": "monitoring",
+            "build": "build",
+            "sparkles": "auto_awesome",
+            "robot": "smart_toy",
         }
 
         def _icon(name: str, size: str = "", **kwargs) -> str:
@@ -894,6 +1128,7 @@ class Admin:
             "primary_color_dark": self.config.ui.primary_color_dark,
             "dark_mode_default": self.config.ui.dark_mode_default,
             "admin_path": self.router.admin_path,
+            "ai_enabled": self._ai_enabled,
         }
         self._jinja_env.env.globals["admin_config"] = admin_cfg
 
@@ -926,6 +1161,34 @@ class Admin:
         self._jinja_env.env.globals["ui_config"] = self.config.ui.apply_to_template_context()
 
         app.state.admin_jinja_env = self._jinja_env
+
+    def _setup_notifications(self, app: FastAPI) -> None:
+        """Auto-wire the notification system into the admin.
+
+        When ``enable_notification=True`` (the default) the admin creates a
+        default :class:`NotificationService`, registers it on ``app.state``
+        and mounts the notification router at the configured API path — so
+        users do **not** need to call ``configure_notifications`` themselves.
+
+        A service already configured by the user (via
+        ``configure_notifications()`` or ``Admin(notification_service=...)``)
+        is respected and never double-mounted.
+        """
+        if not self._enable_notification:
+            return
+        if getattr(app.state, "notification_service", None) is not None:
+            return
+
+        from fastapi_admin_kit.notifications.plugin import configure_notifications
+        from fastapi_admin_kit.notifications.service import NotificationService
+
+        service = self._notification_service
+        if service is None:
+            session_factory = getattr(app.state, "admin_session_factory", None)
+            service = NotificationService(session_factory=session_factory)
+            self._notification_service = service
+
+        configure_notifications(app, service, prefix=self.config.notifications_api_path)
 
     def _build_router(self, app: FastAPI) -> None:
         """Build and mount routers for all registered models."""
@@ -993,6 +1256,9 @@ class Admin:
             # UserTOTPAdmin,
             AuditLogAdmin,
             LoginAttemptAdmin,
+            NotificationAdmin,
+            NotificationLogAdmin,
+            NotificationPreferenceAdmin,
             PermissionAdmin,
             RoleAdmin,
             UserAdmin,
@@ -1000,10 +1266,25 @@ class Admin:
         from fastapi_admin_kit.migrations.models import (
             AuditLog,
             LoginAttempt,
+            Notification,
+            NotificationLog,
+            NotificationPreference,
             Permission,
             Role,
             User,
         )
+
+        if self._ai_enabled:
+            from fastapi_admin_kit.admin.builtin_models import (
+                AIConversationAdmin,
+                AIMessageAdmin,
+                AIUsageLogAdmin,
+            )
+            from fastapi_admin_kit.migrations.models import (
+                AIConversation,
+                AIMessage,
+                AIUsageLog,
+            )
 
         builtin_models = [
             (User, UserAdmin),
@@ -1016,9 +1297,111 @@ class Admin:
             (AuditLog, AuditLogAdmin),
         ]
 
+        # Notification models are exposed under the "notifications" sidebar
+        # group. Register them only when notifications are enabled so the
+        # group never appears when enable_notification=False.
+        if self._enable_notification:
+            builtin_models += [
+                (Notification, NotificationAdmin),
+                (NotificationPreference, NotificationPreferenceAdmin),
+                (NotificationLog, NotificationLogAdmin),
+            ]
+
         for model, admin_class in builtin_models:
             if model.__tablename__ not in self.registry._models:
                 self.registry.register(model, admin_class)
+
+        if self._ai_enabled:
+            ai_builtin_models = [
+                (AIConversation, AIConversationAdmin),
+                (AIMessage, AIMessageAdmin),
+                (AIUsageLog, AIUsageLogAdmin),
+            ]
+            for model, admin_class in ai_builtin_models:
+                if model.__tablename__ not in self.registry._models:
+                    self.registry.register(model, admin_class)
+
+    # ------------------------------------------------------------------
+    # AI Setup
+    # ------------------------------------------------------------------
+
+    def _excluded_builtin_tables(self) -> frozenset[str]:
+        """Tables to hide from auto-discovery / default-skip lists.
+
+        Always excludes internal tables (refresh tokens, user permissions,
+        TOTP secrets, AI attachments). When AI is disabled, also excludes the
+        three user-facing AI tables so they never leak into the sidebar/routes.
+        When notifications are disabled, also excludes the notification tables
+        so the "notifications" sidebar group never appears.
+        """
+        excluded = set(INTERNAL_TABLE_NAMES)  # incl. admin_ai_attachments
+        if not self._ai_enabled:
+            excluded |= AI_TABLE_NAMES
+        if not self._enable_notification:
+            excluded |= NOTIFICATION_TABLE_NAMES
+        return frozenset(excluded)
+
+    def _add_ai_nav_group(self) -> None:
+        """Add the AI nav group to nav_groups before sidebar build.
+
+        Idempotent: skips if an ``ai`` group already exists (setup can run
+        more than once, e.g. across tests).
+        """
+        from fastapi_admin_kit.nav import NavGroupConfig, NavItemConfig
+
+        if any(g.tag == "ai" for g in self.config.nav.nav_groups):
+            return
+
+        ai_nav = NavGroupConfig(
+            tag="ai",
+            label="AI",
+            icon="smart_toy",
+            order=900,
+            collapsed_by_default=False,
+            extra_items=[
+                NavItemConfig(
+                    label="Chat",
+                    url="/admin/ai/chat",
+                    icon="chat",
+                    order=1,
+                ),
+                NavItemConfig(
+                    label="Dashboard",
+                    url="/admin/ai/dashboard",
+                    icon="monitoring",
+                    order=2,
+                ),
+                NavItemConfig(
+                    label="Logs",
+                    url="/admin/ai/logs",
+                    icon="description",
+                    order=3,
+                ),
+                NavItemConfig(
+                    label="Tools",
+                    url="/admin/ai/tools",
+                    icon="build",
+                    order=4,
+                ),
+                NavItemConfig(
+                    label="Agents",
+                    url="/admin/ai/agents",
+                    icon="smart_toy",
+                    order=5,
+                ),
+            ],
+        )
+        self.config.nav.nav_groups.append(ai_nav)
+
+    def _setup_ai_routes(self, app: FastAPI) -> None:
+        """Initialize AI agents and mount AI routes."""
+        from fastapi_admin_kit.ai.plugin import AIPlugin
+
+        plugin = AIPlugin(agents=self._ai_config.agents if self._ai_config else [])
+        plugin.on_startup(self)
+
+        if self._ai_config and self._ai_config.dashboard_enabled:
+            app.include_router(plugin.get_routes(), prefix=self.router.admin_path)
 
     # ------------------------------------------------------------------
     # Tags validation

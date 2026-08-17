@@ -336,8 +336,7 @@ class ImportBase(ABC):
                         stmt = select(model)
                         for k, v in key_conditions.items():
                             stmt = stmt.where(getattr(model, k) == v)
-                        result = await session.execute(stmt)
-                        existing = result.scalar_one_or_none()
+                        existing = await session.scalar_one_or_none(stmt)
 
                         if existing:
                             # Update existing — skip primary key fields

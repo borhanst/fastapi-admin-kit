@@ -23,6 +23,7 @@ class AdminTemplate:
         dashboard_permission: str | None = None,
         settings_permission: str | None = None,
         sidebar_bottom_links: list[dict[str, str]] | None = None,
+        template_dirs: list[str] | None = None,
     ):
         self.title = title
         self.logo_url = logo_url
@@ -33,6 +34,7 @@ class AdminTemplate:
         self.dashboard_permission = dashboard_permission
         self.settings_permission = settings_permission
         self.sidebar_bottom_links: list[dict[str, str]] = sidebar_bottom_links or []
+        self.template_dirs: list[str] = template_dirs or []
         self._nav_groups_built: list = []
 
     def _init_jinja(self, app: Any) -> None:
@@ -42,8 +44,10 @@ class AdminTemplate:
 
         from starlette.templating import Jinja2Templates
 
-        templates_dir = Path(__file__).parent.parent / "templates"
-        jinja_env = Jinja2Templates(directory=str(templates_dir))
+        builtin_templates_dir = Path(__file__).parent.parent / "templates"
+        # User template dirs take precedence (prepended)
+        all_dirs = [str(d) for d in self.template_dirs] + [str(builtin_templates_dir)]
+        jinja_env = Jinja2Templates(directory=all_dirs)
 
         def slugify(s: str) -> str:
             return re.sub(r"[^\w]", "-", s, flags=re.A).strip("-").lower()
@@ -108,15 +112,14 @@ class AdminTemplate:
 
                         # Load permissions from all roles, merge with OR logic
                         if role_ids:
-                            result = await session.execute(
+                            for perm in await session.all(
                                 select(Permission)
                                 .join(
                                     admin_role_permissions,
                                     Permission.id == admin_role_permissions.c.permission_id,
                                 )
                                 .where(admin_role_permissions.c.role_id.in_(role_ids))
-                            )
-                            for perm in result.scalars():
+                            ):
                                 if perm.table_name in permissions_map:
                                     existing = permissions_map[perm.table_name]
                                     permissions_map[perm.table_name] = PermissionSet(
@@ -135,12 +138,11 @@ class AdminTemplate:
 
                         # Load direct user permission overrides, merge on top
                         if user_id is not None:
-                            result = await session.execute(
+                            for up, perm in await session.rows(
                                 select(UserPermission, Permission)
                                 .join(Permission, UserPermission.permission_id == Permission.id)
                                 .where(UserPermission.user_id == user_id)
-                            )
-                            for up, perm in result:
+                            ):
                                 table = perm.table_name
                                 if table in permissions_map:
                                     existing = permissions_map[table]

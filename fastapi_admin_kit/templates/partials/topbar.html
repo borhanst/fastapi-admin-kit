@@ -48,10 +48,60 @@
       <span x-show="$store.theme.dark" style="display: none;">{{ icon("sun", size="18px") }}</span>
     </button>
 
-    {# Notifications #}
-    <button class="icon-btn" title="Notifications">
-      {{ icon("bell", size="18px") }}
-    </button>
+    {# Notifications (hidden when notifications are not configured) #}
+    {% if notifications_enabled | default(true) %}
+    <div class="topbar-notifications" x-data="notificationDropdown()" x-init="init()">
+      <button class="icon-btn relative" @click="open = !open" @click.outside="open = false" title="Notifications">
+        {{ icon("bell", size="18px") }}
+        <span x-show="unreadCount > 0"
+              x-text="unreadCount > 9 ? '9+' : unreadCount"
+              class="notification-badge"
+              style="display: none;"></span>
+      </button>
+
+      <div x-show="open"
+           x-transition:enter="transition ease-out duration-100"
+           x-transition:enter-start="opacity-0 scale-95"
+           x-transition:enter-end="opacity-100 scale-100"
+           x-transition:leave="transition ease-in duration-75"
+           x-transition:leave-start="opacity-100 scale-100"
+           x-transition:leave-end="opacity-0 scale-95"
+           class="notification-dropdown"
+           style="display: none;">
+        <div class="notification-dropdown-header">
+          <h4>Notifications</h4>
+          <button class="btn btn-ghost btn-sm" @click="markAllRead()" x-show="unreadCount > 0">Mark all read</button>
+        </div>
+        <div class="notification-list" x-ref="list">
+          <template x-for="notification in notifications" :key="notification.id">
+            <a href="#"
+               class="notification-item"
+               :class="{ 'unread': !notification.is_read }"
+               @click.prevent="markRead(notification.id)">
+              <div class="notification-icon">
+                <span class="material-symbols-outlined" x-text="getIcon(notification)"></span>
+              </div>
+              <div class="notification-content">
+                <div class="notification-title" x-text="notification.title"></div>
+                <div class="notification-body" x-text="notification.body"></div>
+                <div class="notification-time" x-text="formatTime(notification.created_at)"></div>
+              </div>
+              <span x-show="!notification.is_read" class="notification-unread-dot"></span>
+            </a>
+          </template>
+          <div x-show="notifications.length === 0 && !loading" class="notification-empty">
+            No notifications
+          </div>
+          <div x-show="loading" class="notification-loading">
+            Loading...
+          </div>
+        </div>
+        <div class="notification-dropdown-footer">
+          <a href="{{ notifications_list_path | default(admin_path + '/notifications/') }}" class="btn btn-ghost btn-sm w-full">View all</a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
 
     {# User avatar dropdown #}
     <div class="topbar-user" x-data="{ open: false }">

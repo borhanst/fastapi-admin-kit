@@ -144,7 +144,16 @@ class DatabaseConfig:
             kwargs["pool_size"] = self.pool_size
             kwargs["max_overflow"] = self.max_overflow
 
-        if self.connect_args:
-            kwargs["connect_args"] = self.connect_args
+        # For SQLite, concurrent writers are serialized by file-level locks.
+        # Without a busy timeout the driver fails immediately with
+        # "database is locked" instead of waiting for the lock to clear.
+        # Default a 30s busy timeout (mirrors the CLI engine setup) so brief
+        # contention — e.g. streaming persistence vs an in-flight request —
+        # resolves instead of erroring. User-supplied connect_args win.
+        connect_args: dict[str, Any] = dict(self.connect_args)
+        if self.db_type == DatabaseType.SQLITE:
+            connect_args.setdefault("timeout", 30)
+        if connect_args:
+            kwargs["connect_args"] = connect_args
 
         return create_async_engine(url, **kwargs)
