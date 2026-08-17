@@ -152,17 +152,16 @@ class TestUploadEndpoint:
         assert resp.status_code == 400
 
     def test_upload_rejects_oversized_file(self, client, auth_headers):
-        from fastapi_admin_kit.config.ai_chat import AIChatConfig
-
-        original_max = AIChatConfig.max_file_size_mb
+        admin = client.app.state.admin
+        original_max = admin.config.ai_chat.max_file_size_mb
         try:
-            AIChatConfig.max_file_size_mb = 0
+            admin.config.ai_chat.max_file_size_mb = 0
             content = b"x" * 1024
             files = {"files": ("big.pdf", io.BytesIO(content), "application/pdf")}
             resp = client.post("/admin/ai/chat/upload", files=files, headers=auth_headers)
             assert resp.status_code == 400
         finally:
-            AIChatConfig.max_file_size_mb = original_max
+            admin.config.ai_chat.max_file_size_mb = original_max
 
     def test_upload_multiple_files(self, client, auth_headers):
         files = [

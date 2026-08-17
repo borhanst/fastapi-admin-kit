@@ -86,7 +86,10 @@ async def ai_chat_upload(
         if file.filename is None:
             continue
 
-        ext = validate_extension(file.filename)
+        try:
+            ext = validate_extension(file.filename)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         if ext not in allowed_exts:
             raise HTTPException(
                 status_code=400,
