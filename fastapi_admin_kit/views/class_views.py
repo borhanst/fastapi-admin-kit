@@ -643,13 +643,26 @@ class CreateView(BaseView):
             if raw_val is None:
                 continue
             # Validate the related ID exists
-            await validate_related_id(
+            pk_value, error = await validate_related_id(
                 model=self.registered.model,
                 related_model=rel.target_model,
                 id_value=raw_val,
                 field_name=rel.name,
                 request=request,
             )
+            if error:
+                raise HTTPException(
+                    status_code=422,
+                    detail=[
+                        {
+                            "loc": ["body", rel.name],
+                            "msg": error["msg"],
+                            "type": "value_error",
+                            "input": error["input"],
+                            "ctx": error["ctx"],
+                        }
+                    ],
+                )
         m2m_data = self.model_saver.extract_m2m(self.registered.model, parsed, request)
         resolved = self.model_saver.resolve_rel_keys(parsed, request)
         resolved = self.admin.prepare_create_data(resolved, request)
@@ -1180,13 +1193,26 @@ class EditView(BaseView):
             if raw_val is None:
                 continue
             # Validate the related ID exists
-            await validate_related_id(
+            pk_value, error = await validate_related_id(
                 model=self.registered.model,
                 related_model=rel.target_model,
                 id_value=raw_val,
                 field_name=rel.name,
                 request=request,
             )
+            if error:
+                raise HTTPException(
+                    status_code=422,
+                    detail=[
+                        {
+                            "loc": ["body", rel.name],
+                            "msg": error["msg"],
+                            "type": "value_error",
+                            "input": error["input"],
+                            "ctx": error["ctx"],
+                        }
+                    ],
+                )
         try:
             m2m_data = self.model_saver.extract_m2m(obj, parsed, request)
             self.model_saver.apply_parsed(obj, parsed, request)

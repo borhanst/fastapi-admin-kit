@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from fastapi import HTTPException, Request
+from fastapi import Request
 
 from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyIntrospectionAdapter
 from fastapi_admin_kit.inspection.types import ColumnMeta, RelationMeta
@@ -130,11 +130,11 @@ async def validate_related_id(
     id_value: Any,
     field_name: str = "id",
     request: Request | None = None,
-) -> Any:
+) -> tuple[Any, dict[str, Any] | None]:
     """Validate that a related model ID exists in the database.
 
     Casts the ID value to the correct type for the related model's primary key,
-    fetches the related object, and raises ``HTTPException(404)`` if not found.
+    fetches the related object, and returns an error context if not found.
 
     Args:
         model: The model containing the foreign key field (for type resolution).
@@ -145,10 +145,25 @@ async def validate_related_id(
             obtained from the application state (legacy mode).
 
     Returns:
-        The cast primary key value if the related object exists.
+        A tuple of (pk_value, error_ctx):
+        - pk_value: The cast primary key value if the related object exists, otherwise None
+        - error_ctx: None if valid, or dict with error context if invalid (for field validation).
+            The dict contains keys: "msg", "input", "ctx" compatible with
+            FastAPI's validation error format. Callers should check if error_ctx
+            is not None and raise HTTPException(422, detail=[error_ctx])
 
-    Raises:
-        HTTPException: 404 if the related object does not exist.
+    Note:
+        The error_ctx can be directly used in FastAPI's HTTPException detail list:
+        raise HTTPException(
+            status_code=422,
+            detail=[{
+                "loc": ["body", field_name],
+                "msg": error_ctx["msg"],
+                "type": "value_error",
+                "input": id_value,
+                "ctx": error_ctx["ctx"],
+            }]
+        )
     """
     from fastapi_admin_kit.db import get_db_session
     from fastapi_admin_kit.inspection import cast_pk_value
@@ -157,8 +172,9 @@ async def validate_related_id(
     session = get_db_session(request) if request else get_db_session(None)
     obj = await session.get(related_model, pk_value)
     if obj is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"{related_model.__name__} with {field_name}={id_value} not found",
-        )
-    return pk_value
+        return None, {
+            "msg": f"{related_model.__name__} with {id_value} not found",
+            "input": id_value,
+            "ctx": {"value": id_value},
+        }
+    return pk_value, None
