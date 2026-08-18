@@ -36,12 +36,8 @@ def require_api_permission(table_name: str, action: str):
             ...
     """
 
-    async def _check(
-        user: dict[str, Any] = None,
-        request: Request = None,
-    ) -> dict[str, Any]:
-        if user is None:
-            user = await get_api_current_user(request)
+    async def _check(request: Request) -> dict[str, Any]:
+        user = await get_api_current_user(request)
 
         if user.get("is_superuser"):
             return user
@@ -61,12 +57,8 @@ def require_api_permission(table_name: str, action: str):
 def require_api_superuser():
     """Return a dependency that enforces superuser access from JWT."""
 
-    async def _check(
-        user: dict[str, Any] = None,
-        request: Request = None,
-    ) -> dict[str, Any]:
-        if user is None:
-            user = await get_api_current_user(request)
+    async def _check(request: Request) -> dict[str, Any]:
+        user = await get_api_current_user(request)
 
         if not user.get("is_superuser"):
             raise HTTPException(status_code=403, detail="Superuser access required.")

@@ -27,6 +27,7 @@ The API is mounted at `/admin/api/` by default.
 | `POST` | `/admin/api/{model}/` | Create record |
 | `GET` | `/admin/api/{model}/{id}` | Get single record |
 | `PUT` | `/admin/api/{model}/{id}` | Update record |
+| `PATCH` | `/admin/api/{model}/{id}` | Partially update record (only provided fields) |
 | `DELETE` | `/admin/api/{model}/{id}` | Delete record |
 
 ### Roles

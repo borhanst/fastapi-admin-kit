@@ -7,10 +7,11 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+from fastapi_admin_kit.api.deps import require_api_permission
 from fastapi_admin_kit.api.schema_generator import get_or_build_schemas
 from fastapi_admin_kit.views.class_views import (
     CreateView,
@@ -150,6 +151,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         methods=["GET"],
         response_model=list_response_schema,
         tags=["api-crud", registered.verbose_name],
+        dependencies=[Depends(require_api_permission(table_name, "view"))],
     )
     router.add_api_route(
         prefix,
@@ -158,6 +160,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         response_model=response_schema,
         status_code=201,
         tags=["api-crud", registered.verbose_name],
+        dependencies=[Depends(require_api_permission(table_name, "create"))],
     )
     router.add_api_route(
         f"{prefix}/{{item_id}}",
@@ -165,6 +168,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         methods=["GET"],
         response_model=response_schema,
         tags=["api-crud", registered.verbose_name],
+        dependencies=[Depends(require_api_permission(table_name, "view"))],
     )
     router.add_api_route(
         f"{prefix}/{{item_id}}",
@@ -172,6 +176,15 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         methods=["PUT"],
         response_model=response_schema,
         tags=["api-crud", registered.verbose_name],
+        dependencies=[Depends(require_api_permission(table_name, "edit"))],
+    )
+    router.add_api_route(
+        f"{prefix}/{{item_id}}",
+        _wrap_body_handler(edit_v.api_response, update_schema, include_item_id=True),
+        methods=["PATCH"],
+        response_model=response_schema,
+        tags=["api-crud", registered.verbose_name],
+        dependencies=[Depends(require_api_permission(table_name, "edit"))],
     )
     router.add_api_route(
         f"{prefix}/{{item_id}}",
@@ -179,4 +192,5 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         methods=["DELETE"],
         status_code=204,
         tags=["api-crud", registered.verbose_name],
+        dependencies=[Depends(require_api_permission(table_name, "delete"))],
     )
