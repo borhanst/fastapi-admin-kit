@@ -29,7 +29,8 @@ from fastapi_admin_kit.audit.models import (
     AuditLog,  # noqa: F401 — ensure table is created
 )
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
-from fastapi_admin_kit.auth.models import User
+from fastapi_admin_kit.auth.mixins import AuthModelMixin
+from fastapi_admin_kit.auth.password import password_manager
 from fastapi_admin_kit.backends import SqlAlchemyBackend
 from fastapi_admin_kit.config import ThemeConfig
 from fastapi_admin_kit.dashboard import (
@@ -95,7 +96,7 @@ class Product(Base):
         return self.name
 
 
-class User(Base):
+class User(AuthModelMixin, Base):
     """User model."""
 
     __tablename__ = "users"
@@ -711,8 +712,14 @@ async def seed_demo_data(session: AsyncSession) -> None:
     session.add_all(products)
     await session.flush()
 
-    user1 = User(email="alice@example.com", full_name="Alice Johnson", is_active=True)
-    user2 = User(email="bob@example.com", full_name="Bob Smith", is_active=True)
+    user1 = User(
+        email="alice@example.com", full_name="Alice Johnson", is_active=True,
+        hashed_password=password_manager.hash("alice"),
+    )
+    user2 = User(
+        email="bob@example.com", full_name="Bob Smith", is_active=True,
+        hashed_password=password_manager.hash("bob"),
+    )
     session.add_all([user1, user2])
     await session.flush()
 
@@ -739,7 +746,7 @@ async def seed_demo_data(session: AsyncSession) -> None:
 
 async def seed_admin_user(session: AsyncSession) -> None:
     """Create a default superadmin if none exists."""
-    result = await session.execute(select(User).limit(1))
+    result = await session.execute(select(User).where(User.email == "admin@example.com"))
     if result.scalars().first() is not None:
         return
 

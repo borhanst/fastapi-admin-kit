@@ -5,10 +5,10 @@ Uses view classes' api_response() to eliminate duplicate logic.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Body, HTTPException, Query, Request, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Body, HTTPException, Request
+from pydantic import BaseModel
 
 from fastapi_admin_kit.api.schema_generator import get_or_build_schemas
 from fastapi_admin_kit.views.class_views import (
@@ -58,6 +58,30 @@ def build_api_router(registry: Any) -> APIRouter:
     return router
 
 
+def _wrap_body_handler(handler: Any, payload_schema: type[BaseModel]) -> Any:
+    """Wrap a view handler so FastAPI can document the request body.
+
+    The view handlers parse the JSON body themselves, so we accept the
+    generated Pydantic schema as a body parameter and stash the parsed dict
+    on ``request.state`` for ``JSONBodyParser`` to pick up.
+    """
+    payload_type = Annotated[payload_schema, Body(...)]
+
+    async def wrapped(request: Request, payload: payload_type) -> Any:
+        request.state._api_payload = payload.model_dump(exclude_unset=True)
+        return await handler(request)
+
+    # Bypass lazy annotation resolution so FastAPI sees the concrete schema.
+    wrapped.__annotations__ = {
+        "request": Request,
+        "payload": payload_type,
+        "return": Any,
+    }
+    wrapped.__name__ = getattr(handler, "__name__", "api_response")
+    wrapped.__doc__ = getattr(handler, "__doc__", None)
+    return wrapped
+
+
 def _register_model_routes(router: APIRouter, registered: Any) -> None:
     """Register CRUD routes for a single model using view classes."""
     table_name = registered.table_name
@@ -74,6 +98,8 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
     schemas = get_or_build_schemas(registered)
     response_schema = schemas["response"]
     list_response_schema = schemas["list_response"]
+    create_schema = schemas["create"]
+    update_schema = schemas["update"]
 
     # Add routes with both "api-crud" and model verbose_name tags
     router.add_api_route(
@@ -85,7 +111,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
     )
     router.add_api_route(
         prefix,
-        create_v.api_response if hasattr(create_v, "api_response") else create_v,
+        _wrap_body_handler(create_v.api_response, create_schema),
         methods=["POST"],
         response_model=response_schema,
         status_code=201,
@@ -100,7 +126,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
     )
     router.add_api_route(
         f"{prefix}/{{item_id}}",
-        edit_v.api_response if hasattr(edit_v, "api_response") else edit_v,
+        _wrap_body_handler(edit_v.api_response, update_schema),
         methods=["PUT"],
         response_model=response_schema,
         tags=["api-crud", registered.verbose_name],

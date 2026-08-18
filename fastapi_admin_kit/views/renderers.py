@@ -243,7 +243,11 @@ class JSONBodyParser:
     ) -> tuple[dict[str, Any], dict[str, list[str]]]:
         from sqlalchemy import inspect as sa_inspect
 
-        body = await request.json()
+        # Pre-parsed body supplied by the API wrapper handler (so FastAPI can
+        # document the request body schema in Swagger/OpenAPI).
+        body = getattr(request.state, "_api_payload", None)
+        if body is None:
+            body = await request.json()
         valid_fields = {col.name for col in self.registered.columns}
         # Relationship keys (FK / many-to-many) are handled separately by the
         # view (resolved to FK columns or applied as m2m collections), so they
