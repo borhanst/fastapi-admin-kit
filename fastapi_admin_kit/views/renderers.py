@@ -539,7 +539,7 @@ class DefaultQueryProvider:
 
                         base = base.order_by(desc(col) if order[0].startswith("-") else asc(col))
 
-        per_page = registered.admin.per_page
+        per_page = int(request.query_params.get("per_page", registered.admin.per_page))
 
         from fastapi_admin_kit.pagination import (
             OffsetPagination,

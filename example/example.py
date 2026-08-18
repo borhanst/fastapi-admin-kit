@@ -41,6 +41,7 @@ from fastapi_admin_kit.dashboard import (
 )
 from fastapi_admin_kit.inline import StackedInline, TabularInline
 from fastapi_admin_kit.models import Base as AdminBase
+from fastapi_admin_kit.pagination.cursor import CursorPagination
 from fastapi_admin_kit.types import TabConfig, TableSection
 from fastapi_admin_kit.widgets.inputs import ArrayWidget, WysiwygWidget
 
@@ -314,6 +315,7 @@ class ProductAdmin(ModelAdmin):
         "status",
         "created_at",
     ]
+    pagination = CursorPagination(cursor_column="id")
     list_filter = ["is_active", "category"]
     search_fields = ["name", "description"]
     ordering = ["-created_at"]
