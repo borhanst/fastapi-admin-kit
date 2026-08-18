@@ -221,6 +221,7 @@ async def refresh_token(
         raise HTTPException(status_code=500, detail="Database session not available.")
 
     from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
 
     from fastapi_admin_kit.auth.models import RefreshToken, User
 
@@ -238,9 +239,11 @@ async def refresh_token(
     if refresh_record.expires_at < datetime.now(UTC):
         raise HTTPException(status_code=401, detail="Refresh token expired.")
 
-    # Load user
+    # Load user (eagerly load roles to avoid lazy-load in async session)
     user = await db_session.scalar_one_or_none(
-        select(User).where(
+        select(User)
+        .options(selectinload(User.roles))
+        .where(
             User.id == refresh_record.user_id,
             User.is_active,
         )
