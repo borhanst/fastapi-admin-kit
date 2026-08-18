@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from fastapi import HTTPException, Request
+
 from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyIntrospectionAdapter
 from fastapi_admin_kit.inspection.types import ColumnMeta, RelationMeta
 
@@ -22,7 +24,7 @@ def inspect_model(model: type) -> tuple[list[ColumnMeta], list[RelationMeta]]:
 
 def is_abstract(model: type) -> bool:
     """Check if a model is abstract and should be skipped during auto-discovery."""
-    return _inspector.is_abstract(model)
+    return getattr(model, "__abstract__", False)
 
 
 def get_pk_field(model: type) -> str | None:
@@ -120,3 +122,43 @@ def model_display_name(obj: Any) -> str:
         return str(label)
     pk = getattr(obj, "id", None)
     return f"{type(obj).__name__}:{pk}" if pk is not None else type(obj).__name__
+
+
+async def validate_related_id(
+    model: type,
+    related_model: type,
+    id_value: Any,
+    field_name: str = "id",
+    request: Request | None = None,
+) -> Any:
+    """Validate that a related model ID exists in the database.
+
+    Casts the ID value to the correct type for the related model's primary key,
+    fetches the related object, and raises ``HTTPException(404)`` if not found.
+
+    Args:
+        model: The model containing the foreign key field (for type resolution).
+        related_model: The model whose ID is being validated.
+        id_value: The ID value from the request (typically a string from form data).
+        field_name: Name of the field for error messaging.
+        request: FastAPI Request object. If not provided, session will be
+            obtained from the application state (legacy mode).
+
+    Returns:
+        The cast primary key value if the related object exists.
+
+    Raises:
+        HTTPException: 404 if the related object does not exist.
+    """
+    from fastapi_admin_kit.db import get_db_session
+    from fastapi_admin_kit.inspection import cast_pk_value
+
+    pk_value = cast_pk_value(related_model, id_value)
+    session = get_db_session(request) if request else get_db_session(None)
+    obj = await session.get(related_model, pk_value)
+    if obj is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"{related_model.__name__} with {field_name}={id_value} not found",
+        )
+    return pk_value

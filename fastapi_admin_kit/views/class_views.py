@@ -635,6 +635,21 @@ class CreateView(BaseView):
         if errors:
             raise HTTPException(status_code=422, detail=errors)
         session = get_db_session(request)
+        # Validate related model IDs exist
+        from fastapi_admin_kit.inspection import validate_related_id
+
+        for rel in self.registered.relationships:
+            raw_val = parsed.get(rel.name)
+            if raw_val is None:
+                continue
+            # Validate the related ID exists
+            await validate_related_id(
+                model=self.registered.model,
+                related_model=rel.target_model,
+                id_value=raw_val,
+                field_name=rel.name,
+                request=request,
+            )
         m2m_data = self.model_saver.extract_m2m(self.registered.model, parsed, request)
         resolved = self.model_saver.resolve_rel_keys(parsed, request)
         resolved = self.admin.prepare_create_data(resolved, request)
@@ -1157,6 +1172,21 @@ class EditView(BaseView):
         # PUT
         parser = JSONBodyParser(self.registered)
         parsed, _ = await parser.parse(request, obj)
+        # Validate related model IDs exist
+        from fastapi_admin_kit.inspection import validate_related_id
+
+        for rel in self.registered.relationships:
+            raw_val = parsed.get(rel.name)
+            if raw_val is None:
+                continue
+            # Validate the related ID exists
+            await validate_related_id(
+                model=self.registered.model,
+                related_model=rel.target_model,
+                id_value=raw_val,
+                field_name=rel.name,
+                request=request,
+            )
         try:
             m2m_data = self.model_saver.extract_m2m(obj, parsed, request)
             self.model_saver.apply_parsed(obj, parsed, request)
