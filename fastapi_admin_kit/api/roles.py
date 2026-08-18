@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from fastapi_admin_kit.api.deps import require_api_superuser
 from fastapi_admin_kit.auth.models import Role
@@ -39,7 +40,7 @@ async def list_roles(
 ) -> list[RoleResponse]:
     """GET /api/roles/ — list all roles (superuser only)."""
     db_session = get_db_session(request)
-    roles = await db_session.all(select(Role))
+    roles = await db_session.all(select(Role).options(selectinload(Role.users)))
     return [
         RoleResponse(
             id=r.id,

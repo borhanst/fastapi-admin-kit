@@ -8,7 +8,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.security import HTTPBasicCredentials
 
 from fastapi_admin_kit.api.schemas import (
     RefreshRequest,
@@ -16,6 +17,7 @@ from fastapi_admin_kit.api.schemas import (
     TokenRequest,
     TokenResponse,
 )
+from fastapi_admin_kit.api.security import basic_scheme, bearer_scheme
 from fastapi_admin_kit.auth.ratelimit import RateLimiter, check_rate_limit
 from fastapi_admin_kit.db import get_db_session
 
@@ -161,10 +163,22 @@ def _hash_token(token: str) -> str:
 @router.post("/token", response_model=TokenResponse)
 async def obtain_token(
     request: Request,
-    body: TokenRequest,
+    body: TokenRequest | None = None,
+    credentials: HTTPBasicCredentials | None = Depends(basic_scheme),
 ) -> TokenResponse:
-    """POST /api/auth/token — obtain JWT access + refresh tokens."""
-    check_rate_limit(_api_rate_limiter, body.email)
+    """POST /api/auth/token — obtain JWT access + refresh tokens.
+
+    Credentials may be provided either as a JSON body (``email``/``password``)
+    or via HTTP Basic auth. Basic auth takes precedence when both are given.
+    """
+    if credentials is not None:
+        email, password = credentials.username, credentials.password
+    elif body is not None:
+        email, password = body.email, body.password
+    else:
+        raise HTTPException(status_code=422, detail="Credentials required.")
+
+    check_rate_limit(_api_rate_limiter, email)
 
     auth_backend = getattr(request.app.state, "admin_auth_backend", None)
     if auth_backend is None:
@@ -174,12 +188,12 @@ async def obtain_token(
     if db_session is None:
         raise HTTPException(status_code=500, detail="Database session not available.")
 
-    user = await auth_backend.authenticate(body.email, body.password, db_session)
+    user = await auth_backend.authenticate(email, password, db_session)
     if user is None:
-        _api_rate_limiter.record_attempt(body.email)
+        _api_rate_limiter.record_attempt(email)
         raise HTTPException(status_code=401, detail="Invalid credentials.")
 
-    _api_rate_limiter.reset(body.email)
+    _api_rate_limiter.reset(email)
 
     secret_key = _get_secret_key(request)
     ttl = _get_token_ttl(request)
@@ -308,6 +322,7 @@ async def api_logout(
 @router.get("/me")
 async def get_current_user_info(
     request: Request,
+    _: Any = Depends(bearer_scheme),
 ) -> dict[str, Any]:
     """GET /api/auth/me — return current user info from JWT (no DB hit)."""
     auth_header = request.headers.get("Authorization", "")

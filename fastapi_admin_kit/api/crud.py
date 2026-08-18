@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from fastapi_admin_kit.api.schema_generator import get_or_build_schemas
@@ -58,24 +59,65 @@ def build_api_router(registry: Any) -> APIRouter:
     return router
 
 
-def _wrap_body_handler(handler: Any, payload_schema: type[BaseModel]) -> Any:
+def _wrap_body_handler(
+    handler: Any, payload_schema: type[BaseModel], *, include_item_id: bool = False
+) -> Any:
     """Wrap a view handler so FastAPI can document the request body.
 
     The view handlers parse the JSON body themselves, so we accept the
     generated Pydantic schema as a body parameter and stash the parsed dict
     on ``request.state`` for ``JSONBodyParser`` to pick up.
+
+    Set ``include_item_id`` only for routes whose path contains ``{item_id}``
+    so it is documented as a path parameter (and never leaks a query param
+    on collection routes like POST).
     """
     payload_type = Annotated[payload_schema, Body(...)]
 
-    async def wrapped(request: Request, payload: payload_type) -> Any:
-        request.state._api_payload = payload.model_dump(exclude_unset=True)
-        return await handler(request)
+    if include_item_id:
 
-    # Bypass lazy annotation resolution so FastAPI sees the concrete schema.
+        async def wrapped(request: Request, payload: payload_type, item_id: Any) -> Any:
+            request.state._api_payload = payload.model_dump(exclude_unset=True)
+            return await handler(request, item_id=item_id)
+
+        wrapped.__annotations__ = {
+            "request": Request,
+            "payload": payload_type,
+            "item_id": Any,
+            "return": Any,
+        }
+    else:
+
+        async def wrapped(request: Request, payload: payload_type) -> Any:
+            request.state._api_payload = payload.model_dump(exclude_unset=True)
+            return await handler(request)
+
+        wrapped.__annotations__ = {
+            "request": Request,
+            "payload": payload_type,
+            "return": Any,
+        }
+
+    wrapped.__name__ = getattr(handler, "__name__", "api_response")
+    wrapped.__doc__ = getattr(handler, "__doc__", None)
+    return wrapped
+
+
+def _wrap_item_handler(handler: Any, *, returns_response: bool = False) -> Any:
+    """Wrap a single-item view handler so only the ``item_id`` path param is exposed.
+
+    The underlying handlers accept both ``id`` and ``item_id`` (the admin
+    HTML routes pass ``id``); for the JSON API we only want ``item_id`` so a
+    redundant ``id`` query parameter is not leaked into the OpenAPI docs.
+    """
+
+    async def wrapped(request: Request, item_id: Any) -> Any:
+        return await handler(request, item_id=item_id)
+
     wrapped.__annotations__ = {
         "request": Request,
-        "payload": payload_type,
-        "return": Any,
+        "item_id": Any,
+        "return": Response if returns_response else Any,
     }
     wrapped.__name__ = getattr(handler, "__name__", "api_response")
     wrapped.__doc__ = getattr(handler, "__doc__", None)
@@ -119,21 +161,21 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
     )
     router.add_api_route(
         f"{prefix}/{{item_id}}",
-        edit_v.api_response if hasattr(edit_v, "api_response") else edit_v,
+        _wrap_item_handler(edit_v.api_response),
         methods=["GET"],
         response_model=response_schema,
         tags=["api-crud", registered.verbose_name],
     )
     router.add_api_route(
         f"{prefix}/{{item_id}}",
-        _wrap_body_handler(edit_v.api_response, update_schema),
+        _wrap_body_handler(edit_v.api_response, update_schema, include_item_id=True),
         methods=["PUT"],
         response_model=response_schema,
         tags=["api-crud", registered.verbose_name],
     )
     router.add_api_route(
         f"{prefix}/{{item_id}}",
-        delete_v.api_response if hasattr(delete_v, "api_response") else delete_v,
+        _wrap_item_handler(delete_v.api_response, returns_response=True),
         methods=["DELETE"],
         status_code=204,
         tags=["api-crud", registered.verbose_name],

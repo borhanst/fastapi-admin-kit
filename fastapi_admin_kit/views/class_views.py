@@ -94,12 +94,14 @@ class BaseView:
 
     def _serialize(self, obj: Any) -> dict[str, Any]:
         """Serialize an object to a dict using registered columns."""
+        from fastapi_admin_kit.audit.diff import serialize_value
+
         if self.api_renderer and hasattr(self.api_renderer, "serialize"):
             return self.api_renderer.serialize(obj)
         item_dict: dict[str, Any] = {"id": getattr(obj, "id", None)}
         for col in self.registered.columns:
             if col.name != "id":
-                item_dict[col.name] = str(getattr(obj, col.name, ""))
+                item_dict[col.name] = serialize_value(getattr(obj, col.name, None))
         return item_dict
 
     async def html_response(self, request: Request) -> Response:

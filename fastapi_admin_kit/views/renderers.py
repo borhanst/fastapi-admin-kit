@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import Response
 
+from fastapi_admin_kit.audit.diff import serialize_value
 from fastapi_admin_kit.auth.dependencies import (
     resolve_permission_checker as _resolve_permission_checker,  # noqa: F401
 )
@@ -154,7 +155,7 @@ class ItemAPIRenderer:
         item_dict: dict[str, Any] = {"id": getattr(obj, "id", None)}
         for col in self.registered.columns:
             if col.name != "id":
-                item_dict[col.name] = str(getattr(obj, col.name, ""))
+                item_dict[col.name] = serialize_value(getattr(obj, col.name, None))
         return item_dict
 
     async def render(self, request: Request, data: Any) -> Any:
