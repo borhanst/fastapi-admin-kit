@@ -27,6 +27,8 @@ Features:
 
 from __future__ import annotations
 
+import ast
+import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -40,6 +42,20 @@ from fastapi_admin_kit.notifications.sms import SMSProvider
 from fastapi_admin_kit.notifications.store import NotificationStore
 
 logger = logging.getLogger("fastapi_admin_kit.notifications")
+
+
+def _decode_json(value: Any, default: Any) -> Any:
+    """Parse a JSON column that some backends return as a string."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (TypeError, ValueError):
+            pass
+        try:
+            return ast.literal_eval(value)
+        except (ValueError, SyntaxError):
+            return default
+    return value if value is not None else default
 
 
 @dataclass
@@ -411,8 +427,8 @@ class NotificationService:
                 "id": notif.id,
                 "title": notif.title,
                 "body": notif.body,
-                "channels": notif.channels,
-                "data": notif.data,
+                "channels": _decode_json(notif.channels, default=[]),
+                "data": _decode_json(notif.data, default=None),
                 "created_at": (notif.created_at.isoformat() if notif.created_at else None),
             },
         }

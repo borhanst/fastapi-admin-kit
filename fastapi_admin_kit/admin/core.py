@@ -468,7 +468,7 @@ class Admin:
 
         # Store notification paths on config for template access
         default_notifications_path = f"{self.router.admin_path}/notifications"
-        default_notifications_list = f"{default_notifications_path}/"
+        default_notifications_list = f"{self.router.admin_path}/admin_notifications/"
         self.config.notifications_api_path = notifications_api_path or default_notifications_path
         self.config.notifications_list_path = notifications_list_path or default_notifications_list
 
@@ -1032,7 +1032,7 @@ class Admin:
             self.config, "notifications_api_path", f"{self.router.admin_path}/notifications"
         )
         self._jinja_env.env.globals["notifications_list_path"] = getattr(
-            self.config, "notifications_list_path", f"{self.router.admin_path}/notifications/"
+            self.config, "notifications_list_path", f"{self.router.admin_path}/admin_notifications/"
         )
         self._jinja_env.env.globals["notifications_enabled"] = self._enable_notification
         self._jinja_env.env.globals["nav_groups"] = self._nav_groups_built
