@@ -70,7 +70,7 @@ async def flush_pending_perm_ops(request):
     from fastapi_admin_kit.db import get_db_session
 
     perm_ids = getattr(request.state, "_admin_perm_perm_ids", None)
-    if not perm_ids or not isinstance(perm_ids, list):
+    if perm_ids is None or not isinstance(perm_ids, list):
         return
 
     # Get the user object from request state
@@ -169,7 +169,7 @@ class UserAdmin(ModelAdmin):
         if request is None:
             return
         perm_data = getattr(request.state, "_admin_perm_data", None)
-        if perm_data:
+        if perm_data is not None:
             request.state._admin_perm_perm_ids = perm_data
             request.state._admin_perm_user_obj = obj
 
@@ -177,7 +177,7 @@ class UserAdmin(ModelAdmin):
         if request is None:
             return
         perm_data = getattr(request.state, "_admin_perm_data", None)
-        if perm_data:
+        if perm_data is not None:
             request.state._admin_perm_perm_ids = perm_data
             request.state._admin_perm_user_obj = obj
 
