@@ -250,7 +250,10 @@ async def refresh_token(
     if refresh_record is None:
         raise HTTPException(status_code=401, detail="Invalid refresh token.")
 
-    if refresh_record.expires_at < datetime.now(UTC):
+    expires_at = refresh_record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if expires_at < datetime.now(UTC):
         raise HTTPException(status_code=401, detail="Refresh token expired.")
 
     # Load user (eagerly load roles to avoid lazy-load in async session)
