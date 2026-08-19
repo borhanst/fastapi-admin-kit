@@ -104,6 +104,20 @@ class BaseView:
                 item_dict[col.name] = serialize_value(getattr(obj, col.name, None))
         return item_dict
 
+    async def _serialize_for_api(self, obj: Any, request: Request) -> dict[str, Any]:
+        """Refresh *obj* inside the async greenlet, then serialize it.
+
+        After ``flush()``/``commit()`` server-side defaults (e.g. columns with
+        ``onupdate``/``server_default``) may be left expired by SQLAlchemy.
+        ``serialize()`` is synchronous, so touching an expired attribute there
+        triggers a lazy load outside the greenlet and raises
+        ``MissingGreenlet``.  Reloading first guarantees every attribute is
+        populated before the sync ``serialize()`` reads it.
+        """
+        session = get_db_session(request)
+        await session.refresh(obj)
+        return self._serialize(obj)
+
     async def html_response(self, request: Request) -> Response:
         raise NotImplementedError
 
@@ -283,7 +297,7 @@ class ListView(BaseView):
             next_cursor,
             has_next,
             pagination_mode,
-        ) = await self.query_provider.get_list(request, q, page)
+        ) = await self.query_provider.get_list(request, q, page, order=order)
         item_list = [self._serialize(item) for item in items]
         return await self.api_renderer.render(
             request,
@@ -679,7 +693,7 @@ class CreateView(BaseView):
             obj=obj,
         )
         await flush_pending_perm_ops(request)
-        return await self.api_renderer.render(request, self._serialize(obj))
+        return await self.api_renderer.render(request, await self._serialize_for_api(obj, request))
 
 
 class EditView(BaseView):
@@ -1232,7 +1246,7 @@ class EditView(BaseView):
             session = get_db_session(request)
             await session.rollback()
             raise
-        return self._serialize(obj)
+        return await self._serialize_for_api(obj, request)
 
 
 class DeleteView(BaseView):

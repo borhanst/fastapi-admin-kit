@@ -353,7 +353,7 @@ class DefaultQueryProvider:
         return clauses
 
     async def get_list(
-        self, request: Request, q: str = "", page: int = 1
+        self, request: Request, q: str = "", page: int = 1, order: str = ""
     ) -> tuple[list[Any], int, int, int]:
         """Execute list query with filtering, search, pagination.
 
@@ -516,7 +516,7 @@ class DefaultQueryProvider:
         if q and registered.admin.search_fields:
             base = apply_search_filter(request, base, model, registered.admin.search_fields, q)
 
-        query_ordering = request.query_params.get("ordering", "")
+        query_ordering = request.query_params.get("ordering", "") or order
         order = registered.admin.get_ordering(
             {"ordering": query_ordering}, registered.admin.ordering
         )
