@@ -15,6 +15,7 @@ Endpoints (mounted at your chosen prefix, e.g. ``/admin/notifications`` or
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
 import logging
@@ -381,9 +382,23 @@ def _serialize(n: Any) -> NotificationOut:
         id=n.id,
         title=n.title,
         body=n.body,
-        channels=n.channels or [],
-        data=n.data,
+        channels=_as_json(n.channels, default=[]),
+        data=_as_json(n.data, default=None),
         status=n.status,
         is_read=bool(n.is_read),
         created_at=n.created_at.isoformat() if n.created_at else None,
     )
+
+
+def _as_json(value: Any, default: Any) -> Any:
+    """Parse a JSON column that some backends return as a string."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (TypeError, ValueError):
+            pass
+        try:
+            return ast.literal_eval(value)
+        except (ValueError, SyntaxError):
+            return default
+    return value if value is not None else default

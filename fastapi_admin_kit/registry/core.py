@@ -102,6 +102,74 @@ class RegisteredModel:
         )
 
 
+def build_registered_model(
+    model: type,
+    admin: ModelAdmin | None = None,
+) -> RegisteredModel:
+    """Build a :class:`RegisteredModel` without writing to the singleton registry.
+
+    Used by the standalone ``ModelAdmin.export_api_route`` /
+    ``export_admin_route`` helpers so a model's routers can be built without
+    calling ``admin.register()``.
+
+    Args:
+        model: A SQLAlchemy declarative model class.
+        admin: Optional ModelAdmin instance that configures the model.
+
+    Returns:
+        The built registered model configuration.
+
+    Raises:
+        ValueError: If the model is not a valid SQLAlchemy model.
+    """
+    from fastapi_admin_kit.views import ModelAdmin as _ModelAdmin
+
+    registry = AdminRegistry()
+
+    # Validate using the injected validator
+    admin_class = admin.__class__ if admin is not None else None
+    registry._validator.validate_model_registration(model, admin_class)
+
+    # Inspect using the injected inspector
+    columns, relationships = registry._inspector.inspect_model(model)
+
+    if admin is None:
+        admin = _ModelAdmin()
+    table_name = model.__tablename__
+    if admin.verbose_name:
+        verbose_name = admin.verbose_name
+    elif getattr(model, "verbose_name", None):
+        verbose_name = model.verbose_name
+    else:
+        class_name = getattr(model, "__name__", None)
+        if class_name and not class_name.startswith("_"):
+            verbose_name = re.sub(r"([A-Z])", r" \1", class_name).strip().title()
+        else:
+            verbose_name = table_name.replace("_", " ").title()
+    if admin.verbose_name_plural:
+        verbose_name_plural = admin.verbose_name_plural
+    elif getattr(model, "verbose_name_plural", None):
+        verbose_name_plural = model.verbose_name_plural
+    elif (
+        verbose_name.endswith("y")
+        and len(verbose_name) > 1
+        and verbose_name[-2].lower() not in "aeiou"
+    ):
+        verbose_name_plural = f"{verbose_name[:-1]}ies"
+    else:
+        verbose_name_plural = f"{verbose_name}s"
+
+    return RegisteredModel(
+        model=model,
+        admin=admin,
+        table_name=table_name,
+        verbose_name=verbose_name,
+        verbose_name_plural=verbose_name_plural,
+        columns=columns,
+        relationships=relationships,
+    )
+
+
 class AdminRegistry:
     """Singleton registry for admin models.
 
@@ -167,45 +235,10 @@ class AdminRegistry:
         # Validate using the injected validator
         self._validator.validate_model_registration(model, admin_class)
 
-        # Inspect using the injected inspector
-        columns, relationships = self._inspector.inspect_model(model)
-
         admin = admin_class() if admin_class else ModelAdmin()
-        table_name = model.__tablename__
-        if admin.verbose_name:
-            verbose_name = admin.verbose_name
-        elif getattr(model, "verbose_name", None):
-            verbose_name = model.verbose_name
-        else:
-            class_name = getattr(model, "__name__", None)
-            if class_name and not class_name.startswith("_"):
-                verbose_name = re.sub(r"([A-Z])", r" \1", class_name).strip().title()
-            else:
-                verbose_name = table_name.replace("_", " ").title()
-        if admin.verbose_name_plural:
-            verbose_name_plural = admin.verbose_name_plural
-        elif getattr(model, "verbose_name_plural", None):
-            verbose_name_plural = model.verbose_name_plural
-        elif (
-            verbose_name.endswith("y")
-            and len(verbose_name) > 1
-            and verbose_name[-2].lower() not in "aeiou"
-        ):
-            verbose_name_plural = f"{verbose_name[:-1]}ies"
-        else:
-            verbose_name_plural = f"{verbose_name}s"
+        registered = build_registered_model(model, admin)
 
-        registered = RegisteredModel(
-            model=model,
-            admin=admin,
-            table_name=table_name,
-            verbose_name=verbose_name,
-            verbose_name_plural=verbose_name_plural,
-            columns=columns,
-            relationships=relationships,
-        )
-
-        self._models[table_name] = registered
+        self._models[registered.table_name] = registered
         return registered
 
     def get(self, table_name: str) -> RegisteredModel | None:

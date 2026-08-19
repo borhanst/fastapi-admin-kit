@@ -195,7 +195,7 @@ def test_admin_paths_synced_to_mount_prefix(api_prefix_app, admin_user):
     """The admin template/JS must point at the real mount prefix, not /admin/notifications."""
     app, admin = api_prefix_app
     assert admin.config.notifications_api_path == "/api/notifications"
-    assert admin.config.notifications_list_path == "/api/notifications/"
+    assert admin.config.notifications_list_path == "/admin/admin_notifications/"
 
     client = TestClient(app)
     client.cookies.set("admin_session", create_session_cookie(admin_user.id))
@@ -232,7 +232,7 @@ def test_explicit_admin_path_respected(engine, async_session_factory, admin_user
         os.environ.pop("SKIP_CREATE_TABLES", None)
 
     assert admin.config.notifications_api_path == "/custom/notifications"
-    assert admin.config.notifications_list_path == "/custom/notifications/"
+    assert admin.config.notifications_list_path == "/admin/admin_notifications/"
 
 
 # ---------------------------------------------------------------------------

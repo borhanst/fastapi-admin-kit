@@ -120,3 +120,28 @@ class TestDecodeAccessToken:
         token = pyjwt.encode(payload, secret, algorithm="HS256")
         result = decode_access_token(token, "wrong-secret")
         assert result is None
+
+
+class TestOpenAPISecuritySchemes:
+    """Swagger docs expose Basic + Bearer auth for the JSON API."""
+
+    def _schemes(self):
+        from fastapi_admin_kit.api.security import basic_scheme, bearer_scheme
+
+        return {
+            "basic": {
+                "name": basic_scheme.scheme_name,
+                "auto_error": basic_scheme.auto_error,
+            },
+            "bearer": {
+                "name": bearer_scheme.scheme_name,
+                "auto_error": bearer_scheme.auto_error,
+            },
+        }
+
+    def test_schemes_are_purely_documentational(self):
+        schemes = self._schemes()
+        assert schemes["basic"]["name"] == "BasicAuth"
+        assert schemes["bearer"]["name"] == "BearerAuth"
+        assert schemes["basic"]["auto_error"] is False
+        assert schemes["bearer"]["auto_error"] is False

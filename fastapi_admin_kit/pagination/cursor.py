@@ -21,8 +21,18 @@ class CursorPagination(BasePagination):
         self.cursor_column = cursor_column
 
     def _decode_cursor(self, cursor: str) -> Any:
-        """Decode base64 cursor to Python value."""
-        return json.loads(base64.b64decode(cursor))
+        """Decode base64 cursor to Python value, or parse as plain value."""
+        try:
+            return json.loads(base64.b64decode(cursor))
+        except Exception:
+            # Fallback: try to parse as plain value (integer, float, etc.)
+            try:
+                return int(cursor)
+            except ValueError:
+                try:
+                    return float(cursor)
+                except ValueError:
+                    return cursor
 
     def _encode_cursor(self, value: Any) -> str:
         """Encode Python value to base64 cursor string."""

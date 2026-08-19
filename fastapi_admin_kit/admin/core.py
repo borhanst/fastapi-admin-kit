@@ -468,7 +468,7 @@ class Admin:
 
         # Store notification paths on config for template access
         default_notifications_path = f"{self.router.admin_path}/notifications"
-        default_notifications_list = f"{default_notifications_path}/"
+        default_notifications_list = f"{self.router.admin_path}/admin_notifications/"
         self.config.notifications_api_path = notifications_api_path or default_notifications_path
         self.config.notifications_list_path = notifications_list_path or default_notifications_list
 
@@ -1032,7 +1032,7 @@ class Admin:
             self.config, "notifications_api_path", f"{self.router.admin_path}/notifications"
         )
         self._jinja_env.env.globals["notifications_list_path"] = getattr(
-            self.config, "notifications_list_path", f"{self.router.admin_path}/notifications/"
+            self.config, "notifications_list_path", f"{self.router.admin_path}/admin_notifications/"
         )
         self._jinja_env.env.globals["notifications_enabled"] = self._enable_notification
         self._jinja_env.env.globals["nav_groups"] = self._nav_groups_built
@@ -1207,7 +1207,12 @@ class Admin:
         for registered in self.registry.all():
             if getattr(registered.admin, "skip_auto_routes", False):
                 continue
+            # API-only models (export_endpoint="api") get no admin HTML router.
+            if getattr(registered.admin, "export_endpoint", None) == "api":
+                continue
             model_router = build_model_router(registered)
+            if model_router is None:
+                continue
             app.include_router(model_router, prefix=self.router.admin_path)
 
         # Auth routes (login/logout)
@@ -1235,6 +1240,7 @@ class Admin:
             dashboard_view,
             methods=["GET"],
             tags=["admin"],
+            include_in_schema=False,
         )
 
         # JSON API for external frontend apps

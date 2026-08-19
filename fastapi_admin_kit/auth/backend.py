@@ -57,6 +57,7 @@ class BuiltinAuthBackend(AuthBackend):
         login_field: str = "email",
     ) -> AdminUserProtocol | None:
         from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
 
         session = as_session_backend(session)
         model = self._get_model()
@@ -65,9 +66,13 @@ class BuiltinAuthBackend(AuthBackend):
             field = getattr(model, "email", None)
         if field is None:
             return None
-        user = await session.scalar_one_or_none(
-            select(model).where(field == credential, model.is_active.is_(True))
-        )
+        query = select(model).where(field == credential, model.is_active.is_(True))
+
+        # Eagerly load roles if the model has a roles relationship
+        if hasattr(model, "roles"):
+            query = query.options(selectinload(model.roles))
+
+        user = await session.scalar_one_or_none(query)
 
         if not user:
             return None

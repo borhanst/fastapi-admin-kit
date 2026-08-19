@@ -46,4 +46,7 @@ def configure_notifications(app: Any, service: Any, prefix: str = "/api/notifica
     current_api = getattr(admin.config, "notifications_api_path", None)
     if current_api in (None, default_api):
         admin.config.notifications_api_path = prefix.rstrip("/")
-    admin.config.notifications_list_path = f"{admin.config.notifications_api_path}/"
+    if admin.config.notifications_list_path is None:
+        admin.config.notifications_list_path = (
+            f"{getattr(admin.router, 'admin_path', '/admin')}/admin_notifications/"
+        )
