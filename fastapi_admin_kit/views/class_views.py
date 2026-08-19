@@ -656,6 +656,10 @@ class CreateView(BaseView):
             raw_val = parsed.get(rel.name)
             if raw_val is None:
                 continue
+            # Skip many-to-many relationships — they are handled separately
+            # by extract_m2m/apply_m2m, not by per-ID validation.
+            if rel.direction == "MANYTOMANY":
+                continue
             # Validate the related ID exists
             pk_value, error = await validate_related_id(
                 model=self.registered.model,
@@ -1205,6 +1209,10 @@ class EditView(BaseView):
         for rel in self.registered.relationships:
             raw_val = parsed.get(rel.name)
             if raw_val is None:
+                continue
+            # Skip many-to-many relationships — they are handled separately
+            # by extract_m2m/apply_m2m, not by per-ID validation.
+            if rel.direction == "MANYTOMANY":
                 continue
             # Validate the related ID exists
             pk_value, error = await validate_related_id(
