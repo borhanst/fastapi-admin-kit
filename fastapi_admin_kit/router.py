@@ -20,7 +20,19 @@ from fastapi_admin_kit.views.class_views import (
 )
 
 
-def build_model_router(registered: RegisteredModel) -> APIRouter:
+def build_model_router(registered: RegisteredModel, *, force: bool = False) -> APIRouter | None:
+    """Build the HTML admin router for a model.
+
+    Returns ``None`` when the model is API-only (``export_endpoint == "api"``)
+    so callers know no admin router should be mounted. Pass ``force=True`` to
+    build the router regardless (used by the standalone
+    ``ModelAdmin.export_admin_route`` helper).
+    """
+    # Models with export_endpoint="api" only expose their JSON API router —
+    # the admin HTML router is skipped entirely.
+    if not force and getattr(registered.admin, "export_endpoint", None) == "api":
+        return None
+
     router = APIRouter(prefix=f"/{registered.table_name}", tags=[registered.verbose_name])
 
     # DIP: view classes resolved from ModelAdmin config with defaults
@@ -57,7 +69,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         include_in_schema=False,
     )
 
-    @router.get("/search")
+    @router.get("/search", include_in_schema=False)
     async def search_view(
         request: Request,
         q: str = "",
@@ -107,7 +119,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
 
     # ── Export Endpoint ─────────────────────────────────────────────
 
-    @router.get("/export/")
+    @router.get("/export/", include_in_schema=False)
     async def export_data(
         request: Request,
         format: str = "csv",
@@ -196,7 +208,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
 
     # ── Import Endpoint ─────────────────────────────────────────────
 
-    @router.post("/import/")
+    @router.post("/import/", include_in_schema=False)
     async def import_data(
         request: Request,
         format: str = "csv",
@@ -313,7 +325,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         html = templates.TemplateResponse(request, "partials/list_table.html", ctx)
         return html
 
-    @router.post("/validate-field")
+    @router.post("/validate-field", include_in_schema=False)
     async def validate_field_endpoint(
         request: Request,
         _csrf: bool = Depends(require_csrf_token),
@@ -385,7 +397,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
 
     # ── Inline Edit ───────────────────────────────────────────────
 
-    @router.get("/{id}/inline-edit/")
+    @router.get("/{id}/inline-edit/", include_in_schema=False)
     async def inline_edit_form(
         request: Request,
         id: str,
@@ -457,7 +469,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
             },
         )
 
-    @router.post("/{id}/inline-edit/")
+    @router.post("/{id}/inline-edit/", include_in_schema=False)
     async def inline_edit_save(
         request: Request,
         id: str,
@@ -613,7 +625,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
 
     # ── Custom Actions ─────────────────────────────────────────────
 
-    @router.post("/action/{action_name}")
+    @router.post("/action/{action_name}", include_in_schema=False)
     async def execute_list_action(
         request: Request,
         action_name: str,
@@ -647,7 +659,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
 
         return HTMLResponse(content="OK")
 
-    @router.post("/action/{action_name}/{id}")
+    @router.post("/action/{action_name}/{id}", include_in_schema=False)
     async def execute_row_action(
         request: Request,
         action_name: str,
@@ -681,7 +693,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
 
     # ── Sortable Endpoint ──────────────────────────────────────────
 
-    @router.post("/sort")
+    @router.post("/sort", include_in_schema=False)
     async def sort_items(
         request: Request,
         _csrf: bool = Depends(require_csrf_token),
@@ -706,7 +718,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
 
     # ── Autocomplete Endpoint ──────────────────────────────────────
 
-    @router.get("/autocomplete/")
+    @router.get("/autocomplete/", include_in_schema=False)
     async def autocomplete(
         request: Request,
         q: str = "",
@@ -737,7 +749,7 @@ def build_model_router(registered: RegisteredModel) -> APIRouter:
         return JSONResponse(content=results)
 
     # ── Inline Field Update (existing) ─────────────────────────────
-    @router.patch("/{id}/field")
+    @router.patch("/{id}/field", include_in_schema=False)
     async def update_field(
         request: Request,
         id: str,

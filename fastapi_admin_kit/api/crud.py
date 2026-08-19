@@ -45,6 +45,11 @@ async def _check_permission(
         )
 
 
+def _export_endpoint(registered: Any) -> str | None:
+    """Return the model's ``export_endpoint`` setting (None / "html" / "api")."""
+    return getattr(registered.admin, "export_endpoint", None)
+
+
 def build_api_router(registry: Any) -> APIRouter:
     """Build the CRUD API router for all registered models."""
     router = APIRouter(tags=["api-crud"])
@@ -55,8 +60,27 @@ def build_api_router(registry: Any) -> APIRouter:
         # admin_refresh_tokens / admin_user_totp are never exposed over JSON API.
         if getattr(registered.admin, "skip_auto_routes", False):
             continue
-        _register_model_routes(router, registered)
+        # Models with export_endpoint="html" only expose their admin HTML
+        # router — the JSON API router is skipped.
+        if _export_endpoint(registered) == "html":
+            continue
+        router.include_router(build_api_router_for_model(registered))
 
+    return router
+
+
+def build_api_router_for_model(registered: Any) -> APIRouter:
+    """Build a standalone CRUD router for a single model.
+
+    Used by ``AdminRegistry``-driven route building and by the standalone
+    ``ModelAdmin.export_api_route`` helper, so a model's JSON API can be
+    exposed without registering it with the admin.
+    """
+    router = APIRouter(
+        prefix=f"/{registered.table_name}",
+        tags=["api-crud", registered.verbose_name],
+    )
+    _register_model_routes(router, registered)
     return router
 
 
@@ -128,7 +152,6 @@ def _wrap_item_handler(handler: Any, *, returns_response: bool = False) -> Any:
 def _register_model_routes(router: APIRouter, registered: Any) -> None:
     """Register CRUD routes for a single model using view classes."""
     table_name = registered.table_name
-    prefix = f"/{table_name}"
 
     # DIP: resolve view classes from ModelAdmin config
     admin = registered.admin
@@ -146,7 +169,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
 
     # Add routes with both "api-crud" and model verbose_name tags
     router.add_api_route(
-        prefix,
+        "",
         list_v.api_response if hasattr(list_v, "api_response") else list_v,
         methods=["GET"],
         response_model=list_response_schema,
@@ -154,7 +177,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         dependencies=[Depends(require_api_permission(table_name, "view"))],
     )
     router.add_api_route(
-        prefix,
+        "",
         _wrap_body_handler(create_v.api_response, create_schema),
         methods=["POST"],
         response_model=response_schema,
@@ -163,7 +186,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         dependencies=[Depends(require_api_permission(table_name, "create"))],
     )
     router.add_api_route(
-        f"{prefix}/{{item_id}}",
+        "/{item_id}",
         _wrap_item_handler(edit_v.api_response),
         methods=["GET"],
         response_model=response_schema,
@@ -171,7 +194,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         dependencies=[Depends(require_api_permission(table_name, "view"))],
     )
     router.add_api_route(
-        f"{prefix}/{{item_id}}",
+        "/{item_id}",
         _wrap_body_handler(edit_v.api_response, update_schema, include_item_id=True),
         methods=["PUT"],
         response_model=response_schema,
@@ -179,7 +202,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         dependencies=[Depends(require_api_permission(table_name, "edit"))],
     )
     router.add_api_route(
-        f"{prefix}/{{item_id}}",
+        "/{item_id}",
         _wrap_body_handler(edit_v.api_response, update_schema, include_item_id=True),
         methods=["PATCH"],
         response_model=response_schema,
@@ -187,7 +210,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         dependencies=[Depends(require_api_permission(table_name, "edit"))],
     )
     router.add_api_route(
-        f"{prefix}/{{item_id}}",
+        "/{item_id}",
         _wrap_item_handler(delete_v.api_response, returns_response=True),
         methods=["DELETE"],
         status_code=204,

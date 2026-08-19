@@ -1207,7 +1207,12 @@ class Admin:
         for registered in self.registry.all():
             if getattr(registered.admin, "skip_auto_routes", False):
                 continue
+            # API-only models (export_endpoint="api") get no admin HTML router.
+            if getattr(registered.admin, "export_endpoint", None) == "api":
+                continue
             model_router = build_model_router(registered)
+            if model_router is None:
+                continue
             app.include_router(model_router, prefix=self.router.admin_path)
 
         # Auth routes (login/logout)

@@ -63,6 +63,9 @@ async def get_search_suggestions(
     for registered in registry.all():
         if getattr(registered.admin, "skip_auto_routes", False):
             continue
+        # API-only models have no admin HTML pages — hide from suggestions.
+        if getattr(registered.admin, "export_endpoint", None) == "api":
+            continue
         table_name: str = registered.table_name
         verbose_name: str = registered.verbose_name
         verbose_name_plural: str = registered.verbose_name_plural

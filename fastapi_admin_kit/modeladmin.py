@@ -102,12 +102,75 @@ class ModelAdmin:
 
     # Route generation
     skip_auto_routes: bool = False
+    # Endpoint export control: None (default) → both HTML + JSON API routers
+    # are auto-built; "html" → only the admin HTML router is auto-built;
+    # "api" → only the JSON API router is auto-built.
+    export_endpoint: str | None = None
 
     # Custom display functions (dict-based fallback)
     display_functions: dict[str, Any] | None = None
 
     # Decorator for custom column display
     column = staticmethod(column)
+
+    # ── Standalone router export (no admin.register required) ───────
+
+    def export_api_route(self, model: Any, prefix: str = "") -> Any:
+        """Build a standalone JSON API router for ``model``.
+
+        Unlike ``admin.register()`` this does not write to the singleton
+        registry — the returned router can be mounted directly::
+
+            app.include_router(ProductAdmin().export_api_route(Product))
+
+        Args:
+            model: A SQLAlchemy declarative model class.
+            prefix: Optional extra path prefix prepended to the router.
+
+        Returns:
+            An ``APIRouter`` exposing the model's JSON CRUD endpoints.
+        """
+        from fastapi import APIRouter
+
+        from fastapi_admin_kit.api.crud import build_api_router_for_model
+        from fastapi_admin_kit.registry import build_registered_model
+
+        registered = build_registered_model(model, self)
+        router = build_api_router_for_model(registered)
+        if prefix:
+            wrapper = APIRouter(prefix=prefix)
+            wrapper.include_router(router)
+            return wrapper
+        return router
+
+    def export_admin_route(self, model: Any, prefix: str = "") -> Any:
+        """Build a standalone HTML admin router for ``model``.
+
+        Unlike ``admin.register()`` this does not write to the singleton
+        registry — the returned router can be mounted directly::
+
+            app.include_router(ProductAdmin().export_admin_route(Product), prefix="/admin")
+
+        Args:
+            model: A SQLAlchemy declarative model class.
+            prefix: Optional extra path prefix prepended to the router.
+
+        Returns:
+            An ``APIRouter`` exposing the model's HTML admin views.
+        """
+        from fastapi import APIRouter
+
+        from fastapi_admin_kit.registry import build_registered_model
+        from fastapi_admin_kit.router import build_model_router
+
+        registered = build_registered_model(model, self)
+        # Explicit call — build regardless of the model's export_endpoint.
+        router = build_model_router(registered, force=True)
+        if prefix:
+            wrapper = APIRouter(prefix=prefix)
+            wrapper.include_router(router)
+            return wrapper
+        return router
 
     # Badge hook — return str e.g. "12" or None
     def get_nav_badge(self, request: Any = None) -> str | None:
