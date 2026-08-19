@@ -39,7 +39,7 @@ def _is_safe_url(url: str | None) -> bool:
     return not (parsed.scheme or parsed.netloc)
 
 
-@router.get("/login", response_class=HTMLResponse)
+@router.get("/login", response_class=HTMLResponse, include_in_schema=False)
 async def login_get(
     request: Request,
     next: str | None = None,
@@ -97,7 +97,7 @@ async def login_get(
     )
 
 
-@router.post("/login", response_model=None)
+@router.post("/login", response_model=None, include_in_schema=False)
 async def login_post(
     request: Request,
     username: str = Form(...),
@@ -193,7 +193,7 @@ async def login_post(
     )
 
 
-@router.post("/logout")
+@router.post("/logout", include_in_schema=False)
 async def logout_post(
     request: Request,
     session_payload: dict[str, Any] | None = Depends(get_session),

@@ -12,7 +12,7 @@ from fastapi_admin_kit.auth.dependencies import get_current_admin_user
 router = APIRouter()
 
 
-@router.get("/settings/theme", response_class=HTMLResponse)
+@router.get("/settings/theme", response_class=HTMLResponse, include_in_schema=False)
 async def theme_settings(
     request: Request,
     current_user: Any = Depends(get_current_admin_user),

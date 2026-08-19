@@ -5,11 +5,13 @@ Uses view classes' api_response() to eliminate duplicate logic.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi.responses import Response
+from pydantic import BaseModel
 
+from fastapi_admin_kit.api.deps import require_api_permission
 from fastapi_admin_kit.api.schema_generator import get_or_build_schemas
 from fastapi_admin_kit.views.class_views import (
     CreateView,
@@ -43,6 +45,11 @@ async def _check_permission(
         )
 
 
+def _export_endpoint(registered: Any) -> str | None:
+    """Return the model's ``export_endpoint`` setting (None / "html" / "api")."""
+    return getattr(registered.admin, "export_endpoint", None)
+
+
 def build_api_router(registry: Any) -> APIRouter:
     """Build the CRUD API router for all registered models."""
     router = APIRouter(tags=["api-crud"])
@@ -53,15 +60,98 @@ def build_api_router(registry: Any) -> APIRouter:
         # admin_refresh_tokens / admin_user_totp are never exposed over JSON API.
         if getattr(registered.admin, "skip_auto_routes", False):
             continue
-        _register_model_routes(router, registered)
+        # Models with export_endpoint="html" only expose their admin HTML
+        # router — the JSON API router is skipped.
+        if _export_endpoint(registered) == "html":
+            continue
+        router.include_router(build_api_router_for_model(registered))
 
     return router
+
+
+def build_api_router_for_model(registered: Any) -> APIRouter:
+    """Build a standalone CRUD router for a single model.
+
+    Used by ``AdminRegistry``-driven route building and by the standalone
+    ``ModelAdmin.export_api_route`` helper, so a model's JSON API can be
+    exposed without registering it with the admin.
+    """
+    router = APIRouter(
+        prefix=f"/{registered.table_name}",
+        tags=["api-crud", registered.verbose_name],
+    )
+    _register_model_routes(router, registered)
+    return router
+
+
+def _wrap_body_handler(
+    handler: Any, payload_schema: type[BaseModel], *, include_item_id: bool = False
+) -> Any:
+    """Wrap a view handler so FastAPI can document the request body.
+
+    The view handlers parse the JSON body themselves, so we accept the
+    generated Pydantic schema as a body parameter and stash the parsed dict
+    on ``request.state`` for ``JSONBodyParser`` to pick up.
+
+    Set ``include_item_id`` only for routes whose path contains ``{item_id}``
+    so it is documented as a path parameter (and never leaks a query param
+    on collection routes like POST).
+    """
+    payload_type = Annotated[payload_schema, Body(...)]
+
+    if include_item_id:
+
+        async def wrapped(request: Request, payload: payload_type, item_id: Any) -> Any:
+            request.state._api_payload = payload.model_dump(exclude_unset=True)
+            return await handler(request, item_id=item_id)
+
+        wrapped.__annotations__ = {
+            "request": Request,
+            "payload": payload_type,
+            "item_id": Any,
+            "return": Any,
+        }
+    else:
+
+        async def wrapped(request: Request, payload: payload_type) -> Any:
+            request.state._api_payload = payload.model_dump(exclude_unset=True)
+            return await handler(request)
+
+        wrapped.__annotations__ = {
+            "request": Request,
+            "payload": payload_type,
+            "return": Any,
+        }
+
+    wrapped.__name__ = getattr(handler, "__name__", "api_response")
+    wrapped.__doc__ = getattr(handler, "__doc__", None)
+    return wrapped
+
+
+def _wrap_item_handler(handler: Any, *, returns_response: bool = False) -> Any:
+    """Wrap a single-item view handler so only the ``item_id`` path param is exposed.
+
+    The underlying handlers accept both ``id`` and ``item_id`` (the admin
+    HTML routes pass ``id``); for the JSON API we only want ``item_id`` so a
+    redundant ``id`` query parameter is not leaked into the OpenAPI docs.
+    """
+
+    async def wrapped(request: Request, item_id: Any) -> Any:
+        return await handler(request, item_id=item_id)
+
+    wrapped.__annotations__ = {
+        "request": Request,
+        "item_id": Any,
+        "return": Response if returns_response else Any,
+    }
+    wrapped.__name__ = getattr(handler, "__name__", "api_response")
+    wrapped.__doc__ = getattr(handler, "__doc__", None)
+    return wrapped
 
 
 def _register_model_routes(router: APIRouter, registered: Any) -> None:
     """Register CRUD routes for a single model using view classes."""
     table_name = registered.table_name
-    prefix = f"/{table_name}"
 
     # DIP: resolve view classes from ModelAdmin config
     admin = registered.admin
@@ -74,61 +164,56 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
     schemas = get_or_build_schemas(registered)
     response_schema = schemas["response"]
     list_response_schema = schemas["list_response"]
+    create_schema = schemas["create"]
+    update_schema = schemas["update"]
 
-    @router.get(prefix, response_model=list_response_schema)
-    async def list_items(
-        request: Request,
-        page: int = Query(1, ge=1),
-        per_page: int = Query(25, ge=1, le=100),
-        q: str = Query(""),
-        order: str = Query(""),
-        after: str | None = Query(None),
-        before: str | None = Query(None),
-    ):
-        user = await _get_current_user(request)
-        await _check_permission(request, user, table_name, "view")
-        result = await list_v.api_response(
-            request,
-            page=page,
-            per_page=per_page,
-            q=q,
-            order=order,
-            after=after,
-            before=before,
-        )
-        if isinstance(result, JSONResponse):
-            return result
-        return result
-
-    @router.post(prefix, response_model=response_schema, status_code=201)
-    async def create_item(request: Request):
-        user = await _get_current_user(request)
-        await _check_permission(request, user, table_name, "create")
-        result = await create_v.api_response(request)
-        if isinstance(result, JSONResponse):
-            return result
-        return result
-
-    @router.get(f"{prefix}/{{item_id}}", response_model=response_schema)
-    async def retrieve_item(request: Request, item_id: str):
-        user = await _get_current_user(request)
-        await _check_permission(request, user, table_name, "view")
-        result = await edit_v.api_response(request, item_id=item_id)
-        if isinstance(result, JSONResponse):
-            return result
-        return result
-
-    @router.put(f"{prefix}/{{item_id}}", response_model=response_schema)
-    async def update_item(request: Request, item_id: str):
-        user = await _get_current_user(request)
-        await _check_permission(request, user, table_name, "edit")
-        result = await edit_v.api_response(request, item_id=item_id)
-        if isinstance(result, JSONResponse):
-            return result
-        return result
-
-    @router.delete(f"{prefix}/{{item_id}}", status_code=204)
-    async def delete_item(request: Request, item_id: str):
-        user = await _get_current_user(request)
-        await _check_permission(request, user, table_name, "delete")
-        return await delete_v.api_response(request, item_id=item_id)
+    # Add routes with both "api-crud" and model verbose_name tags
+    router.add_api_route(
+        "",
+        list_v.api_response if hasattr(list_v, "api_response") else list_v,
+        methods=["GET"],
+        response_model=list_response_schema,
+        tags=["api-crud", registered.verbose_name],
+        dependencies=[Depends(require_api_permission(table_name, "view"))],
+    )
+    router.add_api_route(
+        "",
+        _wrap_body_handler(create_v.api_response, create_schema),
+        methods=["POST"],
+        response_model=response_schema,
+        status_code=201,
+        tags=["api-crud", registered.verbose_name],
+        dependencies=[Depends(require_api_permission(table_name, "create"))],
+    )
+    router.add_api_route(
+        "/{item_id}",
+        _wrap_item_handler(edit_v.api_response),
+        methods=["GET"],
+        response_model=response_schema,
+        tags=["api-crud", registered.verbose_name],
+        dependencies=[Depends(require_api_permission(table_name, "view"))],
+    )
+    router.add_api_route(
+        "/{item_id}",
+        _wrap_body_handler(edit_v.api_response, update_schema, include_item_id=True),
+        methods=["PUT"],
+        response_model=response_schema,
+        tags=["api-crud", registered.verbose_name],
+        dependencies=[Depends(require_api_permission(table_name, "edit"))],
+    )
+    router.add_api_route(
+        "/{item_id}",
+        _wrap_body_handler(edit_v.api_response, update_schema, include_item_id=True),
+        methods=["PATCH"],
+        response_model=response_schema,
+        tags=["api-crud", registered.verbose_name],
+        dependencies=[Depends(require_api_permission(table_name, "edit"))],
+    )
+    router.add_api_route(
+        "/{item_id}",
+        _wrap_item_handler(delete_v.api_response, returns_response=True),
+        methods=["DELETE"],
+        status_code=204,
+        tags=["api-crud", registered.verbose_name],
+        dependencies=[Depends(require_api_permission(table_name, "delete"))],
+    )

@@ -17,7 +17,7 @@ from fastapi_admin_kit.views.sidebar import inject_sidebar_context
 router = APIRouter()
 
 
-@router.get("/profile", response_class=HTMLResponse)
+@router.get("/profile", response_class=HTMLResponse, include_in_schema=False)
 async def profile_view(
     request: Request,
     user: AdminUserProtocol = Depends(get_current_admin_user),
@@ -106,7 +106,7 @@ async def profile_update(
     )
 
 
-@router.get("/profile/password", response_class=HTMLResponse)
+@router.get("/profile/password", response_class=HTMLResponse, include_in_schema=False)
 async def password_change_view(
     request: Request,
     _: AdminUserProtocol = Depends(get_current_admin_user),

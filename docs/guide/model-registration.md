@@ -157,6 +157,36 @@ When `inline_edit = True`, a 3-dot menu appears per row with an "Edit" option th
 | `nav_order` | `int` | `999` | Sidebar ordering (lower = higher) |
 | `nav_children` | `list[NavItemConfig]` | `None` | Nested nav items |
 | `skip_auto_routes` | `bool` | `False` | Skip automatic route generation |
+| `export_endpoint` | `str \| None` | `None` | Control which routers are auto-built (`None`, `"html"`, or `"api"`) |
+
+### Endpoint Export Control
+
+`export_endpoint` controls which routers are auto-built for a model:
+
+| Value   | Admin (HTML) router | JSON API router |
+|---------|---------------------|-----------------|
+| `None`  | built               | built           |
+| `"html"`| built               | skipped         |
+| `"api"` | skipped             | built           |
+
+```python
+@admin.register(Product)
+class ProductAdmin(ModelAdmin):
+    export_endpoint = "api"  # JSON API only
+```
+
+Admin HTML routes are never shown in `/openapi.json`; only JSON API routes are.
+
+You can also build routers for a model **without** `admin.register()` using the
+standalone `export_api_route()` / `export_admin_route()` helpers:
+
+```python
+class ProductAdmin(ModelAdmin):
+    export_endpoint = "api"
+
+app.include_router(ProductAdmin().export_api_route(Product))
+app.include_router(ProductAdmin().export_admin_route(Product), prefix="/admin")
+```
 
 ### Pagination Strategies
 

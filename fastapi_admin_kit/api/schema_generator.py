@@ -72,6 +72,31 @@ def _collect_fields(registered: Any, *, exclude_pk: bool = False) -> list[Any]:
     return columns
 
 
+def _collect_relationships(registered: Any) -> list[Any]:
+    """Collect relationships to include in a schema, respecting ModelAdmin config."""
+    admin = registered.admin
+    relationships = list(registered.relationships)
+
+    if admin.fields is not None:
+        field_names = set(admin.fields)
+        relationships = [r for r in relationships if r.name in field_names]
+
+    if admin.exclude:
+        relationships = [r for r in relationships if r.name not in admin.exclude]
+
+    return relationships
+
+
+def _relationship_python_type(rel: Any) -> type:
+    """Get the Python type for a relationship field in a request schema.
+
+    MANYTOONE → the target primary key (int); MANYTOMANY → a list of PKs.
+    """
+    if rel.direction == "MANYTOMANY":
+        return list[int]
+    return int
+
+
 def build_create_schema(registered: Any) -> type[BaseModel]:
     """Build a Pydantic model for create requests.
 
@@ -96,6 +121,12 @@ def build_create_schema(registered: Any) -> type[BaseModel]:
 
         fields[col.name] = field_info
 
+    for rel in _collect_relationships(registered):
+        if rel.name in readonly or rel.name in fields:
+            continue
+        python_type = _relationship_python_type(rel)
+        fields[rel.name] = (python_type | None, Field(default=None))
+
     model_name = f"{registered.verbose_name.replace(' ', '')}Create"
     return create_model(model_name, __config__=None, **fields)
 
@@ -117,6 +148,12 @@ def build_update_schema(registered: Any) -> type[BaseModel]:
         python_type = _get_column_python_type(col)
         field_info = (python_type | None, Field(default=None))
         fields[col.name] = field_info
+
+    for rel in _collect_relationships(registered):
+        if rel.name in readonly or rel.name in fields:
+            continue
+        python_type = _relationship_python_type(rel)
+        fields[rel.name] = (python_type | None, Field(default=None))
 
     model_name = f"{registered.verbose_name.replace(' ', '')}Update"
     return create_model(model_name, __config__=None, **fields)

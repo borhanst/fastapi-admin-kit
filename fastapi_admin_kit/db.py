@@ -96,15 +96,9 @@ class SessionMiddleware:
             raise
         else:
             if hasattr(session, "commit"):
-                try:
-                    result = session.commit()
-                    if hasattr(result, "__await__"):
-                        await result
-                except Exception:
-                    if hasattr(session, "rollback"):
-                        result = session.rollback()
-                        if hasattr(result, "__await__"):
-                            await result
+                result = session.commit()
+                if hasattr(result, "__await__"):
+                    await result
         finally:
             if hasattr(session, "close"):
                 result = session.close()
@@ -117,14 +111,20 @@ async def rollback_if_needed(session: Any) -> None:
 
     SQLAlchemy marks a session with a ``PendingRollbackError`` after a flush
     raises: every later operation on that session fails until it is rolled
-    back.  This helper calls ``rollback()`` unconditionally because the
-    cost on a clean session is negligible, while the benefit of clearing a
-    pending-rollback state is essential.
+    back.  This helper calls ``rollback()`` only when a
+    ``PendingRollbackError`` is detected, to avoid unnecessary rollbacks on
+    clean sessions.
     """
+    from sqlalchemy.exc import PendingRollbackError
+
     try:
         result = session.rollback()
         if hasattr(result, "__await__"):
             await result
+    except PendingRollbackError:
+        # Session already has pending rollback state from a previous flush
+        # failure — no action needed; the session is already marked for rollback.
+        pass
     except Exception:
         pass
 

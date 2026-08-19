@@ -94,13 +94,29 @@ class BaseView:
 
     def _serialize(self, obj: Any) -> dict[str, Any]:
         """Serialize an object to a dict using registered columns."""
+        from fastapi_admin_kit.audit.diff import serialize_value
+
         if self.api_renderer and hasattr(self.api_renderer, "serialize"):
             return self.api_renderer.serialize(obj)
         item_dict: dict[str, Any] = {"id": getattr(obj, "id", None)}
         for col in self.registered.columns:
             if col.name != "id":
-                item_dict[col.name] = str(getattr(obj, col.name, ""))
+                item_dict[col.name] = serialize_value(getattr(obj, col.name, None))
         return item_dict
+
+    async def _serialize_for_api(self, obj: Any, request: Request) -> dict[str, Any]:
+        """Refresh *obj* inside the async greenlet, then serialize it.
+
+        After ``flush()``/``commit()`` server-side defaults (e.g. columns with
+        ``onupdate``/``server_default``) may be left expired by SQLAlchemy.
+        ``serialize()`` is synchronous, so touching an expired attribute there
+        triggers a lazy load outside the greenlet and raises
+        ``MissingGreenlet``.  Reloading first guarantees every attribute is
+        populated before the sync ``serialize()`` reads it.
+        """
+        session = get_db_session(request)
+        await session.refresh(obj)
+        return self._serialize(obj)
 
     async def html_response(self, request: Request) -> Response:
         raise NotImplementedError
@@ -281,7 +297,7 @@ class ListView(BaseView):
             next_cursor,
             has_next,
             pagination_mode,
-        ) = await self.query_provider.get_list(request, q, page)
+        ) = await self.query_provider.get_list(request, q, page, order=order)
         item_list = [self._serialize(item) for item in items]
         return await self.api_renderer.render(
             request,
@@ -633,6 +649,38 @@ class CreateView(BaseView):
         if errors:
             raise HTTPException(status_code=422, detail=errors)
         session = get_db_session(request)
+        # Validate related model IDs exist
+        from fastapi_admin_kit.inspection import validate_related_id
+
+        for rel in self.registered.relationships:
+            raw_val = parsed.get(rel.name)
+            if raw_val is None:
+                continue
+            # Skip many-to-many relationships — they are handled separately
+            # by extract_m2m/apply_m2m, not by per-ID validation.
+            if rel.direction == "MANYTOMANY":
+                continue
+            # Validate the related ID exists
+            pk_value, error = await validate_related_id(
+                model=self.registered.model,
+                related_model=rel.target_model,
+                id_value=raw_val,
+                field_name=rel.name,
+                request=request,
+            )
+            if error:
+                raise HTTPException(
+                    status_code=422,
+                    detail=[
+                        {
+                            "loc": ["body", rel.name],
+                            "msg": error["msg"],
+                            "type": "value_error",
+                            "input": error["input"],
+                            "ctx": error["ctx"],
+                        }
+                    ],
+                )
         m2m_data = self.model_saver.extract_m2m(self.registered.model, parsed, request)
         resolved = self.model_saver.resolve_rel_keys(parsed, request)
         resolved = self.admin.prepare_create_data(resolved, request)
@@ -649,7 +697,7 @@ class CreateView(BaseView):
             obj=obj,
         )
         await flush_pending_perm_ops(request)
-        return await self.api_renderer.render(request, self._serialize(obj))
+        return await self.api_renderer.render(request, await self._serialize_for_api(obj, request))
 
 
 class EditView(BaseView):
@@ -1155,6 +1203,38 @@ class EditView(BaseView):
         # PUT
         parser = JSONBodyParser(self.registered)
         parsed, _ = await parser.parse(request, obj)
+        # Validate related model IDs exist
+        from fastapi_admin_kit.inspection import validate_related_id
+
+        for rel in self.registered.relationships:
+            raw_val = parsed.get(rel.name)
+            if raw_val is None:
+                continue
+            # Skip many-to-many relationships — they are handled separately
+            # by extract_m2m/apply_m2m, not by per-ID validation.
+            if rel.direction == "MANYTOMANY":
+                continue
+            # Validate the related ID exists
+            pk_value, error = await validate_related_id(
+                model=self.registered.model,
+                related_model=rel.target_model,
+                id_value=raw_val,
+                field_name=rel.name,
+                request=request,
+            )
+            if error:
+                raise HTTPException(
+                    status_code=422,
+                    detail=[
+                        {
+                            "loc": ["body", rel.name],
+                            "msg": error["msg"],
+                            "type": "value_error",
+                            "input": error["input"],
+                            "ctx": error["ctx"],
+                        }
+                    ],
+                )
         try:
             m2m_data = self.model_saver.extract_m2m(obj, parsed, request)
             self.model_saver.apply_parsed(obj, parsed, request)
@@ -1174,7 +1254,7 @@ class EditView(BaseView):
             session = get_db_session(request)
             await session.rollback()
             raise
-        return self._serialize(obj)
+        return await self._serialize_for_api(obj, request)
 
 
 class DeleteView(BaseView):

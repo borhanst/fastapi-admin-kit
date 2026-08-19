@@ -17,7 +17,7 @@ class QueryProvider(Protocol):
     """Single responsibility: build and execute database queries."""
 
     async def get_list(
-        self, request: Request, q: str, page: int
+        self, request: Request, q: str, page: int, order: str = ""
     ) -> tuple[list[Any], int, int, int]:
         """Return (items, total, page, per_page)."""
         ...

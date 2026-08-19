@@ -102,6 +102,9 @@ class DefaultSidebarBuilder:
         for registered in registry:
             if getattr(registered.admin, "skip_auto_routes", False):
                 continue
+            # API-only models have no admin HTML pages — hide from sidebar.
+            if getattr(registered.admin, "export_endpoint", None) == "api":
+                continue
             tags = self._get_tags(registered)
             for tag in tags:
                 buckets.setdefault(tag, []).append(

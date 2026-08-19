@@ -25,7 +25,7 @@ from fastapi_admin_kit.views.sidebar import inject_sidebar_context
 router = APIRouter()
 
 
-@router.get("/profile/2fa", response_class=HTMLResponse)
+@router.get("/profile/2fa", response_class=HTMLResponse, include_in_schema=False)
 async def totp_setup_view(
     request: Request,
     user: AdminUserProtocol = Depends(get_current_admin_user),
@@ -228,7 +228,7 @@ async def totp_regenerate_backup_codes(
     )
 
 
-@router.get("/verify-2fa", response_class=HTMLResponse)
+@router.get("/verify-2fa", response_class=HTMLResponse, include_in_schema=False)
 async def totp_verify_view(
     request: Request,
     temp_token: str | None = None,

@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import Response
 
+from fastapi_admin_kit.audit.diff import serialize_value
 from fastapi_admin_kit.auth.dependencies import (
     resolve_permission_checker as _resolve_permission_checker,  # noqa: F401
 )
@@ -154,7 +155,7 @@ class ItemAPIRenderer:
         item_dict: dict[str, Any] = {"id": getattr(obj, "id", None)}
         for col in self.registered.columns:
             if col.name != "id":
-                item_dict[col.name] = str(getattr(obj, col.name, ""))
+                item_dict[col.name] = serialize_value(getattr(obj, col.name, None))
         return item_dict
 
     async def render(self, request: Request, data: Any) -> Any:
@@ -243,7 +244,11 @@ class JSONBodyParser:
     ) -> tuple[dict[str, Any], dict[str, list[str]]]:
         from sqlalchemy import inspect as sa_inspect
 
-        body = await request.json()
+        # Pre-parsed body supplied by the API wrapper handler (so FastAPI can
+        # document the request body schema in Swagger/OpenAPI).
+        body = getattr(request.state, "_api_payload", None)
+        if body is None:
+            body = await request.json()
         valid_fields = {col.name for col in self.registered.columns}
         # Relationship keys (FK / many-to-many) are handled separately by the
         # view (resolved to FK columns or applied as m2m collections), so they
@@ -348,7 +353,7 @@ class DefaultQueryProvider:
         return clauses
 
     async def get_list(
-        self, request: Request, q: str = "", page: int = 1
+        self, request: Request, q: str = "", page: int = 1, order: str = ""
     ) -> tuple[list[Any], int, int, int]:
         """Execute list query with filtering, search, pagination.
 
@@ -511,7 +516,7 @@ class DefaultQueryProvider:
         if q and registered.admin.search_fields:
             base = apply_search_filter(request, base, model, registered.admin.search_fields, q)
 
-        query_ordering = request.query_params.get("ordering", "")
+        query_ordering = request.query_params.get("ordering", "") or order
         order = registered.admin.get_ordering(
             {"ordering": query_ordering}, registered.admin.ordering
         )
@@ -534,7 +539,7 @@ class DefaultQueryProvider:
 
                         base = base.order_by(desc(col) if order[0].startswith("-") else asc(col))
 
-        per_page = registered.admin.per_page
+        per_page = int(request.query_params.get("per_page", registered.admin.per_page))
 
         from fastapi_admin_kit.pagination import (
             OffsetPagination,
