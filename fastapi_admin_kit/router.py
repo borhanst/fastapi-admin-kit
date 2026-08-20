@@ -20,6 +20,41 @@ from fastapi_admin_kit.views.class_views import (
 )
 
 
+def _endpoint_handler(fn):
+    """Prepare an ``@endpoint`` method for FastAPI registration.
+
+    FastAPI only injects the ``Request`` object into parameters annotated as
+    ``Request``. To honour the documented ``async def health_check(self, request)``
+    usage, any parameter literally named ``request`` without an annotation is
+    re-annotated as ``Request`` via a thin forwarding wrapper (other parameters,
+    e.g. query/path params, are preserved).
+    """
+    import inspect
+
+    from fastapi import Request
+
+    sig = inspect.signature(fn)
+    params = list(sig.parameters.values())
+    if not any(p.name == "request" and p.annotation is inspect.Parameter.empty for p in params):
+        return fn
+
+    new_params = [
+        p.replace(annotation=Request)
+        if p.name == "request" and p.annotation is inspect.Parameter.empty
+        else p
+        for p in params
+    ]
+    new_sig = sig.replace(parameters=new_params)
+
+    async def wrapper(*args, **kwargs):
+        return await fn(*args, **kwargs)
+
+    wrapper.__signature__ = new_sig
+    wrapper.__name__ = getattr(fn, "__name__", "endpoint")
+    wrapper.__doc__ = getattr(fn, "__doc__", None)
+    return wrapper
+
+
 def build_model_router(registered: RegisteredModel, *, force: bool = False) -> APIRouter | None:
     """Build the HTML admin router for a model.
 
@@ -365,6 +400,37 @@ def build_model_router(registered: RegisteredModel, *, force: bool = False) -> A
                 "field_ctx": field_ctx,
                 "model_name": registered.table_name,
             },
+        )
+
+    # ── Custom @endpoint routes ────────────────────────────────────
+    # Registered before the ``/{id}`` catch-all so custom paths (e.g.
+    # ``/health-check``) are never swallowed by the edit-view route.
+
+    for name in dir(admin):
+        if name.startswith("__"):
+            continue
+        fn = getattr(admin, name, None)
+        opts = getattr(fn, "_admin_endpoint", None)
+        if opts is None:
+            continue
+
+        dependencies = list(opts.dependencies or [])
+        if opts.permission:
+            dependencies.append(Depends(require_permission(registered.table_name, opts.permission)))
+
+        router.add_api_route(
+            opts.path,
+            _endpoint_handler(fn),
+            methods=opts.methods or ["GET"],
+            tags=opts.tags or None,
+            description=opts.description or None,
+            name=opts.name or f"{registered.table_name}_{name}",
+            dependencies=dependencies or None,
+            status_code=opts.status_code,
+            response_model=opts.response_model,
+            summary=opts.summary or None,
+            response_description=opts.response_description or None,
+            include_in_schema=opts.include_in_schema,
         )
 
     router.add_api_route(

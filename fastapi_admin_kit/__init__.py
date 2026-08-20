@@ -1,7 +1,7 @@
 """FastAPI Admin Kit — Drop-in admin panel for FastAPI + SQLAlchemy apps."""
 
 from fastapi_admin_kit.admin import Admin
-from fastapi_admin_kit.admin.decorators import column
+from fastapi_admin_kit.admin.decorators import column, endpoint
 from fastapi_admin_kit.auth.mixins import AuthModelMixin
 from fastapi_admin_kit.config import DatabaseConfig, DatabaseType
 from fastapi_admin_kit.exceptions import ConfigError
@@ -74,6 +74,7 @@ __all__ = [
     "RegisteredModel",
     "ModelAdmin",
     "column",
+    "endpoint",
     "BuiltNavGroup",
     "BuiltNavItem",
     "DefaultSidebarBuilder",

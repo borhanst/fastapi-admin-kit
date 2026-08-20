@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
-from fastapi_admin_kit.admin.decorators import column
+from fastapi_admin_kit.admin.decorators import column, endpoint
 
 if TYPE_CHECKING:
     from fastapi_admin_kit.registry import RegisteredModel
@@ -38,6 +38,9 @@ class ModelAdmin:
 
     # Decorator for custom column display
     column = staticmethod(column)
+
+    # Decorator for custom FastAPI endpoints
+    endpoint = staticmethod(endpoint)
 
     def __str__(self, obj: Any) -> str:
         """How to display an object in dropdowns/links."""
