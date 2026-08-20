@@ -10,19 +10,35 @@ from typing import Any
 
 from fastapi_admin_kit.filters.base import (
     BooleanFilter,
+    ChoiceFilter,
     DateRangeFilter,
     DatetimeRangeFilter,
     EnumFilter,
     Filter,
     NumericFilter,
-    RelationFilter,
     TextFilter,
     TimeFilter,
 )
 
+# Lowercased ORM type names — covers both SQLAlchemy class names
+# ("Integer", "DECIMAL") and schema backend names ("integer", "float").
 _NUMERIC_TYPE_NAMES = frozenset(
-    {"Integer", "BigInteger", "SmallInteger", "Float", "Numeric", "DECIMAL"}
+    {
+        "integer",
+        "bigint",
+        "biginteger",
+        "smallinteger",
+        "float",
+        "double",
+        "real",
+        "numeric",
+        "decimal",
+    }
 )
+_BOOLEAN_TYPE_NAMES = frozenset({"boolean", "bool"})
+_DATETIME_TYPE_NAMES = frozenset({"datetime", "timestamp"})
+_DATE_TYPE_NAMES = frozenset({"date"})
+_TIME_TYPE_NAMES = frozenset({"time"})
 
 
 class FilterRegistry:
@@ -49,6 +65,17 @@ class FilterRegistry:
     ) -> dict[str, Filter]:
         """Auto-generate filters for a model's columns.
 
+        Type detection follows Django conventions:
+
+        - FK/ManyToMany fields → ``ChoiceFilter``
+        - Boolean columns → ``BooleanFilter``
+        - DateTime → ``DatetimeRangeFilter``
+        - Date → ``DateRangeFilter``
+        - Time → ``TimeFilter``
+        - Numeric types → ``NumericFilter``
+        - Enum columns → ``EnumFilter``
+        - Otherwise → ``TextFilter``
+
         Args:
             model: The ORM model.
             columns: List of ColumnMeta for the model.
@@ -72,36 +99,42 @@ class FilterRegistry:
 
             if field_name in rel_names:
                 resolved_col = self._resolve_fk_column(model, field_name, introspection)
-                filters[field_name] = RelationFilter(field_name, resolved_column=resolved_col)
+                filters[field_name] = ChoiceFilter(field_name, resolved_column=resolved_col)
                 continue
 
             type_name = self._get_type_name(model, field_name, introspection)
+            type_name = (type_name or "").lower()
             col = self._get_column(model, field_name, introspection)
-            has_enums = col is not None and hasattr(col.type, "enums") and bool(col.type.enums)
-            has_fk = col is not None and bool(col.foreign_keys)
+            has_enums = (
+                col is not None
+                and hasattr(col, "type")
+                and hasattr(col.type, "enums")
+                and bool(col.type.enums)
+            )
+            has_fk = col is not None and hasattr(col, "foreign_keys") and bool(col.foreign_keys)
 
-            if type_name == "Boolean":
+            if type_name in _BOOLEAN_TYPE_NAMES:
                 filters[field_name] = BooleanFilter(field_name)
-            elif type_name == "DateTime":
+            elif type_name in _DATETIME_TYPE_NAMES:
                 filters[field_name] = DatetimeRangeFilter(field_name)
-            elif type_name == "Date":
+            elif type_name in _DATE_TYPE_NAMES:
                 filters[field_name] = DateRangeFilter(field_name)
-            elif type_name == "Time":
+            elif type_name in _TIME_TYPE_NAMES:
                 filters[field_name] = TimeFilter(field_name)
+            elif has_fk:
+                resolved_col = self._resolve_fk_column(model, field_name, introspection)
+                filters[field_name] = ChoiceFilter(field_name, resolved_column=resolved_col)
             elif type_name in _NUMERIC_TYPE_NAMES:
                 filters[field_name] = NumericFilter(field_name)
             elif has_enums:
                 filters[field_name] = EnumFilter(field_name, choices=list(col.type.enums))
-            elif has_fk:
-                resolved_col = self._resolve_fk_column(model, field_name, introspection)
-                filters[field_name] = RelationFilter(field_name, resolved_column=resolved_col)
             else:
                 filters[field_name] = TextFilter(field_name)
 
         for rel_name in rel_names:
             if rel_name not in filters:
                 resolved_col = self._resolve_fk_column(model, rel_name, introspection)
-                filters[rel_name] = RelationFilter(rel_name, resolved_column=resolved_col)
+                filters[rel_name] = ChoiceFilter(rel_name, resolved_column=resolved_col)
 
         return filters
 
@@ -146,7 +179,6 @@ class FilterRegistry:
             local_cols = introspection.get_relationship_local_columns(model, field_name)
             return local_cols[0] if local_cols else None
         from sqlalchemy import inspect as sa_inspect
-        from sqlalchemy.orm import RelationshipProperty
 
         mapper = sa_inspect(model)
         for prop in mapper.column_attrs:
@@ -156,8 +188,11 @@ class FilterRegistry:
                     for fk in col.foreign_keys:
                         return fk.column.key
         rel = mapper.relationships.get(field_name)
-        if rel is not None and isinstance(rel.property, RelationshipProperty):
-            local_cols = list(rel.local_columns)
+        if rel is not None:
+            local_cols = list(getattr(rel, "local_columns", ()))
+            if not local_cols:
+                prop = getattr(rel, "property", None)
+                local_cols = list(getattr(prop, "local_columns", ()))
             if local_cols:
                 return local_cols[0].key
         return None

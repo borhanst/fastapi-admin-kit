@@ -198,6 +198,10 @@ class QueryBackend(Protocol):
         """Compose multiple boolean clauses with OR."""
         ...
 
+    def and_(self, *clauses: Any) -> Any:
+        """Compose multiple boolean clauses with AND."""
+        ...
+
 
 @runtime_checkable
 class AuditBackend(Protocol):

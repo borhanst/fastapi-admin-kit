@@ -133,8 +133,18 @@ def _matches(record: dict, expr: Any) -> bool:
         if expr.op == "ilike":
             if left is None:
                 return False
-            pat = expr.value.lower().strip("%")
-            return pat in str(left).lower()
+            pattern = str(expr.value).lower()
+            hay = str(left).lower()
+            starts = pattern.startswith("%")
+            ends = pattern.endswith("%")
+            core = pattern.strip("%")
+            if starts and ends:
+                return core in hay
+            if starts:
+                return hay.endswith(core)
+            if ends:
+                return hay.startswith(core)
+            return hay == core
         return False
     if isinstance(expr, MemBool):
         results = [_matches(record, e) for e in expr.exprs]

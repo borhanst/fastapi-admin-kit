@@ -63,43 +63,13 @@ class ListContextBuilder:
     ) -> tuple[Any, dict[str, str]]:
         """Read query params for *field_name* and return (value, active_pairs).
 
-        ``value`` is a plain string for equality filters or a dict with
-        ``gte/lte/from/to`` keys for range filters.
+        ``value`` is a plain string for exact matches or a dict keyed by
+        Django-style lookup name (``icontains``, ``gte``, ``range``, ...).
         ``active_pairs`` are the non-empty params to record in active_filters.
         """
-        eq = request.query_params.get(f"filter_{field_name}", "")
-        gte = request.query_params.get(f"filter_{field_name}__gte", "")
-        lte = request.query_params.get(f"filter_{field_name}__lte", "")
-        from_ = request.query_params.get(f"filter_{field_name}__from", "")
-        to_ = request.query_params.get(f"filter_{field_name}__to", "")
+        from fastapi_admin_kit.filters.lookups import parse_filter_params
 
-        has_range = bool(gte or lte or from_ or to_)
-        if has_range:
-            value: Any = {}
-            if gte:
-                value["gte"] = gte
-            if lte:
-                value["lte"] = lte
-            if from_:
-                value["from"] = from_
-            if to_:
-                value["to"] = to_
-        else:
-            value = eq
-
-        active: dict[str, str] = {}
-        if eq:
-            active[field_name] = eq
-        if gte:
-            active[f"{field_name}__gte"] = gte
-        if lte:
-            active[f"{field_name}__lte"] = lte
-        if from_:
-            active[f"{field_name}__from"] = from_
-        if to_:
-            active[f"{field_name}__to"] = to_
-
-        return value, active
+        return parse_filter_params(request.query_params, field_name)
 
     def _build_filter_clauses(
         self,
@@ -365,7 +335,13 @@ class ListContextBuilder:
 
         filter_clauses, active_filters = self._build_filter_clauses(request, model, registered)
         if filter_clauses:
-            base = base.where(and_(*filter_clauses))
+            query_adapter = self._get_query_adapter(request)
+            if query_adapter is not None:
+                base = query_adapter.where(base, *filter_clauses)
+            else:
+                from sqlalchemy import and_
+
+                base = base.where(and_(*filter_clauses))
 
         if q and registered.admin.search_fields:
             base = apply_search_filter(request, base, model, registered.admin.search_fields, q)

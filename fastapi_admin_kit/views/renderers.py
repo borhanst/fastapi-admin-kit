@@ -305,6 +305,7 @@ class DefaultQueryProvider:
     ) -> list:
         """Build filter clauses via Filter.apply()."""
         from fastapi_admin_kit.filters import Filter, FilterRegistry
+        from fastapi_admin_kit.filters.lookups import parse_filter_params
 
         query_adapter = self._get_query_adapter(request)
         introspection = self._get_introspection(request)
@@ -320,25 +321,7 @@ class DefaultQueryProvider:
 
         clauses: list = []
         for field_name, filter_obj in filters.items():
-            eq = request.query_params.get(f"filter_{field_name}", "")
-            gte = request.query_params.get(f"filter_{field_name}__gte", "")
-            lte = request.query_params.get(f"filter_{field_name}__lte", "")
-            from_ = request.query_params.get(f"filter_{field_name}__from", "")
-            to_ = request.query_params.get(f"filter_{field_name}__to", "")
-
-            has_range = bool(gte or lte or from_ or to_)
-            if has_range:
-                value: Any = {}
-                if gte:
-                    value["gte"] = gte
-                if lte:
-                    value["lte"] = lte
-                if from_:
-                    value["from"] = from_
-                if to_:
-                    value["to"] = to_
-            else:
-                value = eq
+            value, _active = parse_filter_params(request.query_params, field_name)
 
             has_value = (isinstance(value, dict) and any(value.values())) or (
                 isinstance(value, str) and value
@@ -384,134 +367,14 @@ class DefaultQueryProvider:
                 base = base.options(opt)
 
         if registered.admin.list_filter:
-            filter_clauses = []
-            for filter_field in registered.admin.list_filter:
-                param_key = f"filter_{filter_field}"
-                filter_value = request.query_params.get(param_key, "")
-                if filter_value and hasattr(model, filter_field):
-                    field_type = self._get_field_type(request, model, filter_field)
-                    col = getattr(model, filter_field)
-
-                    # If col is a relationship, resolve to its FK column
-                    from sqlalchemy.orm import RelationshipProperty
-
-                    if hasattr(col, "property") and isinstance(col.property, RelationshipProperty):
-                        fk_cols = list(col.property.local_columns)
-                        if fk_cols:
-                            col = getattr(model, fk_cols[0].key)
-                            # Cast filter value to the FK column's Python type
-                            pk_prop = fk_cols[0]
-                            from sqlalchemy import Integer
-
-                            col_type = type(pk_prop.type)
-                            if col_type in (Integer,):
-                                try:
-                                    filter_value = int(filter_value)
-                                except (ValueError, TypeError):
-                                    continue
-                        else:
-                            continue
-
-                    if field_type == "boolean":
-                        bool_val = filter_value == "1"
-                        filter_clauses.append(col == bool_val)
-                    elif field_type == "datetime":
-                        from datetime import datetime as _dt
-
-                        try:
-                            parsed = _dt.fromisoformat(filter_value)
-                        except (ValueError, TypeError):
-                            parsed = None
-                        if parsed is not None:
-                            filter_clauses.append(col == parsed)
-                    elif field_type == "date":
-                        from datetime import date as _date
-
-                        try:
-                            parsed = _date.fromisoformat(filter_value)
-                        except (ValueError, TypeError):
-                            parsed = None
-                        if parsed is not None:
-                            filter_clauses.append(col == parsed)
-                    elif field_type == "time":
-                        from datetime import time as _time
-
-                        try:
-                            parsed = _time.fromisoformat(filter_value)
-                        except (ValueError, TypeError):
-                            parsed = None
-                        if parsed is not None:
-                            filter_clauses.append(col == parsed)
-                    else:
-                        filter_clauses.append(col == filter_value)
-
-            # Range filters
-            for filter_field in registered.admin.list_filter:
-                gte_val = request.query_params.get(f"filter_{filter_field}__gte", "")
-                lte_val = request.query_params.get(f"filter_{filter_field}__lte", "")
-                from_val = request.query_params.get(f"filter_{filter_field}__from", "")
-                to_val = request.query_params.get(f"filter_{filter_field}__to", "")
-
-                if (gte_val or lte_val) and hasattr(model, filter_field):
-                    col = getattr(model, filter_field)
-                    if gte_val:
-                        try:
-                            filter_clauses.append(
-                                col >= type(col.property.columns[0].type)().coerce(gte_val)
-                            )
-                        except Exception:
-                            pass
-                    if lte_val:
-                        try:
-                            filter_clauses.append(
-                                col <= type(col.property.columns[0].type)().coerce(lte_val)
-                            )
-                        except Exception:
-                            pass
-
-                if (from_val or to_val) and hasattr(model, filter_field):
-                    col = getattr(model, filter_field)
-                    field_type = self._get_field_type(request, model, filter_field)
-                    if field_type == "date" and from_val:
-                        try:
-                            from datetime import date as _date
-
-                            d = _date.fromisoformat(from_val)
-                            filter_clauses.append(col >= d)
-                        except (ValueError, TypeError):
-                            pass
-                    if field_type == "date" and to_val:
-                        try:
-                            from datetime import date as _date
-
-                            d = _date.fromisoformat(to_val)
-                            filter_clauses.append(col <= d)
-                        except (ValueError, TypeError):
-                            pass
-                    if field_type == "datetime" and from_val:
-                        try:
-                            from datetime import datetime as _dt
-
-                            dt = _dt.fromisoformat(from_val)
-                            filter_clauses.append(col >= dt)
-                        except (ValueError, TypeError):
-                            pass
-                    if field_type == "datetime" and to_val:
-                        try:
-                            from datetime import datetime as _dt
-
-                            dt = _dt.fromisoformat(to_val)
-                            filter_clauses.append(col <= dt)
-                        except (ValueError, TypeError):
-                            pass
-
+            filter_clauses = self._build_filter_clauses(request, model, registered)
             if filter_clauses:
                 if query_adapter is not None:
                     base = query_adapter.where(base, *filter_clauses)
                 else:
                     from sqlalchemy import and_
 
-                base = base.where(and_(*filter_clauses))
+                    base = base.where(and_(*filter_clauses))
 
         if q and registered.admin.search_fields:
             base = apply_search_filter(request, base, model, registered.admin.search_fields, q)

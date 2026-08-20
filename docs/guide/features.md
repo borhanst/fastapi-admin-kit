@@ -263,11 +263,14 @@ Everything FastAPI Admin Kit offers, in one place.
 
 | Feature | Description | Link |
 |---------|-------------|------|
-| TextFilter | Text/substring matching | [Filters](filters.md) |
+| TextFilter | Text matching with exact/icontains/startswith/endswith | [Filters](filters.md) |
+| ChoiceFilter | FK/relation select-widget filter (auto-detected) | [Filters](filters.md) |
 | BooleanFilter | True/false toggle | [Filters](filters.md) |
-| RelationFilter | Filter by related model | [Filters](filters.md) |
+| IntegerFilter / NumericFilter | gt/gte/lt/lte/range/in numeric lookups | [Filters](filters.md) |
+| DateRangeFilter / DatetimeRangeFilter | Temporal range + comparison lookups | [Filters](filters.md) |
 | EnumFilter | Filter by enum choices | [Filters](filters.md) |
 | Filter Registry | Register custom filter types | [Filters](filters.md) |
+| Django-style lookups | `field__icontains`, `__gte`, `__range`, `__in`, ... | [Filters](filters.md) |
 
 ---
 

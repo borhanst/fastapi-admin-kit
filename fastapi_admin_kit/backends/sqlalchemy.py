@@ -491,6 +491,12 @@ class SqlAlchemyQueryAdapter:
 
         return or_(*clauses)
 
+    def and_(self, *clauses: Any) -> Any:
+        """Compose multiple boolean clauses with AND."""
+        from sqlalchemy import and_
+
+        return and_(*clauses)
+
 
 # ---------------------------------------------------------------------------
 # #29 — Audit Backend
