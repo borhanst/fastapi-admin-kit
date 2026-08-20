@@ -1194,7 +1194,9 @@ img { max-width: 100%; display: block; }
 
 .filter-input-date,
 .filter-input-datetime,
-.filter-input-time {
+.filter-input-time,
+.filter-input-text,
+.filter-input-number {
   height: 34px;
   padding: 0 var(--space-2);
   border: none;
@@ -1208,7 +1210,9 @@ img { max-width: 100%; display: block; }
 
 .filter-input-date:focus,
 .filter-input-datetime:focus,
-.filter-input-time:focus {
+.filter-input-time:focus,
+.filter-input-text:focus,
+.filter-input-number:focus {
   outline: none;
 }
 
@@ -2302,7 +2306,7 @@ img { max-width: 100%; display: block; }
   background: none; border: none; color: var(--text-disabled); cursor: pointer; font-size: var(--text-lg);
 }
 .filter-clear-btn:hover { color: var(--danger-500); }
-.filter-input-date, .filter-input-datetime, .filter-input-time {
+.filter-input-date, .filter-input-datetime, .filter-input-time, .filter-input-text, .filter-input-number {
   padding: var(--space-1) var(--space-2); border: 1px solid var(--surface-border);
   border-radius: var(--radius-md); font-size: var(--text-xs); background: var(--surface-base);
 }
@@ -3434,7 +3438,9 @@ img { max-width: 100%; display: block; }
 
 .filter-input-date,
 .filter-input-datetime,
-.filter-input-time {
+.filter-input-time,
+.filter-input-text,
+.filter-input-number {
   height: 34px;
   padding: 0 var(--space-2);
   border: none;
