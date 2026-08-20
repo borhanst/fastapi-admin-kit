@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from fastapi_admin_kit.admin.decorators import column
+from fastapi_admin_kit.admin.decorators import column, endpoint
 from fastapi_admin_kit.form.types import ExtraField, FieldMeta
 
 if TYPE_CHECKING:
@@ -112,6 +112,9 @@ class ModelAdmin:
 
     # Decorator for custom column display
     column = staticmethod(column)
+
+    # Decorator for custom FastAPI endpoints
+    endpoint = staticmethod(endpoint)
 
     # ── Standalone router export (no admin.register required) ───────
 

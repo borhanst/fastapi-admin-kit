@@ -400,6 +400,73 @@ class ProductAdmin(ModelAdmin):
 | `exportable` | `bool` | Include in CSV export (default: `True`) |
 | `icon` | `str` | Material icon name |
 
+## Custom API Endpoints
+
+Use the `@endpoint()` decorator to add arbitrary FastAPI routes to a model's
+admin router. Every endpoint is served under `/<model_name>/<path>` (mounted
+under the admin prefix), so a `health-check` endpoint on the `Product` model
+is reachable at `/admin/products/health-check`.
+
+```python
+from fastapi_admin_kit import endpoint
+
+@admin.register(Product)
+class ProductAdmin(ModelAdmin):
+    @endpoint(
+        path="/health-check",
+        methods=["GET"],
+        tags=["monitoring"],
+        description="Health check endpoint",
+        summary="Health summary",
+        response_description="Healthy status",
+        permission="view",
+    )
+    async def health_check(self, request):
+        return {"status": "healthy"}
+
+    @endpoint(path="/stats", methods=["GET"])
+    async def stats(self, request, days: int = 7):
+        return {"stats": {"days": days}}
+```
+
+The `request` parameter is injected automatically (annotated `Request` or a
+bare `request` argument both work); other parameters are handled by FastAPI as
+usual (query/path params, bodies, etc.).
+
+### Endpoint Options
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `path` | `str` | Yes | - | Path within the model router (e.g. `/health-check`) |
+| `methods` | `list[str]` | No | `["GET"]` | HTTP methods to expose |
+| `tags` | `list[str]` | No | `[]` | OpenAPI tags (appended to the model tag) |
+| `description` | `str` | No | `""` | Route description |
+| `name` | `str` | No | auto-generated | Route name (defaults to `<model>_<method>`) |
+| `dependencies` | `list[Any]` | No | `[]` | Extra FastAPI `Depends()` dependencies |
+| `status_code` | `int` | No | `200` | Response status code |
+| `response_model` | `Type[BaseModel]` | No | `None` | Response schema for validation/docs |
+| `summary` | `str` | No | `""` | OpenAPI summary |
+| `response_description` | `str` | No | `""` | OpenAPI response description |
+| `permission` | `str` | No | `None` | RBAC action enforced via `require_permission` |
+
+### RBAC
+
+Setting `permission` enforces the same RBAC used by the built-in routes (a
+`require_permission("<model>", "<permission>")` dependency). You can also pass
+arbitrary dependencies directly:
+
+```python
+from fastapi import Depends
+from fastapi_admin_kit.auth.dependencies import require_permission
+
+@endpoint(
+    path="/stats",
+    dependencies=[Depends(require_permission("products", "view"))],
+)
+async def stats(self, request):
+    pass
+```
+
 ## Customizing Built-in Admin Models
 
 FastAPI Admin Kit ships with default admin classes for built-in models (users, roles, audit logs, etc.). You can customize these by inheriting from the default classes.

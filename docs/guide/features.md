@@ -149,6 +149,7 @@ Everything FastAPI Admin Kit offers, in one place.
 | Ordering | Default sort order with clickable column headers | [Model Registration](model-registration.md) |
 | Pagination | Offset, cursor, or dynamic strategies per model | [Pagination](pagination.md) |
 | Custom Columns | `@column` decorator for computed columns with formatting, icons, width | [Model Registration](model-registration.md) |
+| Custom Endpoints | `@endpoint` decorator for arbitrary FastAPI routes under `/<model>/...` with RBAC | [Model Registration](model-registration.md) |
 | Column Export | CSV export support per column | [Model Registration](model-registration.md) |
 
 ---
