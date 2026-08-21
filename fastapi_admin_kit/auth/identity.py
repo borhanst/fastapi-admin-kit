@@ -188,4 +188,15 @@ async def get_current_user_from_bearer(
         user_id: int | str = int(sub)  # type: ignore[assignment]
     except (TypeError, ValueError):
         return None
-    return await resolve_user(request, user_id)
+
+    user = await resolve_user(request, user_id)
+    if user is None:
+        return None
+
+    # A password change after the token was minted kills it immediately.
+    from fastapi_admin_kit.api.auth import token_predates_password_change
+
+    if token_predates_password_change(payload, user):
+        return None
+
+    return user

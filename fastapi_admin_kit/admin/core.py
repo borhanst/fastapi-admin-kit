@@ -203,6 +203,9 @@ class Admin:
         session_cookie_name: str = "admin_session",
         session_secure: bool = True,
         session_samesite: str = "strict",
+        access_token_ttl: int = 600,
+        api_token_middleware: bool = True,
+        api_token_strict: bool = False,
         seed_roles: list[SeedRole] | None = None,
         seed_roles_overwrite: bool = False,
         superuser_emails: list[str] | None = None,
@@ -276,6 +279,14 @@ class Admin:
             app.add_middleware(CSRFMiddleware)
             self._csrf_middleware_added = True
 
+            # API bearer-token pre-validation. Added BEFORE SessionMiddleware
+            # so it runs inside it (Starlette: last added = outermost) and can
+            # use the per-request DB session to resolve the live user.
+            from fastapi_admin_kit.api.middleware import AccessTokenMiddleware
+
+            app.add_middleware(AccessTokenMiddleware)
+            self._api_token_middleware_added = True
+
             # Register the per-request session + audit-context middlewares here
             # (at construction time) rather than in ``setup()``. Starlette builds
             # ``app.middleware_stack`` on the *first* scope it receives — which is
@@ -295,6 +306,7 @@ class Admin:
             self._audit_middleware_added = True
         else:
             self._csrf_middleware_added = False
+            self._api_token_middleware_added = False
             self._session_middleware_added = False
             self._audit_middleware_added = False
 
@@ -345,6 +357,9 @@ class Admin:
                     session_secure=session_secure,
                     superuser_emails=superuser_emails,
                     session_samesite=session_samesite,
+                    access_token_ttl=access_token_ttl,
+                    api_token_middleware=api_token_middleware,
+                    api_token_strict=api_token_strict,
                 ),
                 audit=AuditConfig(audit_retention_days=audit_retention_days),
                 behavior=BehaviorConfig(
@@ -422,6 +437,9 @@ class Admin:
                     session_secure=session_secure,
                     superuser_emails=superuser_emails,
                     session_samesite=session_samesite,
+                    access_token_ttl=access_token_ttl,
+                    api_token_middleware=api_token_middleware,
+                    api_token_strict=api_token_strict,
                 ),
                 audit=dict(audit_retention_days=audit_retention_days),
                 behavior=dict(
@@ -707,6 +725,18 @@ class Admin:
             except RuntimeError:
                 pass  # Already started — middleware was added in __init__
 
+        # Add API bearer-token middleware if not already added in __init__
+        if not getattr(self, "_api_token_middleware_added", False):
+            from fastapi_admin_kit.api.middleware import AccessTokenMiddleware
+
+            try:
+                app.add_middleware(AccessTokenMiddleware)
+                self._api_token_middleware_added = True
+            except RuntimeError:
+                app.middleware_stack = None
+                app.add_middleware(AccessTokenMiddleware)
+                self._api_token_middleware_added = True
+
         # Add per-request session middleware
         if app is not None and not getattr(self, "_session_middleware_added", False):
             from fastapi_admin_kit.db import SessionMiddleware
@@ -972,6 +1002,9 @@ class Admin:
             "dark_mode_default": self.config.ui.dark_mode_default,
             "per_page_default": self.config.ui.per_page_default,
             "session_ttl": self.config.auth.session_ttl,
+            "access_token_ttl": self.config.auth.access_token_ttl,
+            "api_token_middleware": self.config.auth.api_token_middleware,
+            "api_token_strict": self.config.auth.api_token_strict,
             "audit_retention_days": self.config.audit.audit_retention_days,
             "dashboard_stats": self.config.behavior.dashboard_stats,
             "dashboard_charts": self.config.behavior.dashboard_charts,

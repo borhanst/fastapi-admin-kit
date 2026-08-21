@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import Request
 from starlette.datastructures import UploadFile
 
+from fastapi_admin_kit.storage.base import DEFAULT_MAX_SIZE_MB
 from fastapi_admin_kit.widgets.inputs import FileUploadWidget, ImageUploadWidget
 
 # Widgets that handle file uploads
@@ -20,6 +21,35 @@ FILE_WIDGET_TYPES = (FileUploadWidget, ImageUploadWidget)
 def get_storage(request: Request) -> Any:
     """Get the storage backend from app.state, or None."""
     return getattr(request.app.state, "admin_storage", None)
+
+
+async def _enforce_size_limit(
+    raw: UploadFile, max_size_mb: float | None, field_name: str, errors: dict[str, list[str]]
+) -> bool:
+    """Enforce the size limit *before* reading the body into RAM.
+
+    Returns True when the upload is within limits. ``max_size_mb=None``
+    falls back to ``DEFAULT_MAX_SIZE_MB``. Uses the declared
+    ``UploadFile.size`` when available so oversized bodies are rejected
+    without ever calling ``read()``; otherwise falls back to a post-read
+    length check (and rewinds the stream).
+    """
+    effective_mb = max_size_mb if max_size_mb is not None else DEFAULT_MAX_SIZE_MB
+    max_bytes = int(effective_mb * 1024 * 1024)
+
+    declared = getattr(raw, "size", None)
+    if declared is not None:
+        if declared > max_bytes:
+            errors[field_name] = [f"File size exceeds maximum allowed size ({effective_mb} MB)."]
+            return False
+        return True
+
+    content = await raw.read()
+    await raw.seek(0)
+    if len(content) > max_bytes:
+        errors[field_name] = [f"File size exceeds maximum allowed size ({effective_mb} MB)."]
+        return False
+    return True
 
 
 async def handle_file_field(
@@ -45,19 +75,9 @@ async def handle_file_field(
     raw = form_data.get(field_name)
 
     if isinstance(raw, UploadFile) and raw.filename:
-        # New file uploaded
-        if widget.max_size_mb is not None:
-            content = await raw.read()
-            max_bytes = int(widget.max_size_mb * 1024 * 1024)
-            if len(content) > max_bytes:
-                errors[field_name] = [
-                    f"File size exceeds maximum allowed size ({widget.max_size_mb} MB)."
-                ]
-                # Reset file position for potential re-read
-                await raw.seek(0)
-                return
-            # Reset file position after size check
-            await raw.seek(0)
+        # New file uploaded — enforce the size limit before reading content
+        if not await _enforce_size_limit(raw, widget.max_size_mb, field_name, errors):
+            return
 
         if storage is None:
             errors[field_name] = ["No storage backend configured."]
@@ -73,7 +93,11 @@ async def handle_file_field(
         if action == "replace" and obj is not None:
             old_path = getattr(obj, field_name, None)
             if old_path:
-                await storage.delete(old_path)
+                try:
+                    await storage.delete(old_path)
+                except ValueError as exc:
+                    errors[field_name] = [str(exc)]
+                    return
 
         parsed[field_name] = path
 
@@ -82,7 +106,11 @@ async def handle_file_field(
         if storage is not None and obj is not None:
             old_path = getattr(obj, field_name, None)
             if old_path:
-                await storage.delete(old_path)
+                try:
+                    await storage.delete(old_path)
+                except ValueError as exc:
+                    errors[field_name] = [str(exc)]
+                    return
         parsed[field_name] = None
 
     elif action == "keep" or action is None:

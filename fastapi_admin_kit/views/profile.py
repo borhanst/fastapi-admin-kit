@@ -181,7 +181,10 @@ async def password_change_post(
     user.password_changed_at = datetime.now(UTC)
     await session.flush()
 
-    # Revoke all refresh tokens for this user
+    # Revoke all refresh tokens for this user. Outstanding JWT access
+    # tokens are invalidated immediately by the ``iat`` vs
+    # ``password_changed_at`` check performed on every authenticated API
+    # request (see api/auth.py:token_predates_password_change).
     from sqlalchemy import update
 
     from fastapi_admin_kit.auth.models import RefreshToken

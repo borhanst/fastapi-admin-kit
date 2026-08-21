@@ -8,6 +8,9 @@ from pathlib import PurePosixPath
 
 from starlette.datastructures import UploadFile
 
+DEFAULT_MAX_SIZE_MB = 10.0
+"""Default upload size limit applied when a backend/widget limit is ``None``."""
+
 
 class StorageBackend(ABC):
     """Abstract base class for file storage backends.

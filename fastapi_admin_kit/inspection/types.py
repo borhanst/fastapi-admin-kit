@@ -18,6 +18,20 @@ SENSITIVE_FIELDS: frozenset[str] = frozenset(
 )
 """Column names that must never appear in serialized API output."""
 
+PRIVILEGED_ASSIGNMENT_FIELDS: frozenset[str] = frozenset(
+    {
+        "is_superuser",
+        "is_active",
+        "roles",
+    }
+)
+"""User-model fields a non-superuser actor must never write (mass assignment).
+
+Distinct from :data:`SENSITIVE_FIELDS`: sensitive fields are secret
+*values* kept out of serialization; privileged fields are privilege-
+granting columns kept out of unprivileged *writes*.
+"""
+
 
 @dataclass
 class ColumnMeta:

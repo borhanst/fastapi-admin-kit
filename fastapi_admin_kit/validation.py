@@ -11,11 +11,20 @@ class FormValidator:
         registered: Any,
         parsed: dict[str, Any],
         obj: Any = None,
+        only_fields: set[str] | None = None,
     ) -> dict[str, list[str]]:
+        """Run widget + per-field + object-level validation.
+
+        When *only_fields* is given, per-field validation is restricted to
+        those names (used by partial JSON updates); object-level
+        ``admin.validate`` still runs in full.
+        """
         errors: dict[str, list[str]] = {}
 
         for field_meta in registered.form_fields:
             if field_meta.readonly:
+                continue
+            if only_fields is not None and field_meta.name not in only_fields:
                 continue
             widget = registered.get_widget(field_meta.name)
             value = parsed.get(field_meta.name)

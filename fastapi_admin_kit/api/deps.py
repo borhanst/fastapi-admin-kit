@@ -4,6 +4,11 @@ The JWT authenticates *identity* (signature + expiry). Authorization is
 always checked against the live database via :class:`PermissionChecker`, so
 revoked roles/permissions and demoted or deactivated users take effect
 immediately instead of persisting until token expiry.
+
+``AccessTokenMiddleware`` (see ``api/middleware.py``) pre-validates bearer
+tokens for ``/api/*`` routes and stashes the decoded payload on
+``request.state.admin_jwt_payload``; these dependencies reuse it instead of
+decoding twice.
 """
 
 from __future__ import annotations
@@ -12,14 +17,23 @@ from typing import Any
 
 from fastapi import HTTPException, Request
 
-from fastapi_admin_kit.api.auth import _get_secret_key, decode_access_token
+from fastapi_admin_kit.api.auth import (
+    _get_secret_key,
+    decode_access_token,
+    token_predates_password_change,
+)
 
 
 async def get_api_current_user(request: Request) -> dict[str, Any]:
     """Decode JWT and return user payload (no DB hit).
 
-    Raises 401 if token is missing or invalid.
+    Reuses the payload stashed by ``AccessTokenMiddleware`` when present.
+    Raises 401 if the token is missing or invalid.
     """
+    cached = getattr(request.state, "admin_jwt_payload", None)
+    if cached is not None:
+        return cached
+
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header.")
@@ -81,6 +95,10 @@ def require_api_permission(table_name: str, action: str):
                 detail="Account not found or inactive.",
             )
 
+        # A password change after the token was minted kills it immediately.
+        if token_predates_password_change(user, resolved):
+            raise HTTPException(status_code=401, detail="Token has been revoked.")
+
         session = get_db_session(request)
         if session is None:
             raise HTTPException(status_code=503, detail="Database unavailable.")
@@ -112,6 +130,9 @@ def require_api_superuser():
                 status_code=401,
                 detail="Account not found or inactive.",
             )
+
+        if token_predates_password_change(user, resolved):
+            raise HTTPException(status_code=401, detail="Token has been revoked.")
 
         if not getattr(resolved, "is_superuser", False):
             raise HTTPException(status_code=403, detail="Superuser access required.")

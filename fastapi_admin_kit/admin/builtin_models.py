@@ -138,11 +138,13 @@ class UserAdmin(ModelAdmin):
         Prevents privilege escalation via mass assignment: a non-superuser
         with edit permission on admin_users must not grant themselves
         ``is_superuser``, toggle ``is_active``, change ``roles``, or write
-        ``hashed_password`` directly.
+        secret columns (``hashed_password`` etc.) directly.
         """
         if self._actor_is_superuser(request):
             return data
-        for field in SENSITIVE_FIELDS:
+        from fastapi_admin_kit.inspection.types import PRIVILEGED_ASSIGNMENT_FIELDS
+
+        for field in SENSITIVE_FIELDS | PRIVILEGED_ASSIGNMENT_FIELDS:
             data.pop(field, None)
         return data
 

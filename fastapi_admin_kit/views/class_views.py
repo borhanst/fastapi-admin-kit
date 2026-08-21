@@ -1203,7 +1203,9 @@ class EditView(BaseView):
 
         # PUT
         parser = JSONBodyParser(self.registered)
-        parsed, _ = await parser.parse(request, obj)
+        parsed, errors = await parser.parse(request, obj)
+        if errors:
+            raise HTTPException(status_code=422, detail=errors)
         # Validate related model IDs exist
         from fastapi_admin_kit.inspection import validate_related_id
 

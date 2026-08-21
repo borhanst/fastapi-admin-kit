@@ -26,6 +26,9 @@ class AuthConfig:
         password_require_digit: bool = True,
         password_require_special: bool = True,
         session_samesite: str = "strict",
+        access_token_ttl: int = 600,
+        api_token_middleware: bool = True,
+        api_token_strict: bool = False,
     ):
         self.auth_model = auth_model
         self.auth_backend = auth_backend
@@ -40,6 +43,16 @@ class AuthConfig:
         self.password_require_digit = password_require_digit
         self.password_require_special = password_require_special
         self.session_samesite = session_samesite
+        # Short-lived JWT API access tokens (see api/auth.py). Refresh
+        # tokens keep sessions alive; a stolen bearer token expires within
+        # this window.
+        self.access_token_ttl = access_token_ttl
+        # Pre-validate bearer tokens on /api/* routes in middleware and
+        # cache the decoded payload for the request.
+        self.api_token_middleware = api_token_middleware
+        # When True, /api/* routes (minus exempt paths) require a bearer
+        # token even if the route itself has no auth dependency.
+        self.api_token_strict = api_token_strict
 
     def get_hasher(self) -> Any:
         """Return the configured password hasher, or default BcryptHasher."""
