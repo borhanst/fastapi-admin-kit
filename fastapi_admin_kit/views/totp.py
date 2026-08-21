@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -312,7 +313,8 @@ async def totp_verify_post(
             status_code=200,
         )
 
-    token = session_backend.encode({"user_id": user.id})
+    # Random session id (S18): fresh cookie value per login — see auth/views.py.
+    token = session_backend.encode({"user_id": user.id, "sid": secrets.token_urlsafe(32)})
     samesite = getattr(request.app.state.admin_state, "session_samesite", "strict")
     response = RedirectResponse(
         url=f"{request.app.state.admin_config['admin_path']}/",

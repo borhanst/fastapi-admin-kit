@@ -72,13 +72,21 @@ class SignedCookieSessionBackend(SessionBackend):
         return self._serializer.dumps(payload)
 
     def decode(self, token: str | None) -> dict[str, Any] | None:
-        """Verify *token* and return the decoded payload, or ``None``."""
+        """Verify *token* and return the decoded payload dict, or ``None``.
+
+        Tokens without an ``iat`` claim are rejected outright (S18): the
+        ``iat`` timestamp powers the password-change invalidation check, and
+        a token minted without it would silently bypass that revocation.
+        """
         if not token:
             return None
         try:
-            return self._serializer.loads(token, max_age=self._session_ttl)
+            payload = self._serializer.loads(token, max_age=self._session_ttl)
         except (BadSignature, SignatureExpired, ValueError):
             return None
+        if not isinstance(payload, dict) or "iat" not in payload:
+            return None
+        return payload
 
     def should_secure(self, request: Any) -> bool:
         """Return True only when the configured secure flag is set AND the

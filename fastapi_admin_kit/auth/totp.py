@@ -70,20 +70,45 @@ def generate_backup_codes(count: int = 10) -> list[str]:
 
 
 def hash_backup_code(code: str) -> str:
-    """Hash a backup code for storage."""
-    return hashlib.sha256(code.encode()).hexdigest()
+    """Hash a backup code for storage with bcrypt (S12).
+
+    Backup codes were previously stored as unsalted SHA256 — fast to
+    brute-force if the DB leaks. New codes are bcrypt-hashed like
+    passwords; :func:`verify_backup_code` still accepts legacy SHA256
+    hashes so existing records keep working until regenerated.
+    """
+    import bcrypt
+
+    return bcrypt.hashpw(code.encode(), bcrypt.gensalt()).decode()
+
+
+def _is_bcrypt_hash(value: str) -> bool:
+    return value.startswith(("$2a$", "$2b$", "$2y$"))
 
 
 def verify_backup_code(code: str, hashed_codes: list[str]) -> bool:
     """Verify a backup code against a list of hashed codes.
 
-    Returns True if the code matches and removes it from the list (in-place).
+    Accepts both modern bcrypt hashes and legacy unsalted-SHA256 hex
+    hashes (migration path). Returns True if the code matches and removes
+    it from the list (in-place) so it cannot be reused.
     """
-    code_hash = hash_backup_code(code)
+    import bcrypt
+
     for i, h in enumerate(hashed_codes):
-        if hmac.compare_digest(code_hash, h):
-            hashed_codes.pop(i)
-            return True
+        if _is_bcrypt_hash(h):
+            try:
+                if bcrypt.checkpw(code.encode(), h.encode()):
+                    hashed_codes.pop(i)
+                    return True
+            except ValueError:
+                continue
+        else:
+            # Legacy unsalted SHA256 (pre-S12 records)
+            legacy_hash = hashlib.sha256(code.encode()).hexdigest()
+            if hmac.compare_digest(legacy_hash, h):
+                hashed_codes.pop(i)
+                return True
     return False
 
 

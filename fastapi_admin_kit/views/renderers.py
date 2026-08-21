@@ -444,7 +444,7 @@ class DefaultQueryProvider:
 
         query_ordering = request.query_params.get("ordering", "") or order
         order = registered.admin.get_ordering(
-            {"ordering": query_ordering}, registered.admin.ordering
+            {"ordering": query_ordering}, registered.admin.ordering, model
         )
         if order:
             col_name = order[0].lstrip("-")

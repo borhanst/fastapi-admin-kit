@@ -7,6 +7,21 @@ import io
 from abc import ABC, abstractmethod
 from typing import Any
 
+FORMULA_PREFIXES = ("=", "+", "-", "@", "|", "%", "\t", "\r")
+"""Leading characters spreadsheet apps may interpret as formulas (S14)."""
+
+
+def sanitize_export_cell(value: Any) -> Any:
+    """Neutralise CSV/Excel formula injection in string cells.
+
+    A DB value like ``=HYPERLINK(...)`` or ``=cmd|' /C calc'!A0`` executes
+    when the exported file is opened in Excel/LibreOffice. Prefixing a
+    single quote forces the cell to be treated as text.
+    """
+    if isinstance(value, str) and value.startswith(FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
 
 class ExportBase(ABC):
     """Base class for all export implementations.
@@ -132,7 +147,7 @@ class ExportBase(ABC):
             for col in columns:
                 value = self.get_value(obj, col)
                 value = self.format_value(value, col)
-                row.append(value)
+                row.append(sanitize_export_cell(value))
             writer.writerow(row)
             row_count += 1
 
@@ -165,15 +180,40 @@ class ImportBase(ABC):
         self.registered = registered
         self.admin = registered.admin
 
+    def allowed_import_fields(self) -> set[str]:
+        """Model columns an import may write (S18).
+
+        Sensitive columns (``hashed_password``, tokens, ...) are always
+        excluded. On user-like models (anything exposing ``is_superuser``)
+        the privilege-granting fields are excluded too — a CSV upload must
+        never mint administrators or toggle account flags.
+        """
+        from fastapi_admin_kit.inspection.types import (
+            PRIVILEGED_ASSIGNMENT_FIELDS,
+            SENSITIVE_FIELDS,
+        )
+
+        allowed = {c.name for c in self.registered.columns if c.name not in SENSITIVE_FIELDS}
+        model = getattr(self.registered, "model", None)
+        if model is not None and hasattr(model, "is_superuser"):
+            allowed -= PRIVILEGED_ASSIGNMENT_FIELDS
+        return allowed
+
     def get_field_map(self) -> dict[str, str]:
         """Get the mapping from file headers to model fields.
 
         Returns configured field_map or auto-generated mapping.
+        Restricted to non-sensitive, non-privileged model columns.
         """
         if self.field_map:
             return self.field_map
         # Default: map header names to model field names (lowercase, underscored)
-        return {col.name.replace("_", " ").title(): col.name for col in self.registered.columns}
+        allowed = self.allowed_import_fields()
+        return {
+            col.name.replace("_", " ").title(): col.name
+            for col in self.registered.columns
+            if col.name in allowed
+        }
 
     def validate_row(self, row: dict[str, Any], index: int) -> tuple[bool, str | None]:
         """Validate a single row before import.
@@ -297,6 +337,7 @@ class ImportBase(ABC):
         field_map = self.get_field_map()
         unique_key = self.get_unique_key()
         model = self.registered.model
+        allowed_fields = self.allowed_import_fields()
 
         from sqlalchemy import inspect as sa_inspect
 
@@ -309,10 +350,14 @@ class ImportBase(ABC):
 
         for i, row in enumerate(rows):
             try:
-                # Map file headers to model field names
+                # Map file headers to model field names. Columns outside the
+                # import allow-list (sensitive / privilege-granting) are
+                # dropped, never written (S18).
                 mapped_row = {}
                 for file_header, value in row.items():
                     model_field = field_map.get(file_header, file_header)
+                    if model_field not in allowed_fields:
+                        continue
                     mapped_row[model_field] = value
 
                 # Validate row

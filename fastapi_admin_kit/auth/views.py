@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
@@ -148,7 +149,10 @@ async def login_post(
         await session.flush()
 
         session_backend: SessionBackend = request.app.state.admin_session_backend
-        session_data = {"user_id": user.id}
+        # Random session id (S18): guarantees a fresh cookie value on every
+        # login — two logins in the same second must never mint identical
+        # session tokens (itsdangerous timestamps alone are second-granular).
+        session_data = {"user_id": user.id, "sid": secrets.token_urlsafe(32)}
         token = session_backend.encode(session_data)
 
         if next and _is_safe_url(next):

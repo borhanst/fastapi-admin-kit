@@ -7,7 +7,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from fastapi_admin_kit.auth.csrf import require_csrf_token
-from fastapi_admin_kit.auth.dependencies import require_permission
+from fastapi_admin_kit.auth.dependencies import (
+    get_permission_checker,
+    require_permission,
+)
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.notifications.dispatcher import dispatch_model_change
 from fastapi_admin_kit.registry import RegisteredModel
@@ -161,8 +164,11 @@ def build_model_router(
             error_msg = str(exc) or "An unexpected error occurred."
 
         if error_msg:
+            # Proper status codes (S16): 401 unauthenticated / 403 forbidden —
+            # a 200 body with {"error": ...} hid failures from API clients.
+            status = 401 if current_user is None else 403
             return JSONResponse(
-                status_code=200,
+                status_code=status,
                 content={"error": error_msg, "results": []},
             )
 
@@ -185,15 +191,21 @@ def build_model_router(
     async def export_data(
         request: Request,
         format: str = "csv",
-        _: None = Depends(require_permission(registered.table_name, "view")),
+        _: None = Depends(require_permission(registered.table_name, "export")),
     ):
-        """Export data in the specified format."""
+        """Export data in the specified format.
+
+        Single gate (S16): the ``export`` permission — previously the outer
+        dependency required only ``view`` while the in-handler check
+        required ``export``, so the two gates disagreed.
+        """
         from fastapi.responses import StreamingResponse
 
         from fastapi_admin_kit.auth.identity import get_current_user_from_cookie
         from fastapi_admin_kit.db import get_db_session
 
-        # Check export permission
+        # Resolve the user for audit attribution (permission already
+        # enforced by the require_permission dependency above).
         current_user = await get_current_user_from_cookie(request)
         if current_user is None:
             raise HTTPException(status_code=401, detail="Not authenticated")
@@ -202,11 +214,6 @@ def build_model_router(
         user_email = getattr(current_user, "email", None)
 
         session = get_db_session(request)
-        from fastapi_admin_kit.auth.permissions import PermissionChecker
-
-        checker = PermissionChecker(session=session, user=current_user)
-        if not await checker.has_permission(registered.table_name, "export"):
-            raise HTTPException(status_code=403, detail="Export permission denied")
 
         # Get export class
         export_class = admin.get_export_class(format)
@@ -274,27 +281,25 @@ def build_model_router(
     async def import_data(
         request: Request,
         format: str = "csv",
-        _: None = Depends(require_permission(registered.table_name, "create")),
+        _: None = Depends(require_permission(registered.table_name, "import")),
         _csrf: bool = Depends(require_csrf_token),
     ):
-        """Import data from uploaded file."""
-        from fastapi_admin_kit.auth.identity import get_current_user_from_cookie
-        from fastapi_admin_kit.db import get_db_session
+        """Import data from uploaded file.
 
-        # Check import permission
+        Single gate (S16): the ``import`` permission — previously the outer
+        dependency required only ``create`` while the in-handler check
+        required ``import``.
+        """
+        from fastapi_admin_kit.auth.identity import get_current_user_from_cookie
+
+        # Resolve the user for audit attribution (permission already
+        # enforced by the require_permission dependency above).
         current_user = await get_current_user_from_cookie(request)
         if current_user is None:
             raise HTTPException(status_code=401, detail="Not authenticated")
 
         user_id = getattr(current_user, "id", None)
         user_email = getattr(current_user, "email", None)
-
-        session = get_db_session(request)
-        from fastapi_admin_kit.auth.permissions import PermissionChecker
-
-        checker = PermissionChecker(session=session, user=current_user)
-        if not await checker.has_permission(registered.table_name, "import"):
-            raise HTTPException(status_code=403, detail="Import permission denied")
 
         # Get import class
         import_class = admin.get_import_class(format)
@@ -387,11 +392,26 @@ def build_model_router(
         html = templates.TemplateResponse(request, "partials/list_table.html", ctx)
         return html
 
+    async def _require_create_or_edit(
+        checker: Any = Depends(get_permission_checker),
+    ) -> None:
+        """Field validation previews form errors for create/edit flows (S16):
+        requiring only ``view`` let read-only users probe validator logic."""
+        table = registered.table_name
+        if not (
+            await checker.has_permission(table, "create")
+            or await checker.has_permission(table, "edit")
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=f"You do not have permission to validate {table} fields.",
+            )
+
     @router.post("/validate-field", include_in_schema=False)
     async def validate_field_endpoint(
         request: Request,
         _csrf: bool = Depends(require_csrf_token),
-        _: None = Depends(require_permission(registered.table_name, "view")),
+        _: None = Depends(_require_create_or_edit),
     ):
         templates = request.app.state.admin_jinja_env
         form = await request.form()

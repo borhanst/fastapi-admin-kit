@@ -409,12 +409,14 @@ class TestSearchFallback:
 
 class TestSearchUnauthorized:
     def test_unauthorized_returns_json_error(self, admin_app):
+        """S16: unauthenticated search returns a proper 401, not a
+        200 response with an error body."""
         client = TestClient(admin_app)
         resp = client.get(
             "/admin/search_products/search",
             params={"q": "Laptop"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 401
         data = resp.json()
         assert "error" in data
         assert "Not authenticated" in data["error"]
