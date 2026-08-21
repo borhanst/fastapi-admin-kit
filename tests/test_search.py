@@ -773,7 +773,9 @@ class TestM2MSave:
             cookies={"admin_session": cookie},
         )
         assert resp.status_code == 200
-        assert f"multiRelation([&#34;{tag_id}&#34;]" in resp.text
+        # S05/S06 fix: values are emitted via |tojson inside a single-quoted
+        # attribute — raw JSON, no HTML entity escaping.
+        assert f'multiRelation(["{tag_id}"]' in resp.text
 
 
 class TestTupleSearchFields:

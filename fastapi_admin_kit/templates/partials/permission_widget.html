@@ -2,7 +2,7 @@
    Args: search_url, perm_data (list of permission objects)
    Full-width table with dark mode support.
 #}
-<div x-data="permissionWidget('{{ search_url }}', {{ perm_data | tojson | forceescape }})">
+<div x-data='permissionWidget({{ search_url | tojson }}, {{ perm_data | tojson }})'>
   <input type="hidden" name="perm_data" :value="serializedPermData">
 
   <div x-show="selectedPerms.length > 0" style="width: 100%;">

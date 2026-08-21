@@ -114,7 +114,29 @@ async def login_post(
         user.last_login = datetime.now(UTC)
         await session.flush()
 
+        # ── 2FA enforcement (S02) ────────────────────────────────────
+        # If the user has TOTP enabled, do NOT issue a session cookie.
+        # Issue a short-lived pending token and redirect to /verify-2fa.
         from fastapi_admin_kit.auth.models import LoginAttempt
+        from fastapi_admin_kit.auth.totp import has_totp_enabled
+
+        query_adapter = getattr(request.app.state, "admin_query_adapter", None)
+        if await has_totp_enabled(session, user.id, query_adapter):
+            attempt = LoginAttempt(
+                email=username,
+                ip_address=client_ip,
+                user_agent=request.headers.get("user-agent", ""),
+                success=True,
+                note="Credentials verified — 2FA required",
+            )
+            session.add(attempt)
+            await session.flush()
+
+            session_backend: SessionBackend = request.app.state.admin_session_backend
+            temp_token = session_backend.encode_pending_2fa(user.id)
+            admin_path = request.app.state.admin_config["admin_path"]
+            redirect_url = f"{admin_path}/verify-2fa?temp_token={temp_token}"
+            return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
 
         attempt = LoginAttempt(
             email=username,

@@ -52,11 +52,17 @@ class ExportBase(ABC):
         """Get the list of columns to export.
 
         Returns configured columns or all model columns.
-        Excludes primary key columns by default.
+        Excludes primary key and sensitive columns by default.
         """
+        from fastapi_admin_kit.inspection.types import SENSITIVE_FIELDS
+
         if self.columns:
             return self.columns
-        return [c.name for c in self.registered.columns if not c.primary_key]
+        return [
+            c.name
+            for c in self.registered.columns
+            if not c.primary_key and c.name not in SENSITIVE_FIELDS
+        ]
 
     def get_headers(self) -> dict[str, str]:
         """Get column headers for export.

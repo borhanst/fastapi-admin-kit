@@ -8,6 +8,7 @@ import hmac
 import secrets
 import struct
 import time
+from typing import Any
 
 
 def generate_secret() -> str:
@@ -84,3 +85,49 @@ def verify_backup_code(code: str, hashed_codes: list[str]) -> bool:
             hashed_codes.pop(i)
             return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# Data access — the only place that queries TOTP records.
+#
+# Views must call these helpers instead of building queries themselves.
+# Queries are built through the ``QueryBackend`` adapter (``select``/``where``)
+# and executed through the backend-agnostic ``SessionBackend`` wrapper, so
+# storage stays swappable (SQLAlchemy, memory, …).
+# ---------------------------------------------------------------------------
+
+
+async def get_totp_record(
+    session: Any,
+    user_id: int | str,
+    query_adapter: Any = None,
+) -> Any | None:
+    """Return the ``UserTOTP`` row for *user_id*, or ``None``.
+
+    *session* may be a raw ORM session or a ``SessionBackend`` — it is
+    coerced through :func:`fastapi_admin_kit.backends.as_session_backend`.
+    *query_adapter* is the ``QueryBackend`` from ``app.state.admin_query_adapter``;
+    when omitted, the default SQLAlchemy adapter is used (CLI / no-app contexts).
+    """
+    from fastapi_admin_kit.auth.models import UserTOTP
+    from fastapi_admin_kit.backends import as_session_backend
+
+    session = as_session_backend(session)
+    if query_adapter is None:
+        from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyQueryAdapter
+
+        query_adapter = SqlAlchemyQueryAdapter()
+
+    query = query_adapter.select(UserTOTP)
+    query = query_adapter.where(query, UserTOTP.user_id == user_id)
+    return await session.scalar_one_or_none(query)
+
+
+async def has_totp_enabled(
+    session: Any,
+    user_id: int | str,
+    query_adapter: Any = None,
+) -> bool:
+    """Return True when *user_id* has an enabled TOTP record."""
+    record = await get_totp_record(session, user_id, query_adapter)
+    return record is not None and bool(record.enabled)

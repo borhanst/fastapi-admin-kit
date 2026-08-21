@@ -6,7 +6,6 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select
 
 from fastapi_admin_kit.auth.csrf import require_csrf_token
 from fastapi_admin_kit.auth.dependencies import get_current_admin_user
@@ -15,6 +14,7 @@ from fastapi_admin_kit.auth.protocol import AdminUserProtocol
 from fastapi_admin_kit.auth.totp import (
     generate_backup_codes,
     generate_secret,
+    get_totp_record,
     get_totp_uri,
     hash_backup_code,
     verify_totp,
@@ -34,8 +34,8 @@ async def totp_setup_view(
     templates = request.app.state.admin_jinja_env
     session = get_db_session(request)
 
-    totp_record = await session.scalar_one_or_none(
-        select(UserTOTP).where(UserTOTP.user_id == user.id)
+    totp_record = await get_totp_record(
+        session, user.id, getattr(request.app.state, "admin_query_adapter", None)
     )
 
     secret = None
@@ -85,8 +85,8 @@ async def totp_enable_post(
 
     code = form.get("code", "").strip()
 
-    totp_record = await session.scalar_one_or_none(
-        select(UserTOTP).where(UserTOTP.user_id == user.id)
+    totp_record = await get_totp_record(
+        session, user.id, getattr(request.app.state, "admin_query_adapter", None)
     )
 
     if totp_record is None:
@@ -160,8 +160,8 @@ async def totp_disable_post(
             ),
         )
 
-    totp_record = await session.scalar_one_or_none(
-        select(UserTOTP).where(UserTOTP.user_id == user.id)
+    totp_record = await get_totp_record(
+        session, user.id, getattr(request.app.state, "admin_query_adapter", None)
     )
 
     if totp_record is None or not totp_record.enabled:
@@ -200,8 +200,8 @@ async def totp_regenerate_backup_codes(
     """Generate new backup codes (invalidates old ones)."""
     session = get_db_session(request)
 
-    totp_record = await session.scalar_one_or_none(
-        select(UserTOTP).where(UserTOTP.user_id == user.id)
+    totp_record = await get_totp_record(
+        session, user.id, getattr(request.app.state, "admin_query_adapter", None)
     )
 
     if totp_record is None or not totp_record.enabled:
@@ -245,3 +245,86 @@ async def totp_verify_view(
             },
         ),
     )
+
+
+@router.post("/verify-2fa", response_class=HTMLResponse, include_in_schema=False)
+async def totp_verify_post(
+    request: Request,
+    _csrf: bool = Depends(require_csrf_token),
+):
+    """Verify the TOTP code (or a backup code) and issue the real session."""
+    import json as _json
+
+    from fastapi import status
+    from fastapi.responses import RedirectResponse
+
+    from fastapi_admin_kit.auth.identity import resolve_user
+    from fastapi_admin_kit.auth.totp import get_totp_record, verify_backup_code
+
+    form = await request.form()
+    temp_token = form.get("temp_token", "")
+    code = (form.get("code") or "").strip().upper()
+
+    session_backend = request.app.state.admin_session_backend
+    user_id = session_backend.decode_pending_2fa(temp_token)
+    if user_id is None:
+        # Expired / invalid / tampered pending token — start login over.
+        return RedirectResponse(
+            url=f"{request.app.state.admin_config['admin_path']}/login",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    user = await resolve_user(request, user_id)
+    if user is None:
+        return RedirectResponse(
+            url=f"{request.app.state.admin_config['admin_path']}/login",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    session = get_db_session(request)
+    totp_record = await get_totp_record(
+        session, user.id, getattr(request.app.state, "admin_query_adapter", None)
+    )
+    verified = False
+    if totp_record is not None and totp_record.enabled:
+        if code and verify_totp(totp_record.secret_key, code):
+            verified = True
+        elif code and totp_record.backup_codes:
+            hashed_codes = _json.loads(totp_record.backup_codes)
+            if verify_backup_code(code, hashed_codes):
+                # One-time use: persist the consumed list.
+                totp_record.backup_codes = _json.dumps(hashed_codes)
+                await session.flush()
+                verified = True
+
+    if not verified:
+        templates = request.app.state.admin_jinja_env
+        return templates.TemplateResponse(
+            request,
+            "pages/2fa/verify.html",
+            await inject_sidebar_context(
+                request,
+                {
+                    "temp_token": temp_token,
+                    "error": "Invalid authentication code. Please try again.",
+                },
+            ),
+            status_code=200,
+        )
+
+    token = session_backend.encode({"user_id": user.id})
+    samesite = getattr(request.app.state.admin_state, "session_samesite", "strict")
+    response = RedirectResponse(
+        url=f"{request.app.state.admin_config['admin_path']}/",
+        status_code=status.HTTP_302_FOUND,
+    )
+    response.set_cookie(
+        key=session_backend.cookie_name,
+        value=token,
+        max_age=session_backend._session_ttl,
+        path="/",
+        secure=session_backend.should_secure(request),
+        httponly=True,
+        samesite=samesite,
+    )
+    return response

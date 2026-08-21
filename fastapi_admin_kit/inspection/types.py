@@ -5,6 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+SENSITIVE_FIELDS: frozenset[str] = frozenset(
+    {
+        "hashed_password",
+        "password_changed_at",
+        "password",
+        "secret",
+        "secret_key",
+        "token",
+        "refresh_token",
+    }
+)
+"""Column names that must never appear in serialized API output."""
+
 
 @dataclass
 class ColumnMeta:

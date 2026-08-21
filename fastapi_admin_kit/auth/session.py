@@ -47,6 +47,10 @@ class SignedCookieSessionBackend(SessionBackend):
     ) -> None:
         self._secret_key = secret_key
         self._serializer = URLSafeTimedSerializer(secret_key, salt="admin-session")
+        # Separate salt + short TTL: a pending-2FA token can never be
+        # replayed as a full session cookie (different signing domain).
+        self._mfa_serializer = URLSafeTimedSerializer(secret_key, salt="admin-2fa")
+        self._mfa_ttl = 300
         self._session_ttl = session_ttl
         self.cookie_name = cookie_name
         self.secure = secure
@@ -87,6 +91,20 @@ class SignedCookieSessionBackend(SessionBackend):
     def load(self, token: str | None) -> dict[str, Any] | None:
         """Alias for decode — used by flash message system."""
         return self.decode(token)
+
+    def encode_pending_2fa(self, user_id: int | str) -> str:
+        """Sign a short-lived token proving credentials were verified but 2FA is pending."""
+        return self._mfa_serializer.dumps({"user_id": user_id})
+
+    def decode_pending_2fa(self, token: str | None) -> int | str | None:
+        """Verify a pending-2FA token and return the user_id, or ``None``."""
+        if not token:
+            return None
+        try:
+            payload = self._mfa_serializer.loads(token, max_age=self._mfa_ttl)
+        except (BadSignature, SignatureExpired, ValueError):
+            return None
+        return payload.get("user_id")
 
     def save(self, response: Any, data: dict[str, Any], *, request: Any | None = None) -> None:
         """Encode *data* and set it as a signed cookie on *response*."""

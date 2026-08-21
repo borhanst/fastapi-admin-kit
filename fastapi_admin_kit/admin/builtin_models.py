@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastapi_admin_kit.inspection.types import SENSITIVE_FIELDS
 from fastapi_admin_kit.modeladmin import ModelAdmin
 from fastapi_admin_kit.types import ExtraField
 from fastapi_admin_kit.widgets.inputs import AutocompleteWidget, PasswordWidget
@@ -124,9 +125,33 @@ class UserAdmin(ModelAdmin):
         ),
     }
 
+    def _actor_is_superuser(self, request) -> bool:
+        """Return True if the acting user may modify privileged user fields."""
+        if request is None:
+            return False
+        snapshot = getattr(request.state, "admin_user_snapshot", None) or {}
+        return bool(snapshot.get("is_superuser", False))
+
+    def _strip_privileged_fields(self, data, request):
+        """Remove privilege-granting fields unless a superuser is acting.
+
+        Prevents privilege escalation via mass assignment: a non-superuser
+        with edit permission on admin_users must not grant themselves
+        ``is_superuser``, toggle ``is_active``, change ``roles``, or write
+        ``hashed_password`` directly.
+        """
+        if self._actor_is_superuser(request):
+            return data
+        for field in SENSITIVE_FIELDS:
+            data.pop(field, None)
+        return data
+
     def prepare_create_data(self, data, request=None):
         from fastapi_admin_kit.auth.models import User
 
+        # Strip first so a direct hashed_password injection is removed,
+        # then derive hashed_password from the (validated) password field.
+        self._strip_privileged_fields(data, request)
         password = data.pop("password", None)
         if password:
             data["hashed_password"] = User.hash_password(password)
@@ -161,6 +186,12 @@ class UserAdmin(ModelAdmin):
             if errors:
                 raise FieldError({"password": errors})
         return data
+
+    def prepare_update_data(self, data: dict[str, Any], request: Any = None) -> dict[str, Any]:
+        """Strip extra fields and privileged fields before an update."""
+        extra_names = {f.name for f in self.extra_fields}
+        data = {k: v for k, v in data.items() if k not in extra_names}
+        return self._strip_privileged_fields(data, request)
 
     def on_update(self, obj, data, request=None):
         pass

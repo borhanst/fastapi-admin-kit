@@ -102,13 +102,13 @@
                 <option value="">Select...</option>
                 {% for choice_value, choice_label in field_meta.choices or [] %}
                 <option value="{{ choice_value }}"
-                        :selected="form.{{ field_meta.name }} === '{{ choice_value }}'">{{ choice_label }}</option>
+                        :selected="form.{{ field_meta.name }} === {{ choice_value | tojson }}">{{ choice_label }}</option>
                 {% endfor %}
               </select>
 
               {% elif field_meta.field_type == 'relation' %}
               {# Relation / ForeignKey field with search #}
-              <div x-data="relationPicker(form.{{ field_meta.name }} || '', form._{{ field_meta.name }}_label || '', '{{ field_meta.search_url }}', true)"
+              <div x-data='relationPicker(form.{{ field_meta.name }} || "", form._{{ field_meta.name }}_label || "", {{ field_meta.search_url | tojson }}, true)'
                    style="position: relative;">
                 <input type="hidden" :name="`${prefix}-${index}-{{ field_meta.name }}`" :value="selectedId">
                 <div style="position: relative; display: flex; align-items: center;">

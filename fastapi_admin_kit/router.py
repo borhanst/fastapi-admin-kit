@@ -460,6 +460,34 @@ def build_model_router(
             include_in_schema=opts.include_in_schema,
         )
 
+    # ── Sortable Endpoint ──────────────────────────────────────────
+    # Registered before the ``/{id}`` catch-all so POST /sort is not
+    # swallowed by the edit-view route.
+
+    @router.post("/sort", include_in_schema=False)
+    async def sort_items(
+        request: Request,
+        _csrf: bool = Depends(require_csrf_token),
+        _: None = Depends(require_permission(registered.table_name, "edit")),
+    ):
+        """Handle drag-drop sort updates."""
+        body = await request.json()
+        ordering_field = getattr(registered.admin, "ordering_field", None)
+        if not ordering_field:
+            raise HTTPException(status_code=400, detail="Sorting not configured")
+
+        session = get_db_session(request)
+        items = body.get("items", [])
+        for idx, item_id in enumerate(items):
+            obj = await session.get(registered.model, item_id)
+            if obj:
+                setattr(obj, ordering_field, idx)
+        await session.flush()
+
+        from fastapi.responses import HTMLResponse
+
+        return HTMLResponse(content="OK")
+
     detail_deps = [Depends(require_permission(registered.table_name, "edit"))]
     if cache_dep is not None:
         detail_deps.append(cache_dep)
@@ -727,6 +755,7 @@ def build_model_router(
         request: Request,
         action_name: str,
         _csrf: bool = Depends(require_csrf_token),
+        _: None = Depends(require_permission(registered.table_name, "edit")),
     ):
         """Execute a list-level action on selected objects."""
         session = get_db_session(request)
@@ -762,6 +791,7 @@ def build_model_router(
         action_name: str,
         id: str,
         _csrf: bool = Depends(require_csrf_token),
+        _: None = Depends(require_permission(registered.table_name, "edit")),
     ):
         """Execute a row-level action on a single object."""
         session = get_db_session(request)
@@ -782,31 +812,6 @@ def build_model_router(
             raise HTTPException(status_code=404, detail="Not found")
 
         await action_obj.execute([obj], request)
-        await session.flush()
-
-        from fastapi.responses import HTMLResponse
-
-        return HTMLResponse(content="OK")
-
-    # ── Sortable Endpoint ──────────────────────────────────────────
-
-    @router.post("/sort", include_in_schema=False)
-    async def sort_items(
-        request: Request,
-        _csrf: bool = Depends(require_csrf_token),
-    ):
-        """Handle drag-drop sort updates."""
-        body = await request.json()
-        ordering_field = getattr(registered.admin, "ordering_field", None)
-        if not ordering_field:
-            raise HTTPException(status_code=400, detail="Sorting not configured")
-
-        session = get_db_session(request)
-        items = body.get("items", [])
-        for idx, item_id in enumerate(items):
-            obj = await session.get(registered.model, item_id)
-            if obj:
-                setattr(obj, ordering_field, idx)
         await session.flush()
 
         from fastapi.responses import HTMLResponse
@@ -851,6 +856,7 @@ def build_model_router(
         request: Request,
         id: str,
         _csrf: bool = Depends(require_csrf_token),
+        _: None = Depends(require_permission(registered.table_name, "edit")),
     ):
         """Inline field update — used by toggle switches in list view."""
         from fastapi_admin_kit.auth.csrf import _get_secret_key, generate_csrf_token

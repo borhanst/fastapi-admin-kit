@@ -95,12 +95,13 @@ class BaseView:
     def _serialize(self, obj: Any) -> dict[str, Any]:
         """Serialize an object to a dict using registered columns."""
         from fastapi_admin_kit.audit.diff import serialize_value
+        from fastapi_admin_kit.inspection.types import SENSITIVE_FIELDS
 
         if self.api_renderer and hasattr(self.api_renderer, "serialize"):
             return self.api_renderer.serialize(obj)
         item_dict: dict[str, Any] = {"id": getattr(obj, "id", None)}
         for col in self.registered.columns:
-            if col.name != "id":
+            if col.name != "id" and col.name not in SENSITIVE_FIELDS:
                 item_dict[col.name] = serialize_value(getattr(obj, col.name, None))
         return item_dict
 
@@ -1236,6 +1237,7 @@ class EditView(BaseView):
                     ],
                 )
         try:
+            parsed = self.admin.prepare_update_data(parsed, request)
             m2m_data = self.model_saver.extract_m2m(obj, parsed, request)
             self.model_saver.apply_parsed(obj, parsed, request)
             session = get_db_session(request)

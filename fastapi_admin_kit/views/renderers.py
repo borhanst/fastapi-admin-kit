@@ -152,9 +152,11 @@ class ItemAPIRenderer:
 
     def serialize(self, obj: Any) -> dict[str, Any]:
         """Serialize an object to a dict using registered columns."""
+        from fastapi_admin_kit.inspection.types import SENSITIVE_FIELDS
+
         item_dict: dict[str, Any] = {"id": getattr(obj, "id", None)}
         for col in self.registered.columns:
-            if col.name != "id":
+            if col.name != "id" and col.name not in SENSITIVE_FIELDS:
                 item_dict[col.name] = serialize_value(getattr(obj, col.name, None))
         return item_dict
 

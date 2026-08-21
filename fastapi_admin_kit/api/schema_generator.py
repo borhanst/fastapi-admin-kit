@@ -161,7 +161,9 @@ def build_update_schema(registered: Any) -> type[BaseModel]:
 
 def build_response_schema(registered: Any) -> type[BaseModel]:
     """Build a Pydantic model for response output."""
-    columns = list(registered.columns)
+    from fastapi_admin_kit.inspection.types import SENSITIVE_FIELDS
+
+    columns = [c for c in registered.columns if c.name not in SENSITIVE_FIELDS]
 
     fields: dict[str, Any] = {}
     for col in columns:
