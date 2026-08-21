@@ -19,16 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi_admin_kit.auth.backend import AuthBackend
 from fastapi_admin_kit.auth.csrf import CSRF_COOKIE_NAME, require_csrf_token
 from fastapi_admin_kit.auth.dependencies import _get_db_session, get_session
-from fastapi_admin_kit.auth.ratelimit import (
-    RateLimiter,
-    _client_ip,
-    check_rate_limit,
-)
+from fastapi_admin_kit.auth.ratelimit import _client_ip
 from fastapi_admin_kit.auth.session import SessionBackend
+from fastapi_admin_kit.redis import LoginRateGuard, get_login_guard
 
 router = APIRouter()
-
-_login_rate_limiter = RateLimiter(max_attempts=5, window_seconds=900)
 
 
 def _is_safe_url(url: str | None) -> bool:
@@ -105,16 +100,17 @@ async def login_post(
     next: str | None = Form(None),
     session: AsyncSession = Depends(_get_db_session),
     _csrf: bool = Depends(require_csrf_token),
+    _guard: LoginRateGuard = Depends(get_login_guard),
 ) -> HTMLResponse | RedirectResponse:
     """POST /admin/login — process login form."""
     client_ip = _client_ip(request)
-    check_rate_limit(_login_rate_limiter, client_ip)
+    await _guard.check(client_ip)
 
     auth_backend: AuthBackend = request.app.state.admin_auth_backend
     login_field = request.app.state.admin_config.get("login_field", "email")
     user = await auth_backend.authenticate(username, password, session, login_field=login_field)
     if user is not None:
-        _login_rate_limiter.reset(client_ip)
+        await _guard.reset(client_ip)
         user.last_login = datetime.now(UTC)
         await session.flush()
 
@@ -153,13 +149,13 @@ async def login_post(
 
         return response
 
-    _login_rate_limiter.record_attempt(client_ip)
+    await _guard.record_failure(client_ip)
 
     from fastapi_admin_kit.auth.models import LoginAttempt
 
     note = "Invalid credentials"
-    if _login_rate_limiter.is_rate_limited(client_ip):
-        remaining = _login_rate_limiter.remaining_seconds(client_ip)
+    if await _guard.is_rate_limited(client_ip):
+        remaining = await _guard.remaining_seconds(client_ip)
         note = f"Too many failed attempts. Rate limited for {remaining}s"
 
     attempt = LoginAttempt(
@@ -175,9 +171,9 @@ async def login_post(
     jinja_env = request.app.state.admin_jinja_env
     template = jinja_env.get_template("pages/login.html")
     csrf_token = getattr(request.state, "csrf_token", "")
-    remaining = _login_rate_limiter.remaining_seconds(client_ip)
+    remaining = await _guard.remaining_seconds(client_ip)
     error_msg = "Invalid credentials. Please try again."
-    if _login_rate_limiter.is_rate_limited(client_ip):
+    if await _guard.is_rate_limited(client_ip):
         error_msg = f"Too many failed attempts. Try again in {remaining} seconds."
 
     return HTMLResponse(

@@ -76,6 +76,12 @@ class ModelAdmin:
     # Inline admin config
     inlines: list[Any] = []  # list of InlineModelAdmin subclasses
 
+    # Optional Redis rate limiting for this model's list endpoint.
+    # ``None`` falls back to the global default
+    # (``CacheConfig.rate_limit`` / ``rate_window``).
+    rate_limit: int | None = None
+    rate_window: int | None = None
+
     # Conditional fields
     conditional_fields: dict[str, dict[str, Any]] = {}
 

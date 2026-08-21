@@ -23,6 +23,7 @@ from fastapi_admin_kit.config import (
     AuditConfig,
     AuthConfig,
     BehaviorConfig,
+    CacheConfig,
     DatabaseConfig,
     NavConfig,
     StorageConfig,
@@ -56,6 +57,7 @@ def _merge_legacy_kwargs_into_config(
     behavior: dict[str, Any],
     storage: dict[str, Any],
     nav: dict[str, Any],
+    cache: dict[str, Any] | None = None,
 ) -> AdminConfig:
     """Merge explicitly-provided legacy Admin() kwargs into a user-supplied config.
 
@@ -91,6 +93,8 @@ def _merge_legacy_kwargs_into_config(
     _merge(config.behavior, behavior)
     _merge(config.storage, storage)
     _merge(config.nav, nav)
+    if cache is not None:
+        _merge(config.cache, cache)
     return config
 
 
@@ -246,6 +250,9 @@ class Admin:
         # AI chat file attachments
         ai_chat_max_file_size_mb: int = 10,
         ai_chat_allowed_extensions: list[str] | None = None,
+        # Optional Redis-backed caching (opt-in)
+        cache_enabled: bool | None = None,
+        cache_ttl: int | None = None,
     ):
         self.registry = AdminRegistry()
         self._app: FastAPI | None = app
@@ -372,6 +379,7 @@ class Admin:
                         ".webp",
                     ],
                 ),
+                cache=CacheConfig(enabled=cache_enabled, ttl=cache_ttl),
             )
         else:
             config = _merge_legacy_kwargs_into_config(
@@ -431,7 +439,15 @@ class Admin:
                     settings_permission=settings_permission,
                     sidebar_bottom_links=sidebar_bottom_links,
                 ),
+                cache=dict(enabled=cache_enabled, ttl=cache_ttl),
             )
+            # The merge helper compares against CacheConfig's *constructor*
+            # defaults, but the default instance already resolved the env
+            # flag at construction — so apply explicit enabled/ttl overrides.
+            if cache_enabled is not None:
+                config.cache.enabled = cache_enabled
+            if cache_ttl is not None:
+                config.cache.ttl = cache_ttl
 
         if database is None:
             database = AdminDatabase(
@@ -465,6 +481,12 @@ class Admin:
         self.database = database
         self.router = router
         self.template = template
+        self.cache_config = config.cache
+
+        # Redis availability flags (populated by _setup_redis).
+        self.redis_enabled = False
+        self.redis_configured = False
+        self._redis_wired = False
 
         # Store notification paths on config for template access
         default_notifications_path = f"{self.router.admin_path}/notifications"
@@ -520,6 +542,11 @@ class Admin:
         self._session_backend: Any = None
         self._jinja_env: Environment | None = None
         self._router_built: bool = False
+
+        # Wire Redis now (before startup) so the SDK can wrap the lifespan
+        # before it begins. Degrades gracefully when Redis is unavailable.
+        if app is not None:
+            self._setup_redis(app)
 
         if app is not None and engine is not None:
             # Deferred setup — user will call await admin.setup() via lifespan
@@ -659,6 +686,11 @@ class Admin:
             )
 
         app = self._app
+
+        # Wire Redis when the app was supplied after construction (e.g. via
+        # ``await admin.setup(app)`` inside a manual lifespan).
+        if not getattr(self, "_redis_wired", False):
+            self._setup_redis(app)
 
         # Add CSRF middleware if not already added in __init__
         if not getattr(self, "_csrf_middleware_added", False):
@@ -890,6 +922,38 @@ class Admin:
     # ------------------------------------------------------------------
     # Internal wiring
     # ------------------------------------------------------------------
+
+    def _setup_redis(self, app: FastAPI) -> None:
+        """Wire the optional Redis-backed caching/rate-limiting integration.
+
+        Checks ``REDIS_URL`` at startup: when present (and the
+        ``fastapi-redis-sdk`` is installed) the SDK's lifespan wrapper plus
+        caching/rate-limiting support are registered on the app. Otherwise the
+        admin falls back to the existing in-memory rate limiter and no cache
+        middleware — full backward compatibility.
+        """
+        if self._redis_wired:
+            return
+        self._redis_wired = True
+
+        from fastapi_admin_kit.redis import (
+            redis_configured,
+            redis_enabled,
+            setup_redis,
+        )
+
+        self.redis_configured = redis_configured()
+        self.redis_enabled = redis_enabled()
+
+        if not self.redis_enabled:
+            return
+
+        setup_redis(
+            app,
+            cache_enabled=self.cache_config.enabled,
+            cache_ttl=self.cache_config.ttl,
+            rate_limiting=True,
+        )
 
     def _validate_auth_model(self) -> None:
         """Validate that auth_model satisfies AdminUserProtocol."""
@@ -1210,7 +1274,7 @@ class Admin:
             # API-only models (export_endpoint="api") get no admin HTML router.
             if getattr(registered.admin, "export_endpoint", None) == "api":
                 continue
-            model_router = build_model_router(registered)
+            model_router = build_model_router(registered, cache_config=self.cache_config)
             if model_router is None:
                 continue
             app.include_router(model_router, prefix=self.router.admin_path)

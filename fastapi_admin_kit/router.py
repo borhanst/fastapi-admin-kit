@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from fastapi_admin_kit.auth.csrf import require_csrf_token
@@ -55,18 +57,32 @@ def _endpoint_handler(fn):
     return wrapper
 
 
-def build_model_router(registered: RegisteredModel, *, force: bool = False) -> APIRouter | None:
+def build_model_router(
+    registered: RegisteredModel,
+    *,
+    force: bool = False,
+    cache_config: Any | None = None,
+) -> APIRouter | None:
     """Build the HTML admin router for a model.
 
     Returns ``None`` when the model is API-only (``export_endpoint == "api"``)
     so callers know no admin router should be mounted. Pass ``force=True`` to
     build the router regardless (used by the standalone
     ``ModelAdmin.export_admin_route`` helper).
+
+    When *cache_config* is enabled (and Redis is available) the GET list and
+    GET detail endpoints get a Redis-backed ``cache()`` dependency keyed on an
+    eviction group per model table — every cached response carries the
+    ``X-Redis-Cache: HIT/MISS`` header automatically.
     """
     # Models with export_endpoint="api" only expose their JSON API router —
     # the admin HTML router is skipped entirely.
     if not force and getattr(registered.admin, "export_endpoint", None) == "api":
         return None
+
+    from fastapi_admin_kit.redis import cache_dependency, rate_limit_dependency
+
+    cache_dep = cache_dependency(cache_config, eviction_group=registered.table_name)
 
     router = APIRouter(prefix=f"/{registered.table_name}", tags=[registered.verbose_name])
 
@@ -79,11 +95,22 @@ def build_model_router(registered: RegisteredModel, *, force: bool = False) -> A
     bulk_v = _resolve_view_class(admin, "bulk_view_class", BulkView)(registered)
     search_v = _resolve_view_class(admin, "search_view_class", SearchView)(registered)
 
+    list_deps = [Depends(require_permission(registered.table_name, "view"))]
+    if cache_dep is not None:
+        list_deps.append(cache_dep)
+    rate_dep = rate_limit_dependency(
+        cache_config,
+        limit=getattr(admin, "rate_limit", None),
+        window=getattr(admin, "rate_window", None),
+    )
+    if rate_dep is not None:
+        list_deps.append(rate_dep)
+
     router.add_api_route(
         "/",
         list_v.html_response,
         methods=["GET"],
-        dependencies=[Depends(require_permission(registered.table_name, "view"))],
+        dependencies=list_deps,
         include_in_schema=False,
     )
     router.add_api_route(
@@ -433,11 +460,15 @@ def build_model_router(registered: RegisteredModel, *, force: bool = False) -> A
             include_in_schema=opts.include_in_schema,
         )
 
+    detail_deps = [Depends(require_permission(registered.table_name, "edit"))]
+    if cache_dep is not None:
+        detail_deps.append(cache_dep)
+
     router.add_api_route(
         "/{id}",
         edit_v.html_response,
         methods=["GET"],
-        dependencies=[Depends(require_permission(registered.table_name, "edit"))],
+        dependencies=detail_deps,
         include_in_schema=False,
     )
     router.add_api_route(

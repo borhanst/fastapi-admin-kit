@@ -70,6 +70,7 @@ nav:
       - Navigation & Sidebar: guide/navigation.md
       - Audit Logging: guide/audit-logging.md
       - Storage & File Uploads: guide/storage.md
+      - Redis & Caching: guide/redis-caching.md
       - Notifications: guide/notifications.md
       - JSON API: guide/json-api.md
       - CLI Tools: guide/cli.md
