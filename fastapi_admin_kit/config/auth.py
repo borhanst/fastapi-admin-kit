@@ -29,6 +29,7 @@ class AuthConfig:
         access_token_ttl: int = 600,
         api_token_middleware: bool = True,
         api_token_strict: bool = False,
+        trusted_proxies: list[str] | None = None,
     ):
         self.auth_model = auth_model
         self.auth_backend = auth_backend
@@ -53,6 +54,11 @@ class AuthConfig:
         # When True, /api/* routes (minus exempt paths) require a bearer
         # token even if the route itself has no auth dependency.
         self.api_token_strict = api_token_strict
+        # Reverse proxies whose X-Forwarded-For header may be trusted when
+        # they are the DIRECT peer of the app (single IPs or CIDR networks).
+        # Empty (default) = never trust X-Forwarded-For; rate limiting and
+        # audit logs use the socket peer address.
+        self.trusted_proxies = [str(p) for p in trusted_proxies] if trusted_proxies else []
 
     def get_hasher(self) -> Any:
         """Return the configured password hasher, or default BcryptHasher."""

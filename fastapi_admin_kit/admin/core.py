@@ -206,6 +206,7 @@ class Admin:
         access_token_ttl: int = 600,
         api_token_middleware: bool = True,
         api_token_strict: bool = False,
+        trusted_proxies: list[str] | None = None,
         seed_roles: list[SeedRole] | None = None,
         seed_roles_overwrite: bool = False,
         superuser_emails: list[str] | None = None,
@@ -360,6 +361,7 @@ class Admin:
                     access_token_ttl=access_token_ttl,
                     api_token_middleware=api_token_middleware,
                     api_token_strict=api_token_strict,
+                    trusted_proxies=trusted_proxies,
                 ),
                 audit=AuditConfig(audit_retention_days=audit_retention_days),
                 behavior=BehaviorConfig(
@@ -440,6 +442,7 @@ class Admin:
                     access_token_ttl=access_token_ttl,
                     api_token_middleware=api_token_middleware,
                     api_token_strict=api_token_strict,
+                    trusted_proxies=trusted_proxies,
                 ),
                 audit=dict(audit_retention_days=audit_retention_days),
                 behavior=dict(
@@ -1005,6 +1008,7 @@ class Admin:
             "access_token_ttl": self.config.auth.access_token_ttl,
             "api_token_middleware": self.config.auth.api_token_middleware,
             "api_token_strict": self.config.auth.api_token_strict,
+            "trusted_proxies": self.config.auth.trusted_proxies,
             "audit_retention_days": self.config.audit.audit_retention_days,
             "dashboard_stats": self.config.behavior.dashboard_stats,
             "dashboard_charts": self.config.behavior.dashboard_charts,

@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi_admin_kit.auth.backend import AuthBackend
 from fastapi_admin_kit.auth.csrf import CSRF_COOKIE_NAME, require_csrf_token
 from fastapi_admin_kit.auth.dependencies import _get_db_session, get_session
-from fastapi_admin_kit.auth.ratelimit import _client_ip
+from fastapi_admin_kit.auth.proxy import get_client_ip
 from fastapi_admin_kit.auth.session import SessionBackend
 from fastapi_admin_kit.redis import LoginRateGuard, get_login_guard
 
@@ -103,7 +103,7 @@ async def login_post(
     _guard: LoginRateGuard = Depends(get_login_guard),
 ) -> HTMLResponse | RedirectResponse:
     """POST /admin/login — process login form."""
-    client_ip = _client_ip(request)
+    client_ip = get_client_ip(request)
     await _guard.check(client_ip)
 
     auth_backend: AuthBackend = request.app.state.admin_auth_backend

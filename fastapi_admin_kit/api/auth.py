@@ -18,12 +18,21 @@ from fastapi_admin_kit.api.schemas import (
     TokenResponse,
 )
 from fastapi_admin_kit.api.security import basic_scheme, bearer_scheme
-from fastapi_admin_kit.auth.ratelimit import RateLimiter, check_rate_limit
+from fastapi_admin_kit.auth.proxy import get_client_ip
 from fastapi_admin_kit.db import get_db_session
 
 router = APIRouter(prefix="/auth", tags=["api-auth"])
 
-_api_rate_limiter = RateLimiter(max_attempts=10, window_seconds=900)
+# Rate limits (S11). The token endpoint counts FAILED attempts per
+# (client IP, email) so legitimate users behind shared NATs are not locked
+# out by other people's typos; refresh/logout count every request per IP
+# because they are unauthenticated DB-touching endpoints.
+TOKEN_RATE_LIMIT = 10
+TOKEN_RATE_WINDOW = 900
+REFRESH_RATE_LIMIT = 60
+REFRESH_RATE_WINDOW = 300
+LOGOUT_RATE_LIMIT = 30
+LOGOUT_RATE_WINDOW = 300
 
 DEFAULT_ACCESS_TOKEN_TTL = 600
 """Default access-token lifetime (seconds).
@@ -239,7 +248,20 @@ async def obtain_token(
     else:
         raise HTTPException(status_code=422, detail="Credentials required.")
 
-    check_rate_limit(_api_rate_limiter, email)
+    # Rate-limit failed attempts per (client IP, email). The client IP is
+    # resolved through the trusted-proxy helper: spoofed X-Forwarded-For
+    # headers cannot rotate the bucket (S11).
+    from fastapi_admin_kit.redis import resolve_rate_guard
+
+    client_ip = get_client_ip(request)
+    token_guard = await resolve_rate_guard(
+        request,
+        limit=TOKEN_RATE_LIMIT,
+        window=TOKEN_RATE_WINDOW,
+        slot="_api_token_rate_limiter",
+    )
+    token_key = f"{client_ip}|{email.strip().lower()}"
+    await token_guard.check(token_key)
 
     auth_backend = getattr(request.app.state, "admin_auth_backend", None)
     if auth_backend is None:
@@ -251,10 +273,10 @@ async def obtain_token(
 
     user = await auth_backend.authenticate(email, password, db_session)
     if user is None:
-        _api_rate_limiter.record_attempt(email)
+        await token_guard.record_failure(token_key)
         raise HTTPException(status_code=401, detail="Invalid credentials.")
 
-    _api_rate_limiter.reset(email)
+    await token_guard.reset(token_key)
 
     secret_key = _get_secret_key(request)
     ttl = _get_token_ttl(request)
@@ -291,6 +313,20 @@ async def refresh_token(
     body: RefreshRequest,
 ) -> RefreshResponse:
     """POST /api/auth/refresh — exchange refresh token for new access token."""
+    # Unauthenticated endpoint that hits the DB and rotates tokens —
+    # rate-limit every request per client IP (S11).
+    from fastapi_admin_kit.redis import resolve_rate_guard
+
+    refresh_guard = await resolve_rate_guard(
+        request,
+        limit=REFRESH_RATE_LIMIT,
+        window=REFRESH_RATE_WINDOW,
+        slot="_api_refresh_rate_limiter",
+    )
+    refresh_key = f"ip:{get_client_ip(request)}"
+    await refresh_guard.check(refresh_key)
+    await refresh_guard.record_failure(refresh_key)
+
     db_session = get_db_session(request)
     if db_session is None:
         raise HTTPException(status_code=500, detail="Database session not available.")
@@ -366,6 +402,19 @@ async def api_logout(
     The presented access token is not server-revoked: it expires within
     the short ``access_token_ttl`` window. Clients must discard it.
     """
+    # Unauthenticated endpoint — rate-limit every request per client IP (S11).
+    from fastapi_admin_kit.redis import resolve_rate_guard
+
+    logout_guard = await resolve_rate_guard(
+        request,
+        limit=LOGOUT_RATE_LIMIT,
+        window=LOGOUT_RATE_WINDOW,
+        slot="_api_logout_rate_limiter",
+    )
+    logout_key = f"ip:{get_client_ip(request)}"
+    await logout_guard.check(logout_key)
+    await logout_guard.record_failure(logout_key)
+
     if body and body.refresh_token:
         db_session = get_db_session(request)
         if db_session:

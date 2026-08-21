@@ -444,6 +444,12 @@ def build_model_router(
         dependencies = list(opts.dependencies or [])
         if opts.permission:
             dependencies.append(Depends(require_permission(registered.table_name, opts.permission)))
+        elif not opts.allow_anonymous:
+            # Secure by default (S17): a custom endpoint without an explicit
+            # permission is NOT public — it requires authentication plus
+            # view permission on the model. Opt out with
+            # ``@endpoint(..., allow_anonymous=True)``.
+            dependencies.append(Depends(require_permission(registered.table_name, "view")))
 
         router.add_api_route(
             opts.path,

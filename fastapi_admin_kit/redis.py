@@ -10,6 +10,8 @@ gracefully:
 - :func:`get_login_guard` returns an async login rate-limit guard that uses
   the distributed Redis backend when available and the existing in-memory
   limiter otherwise.
+- :func:`resolve_rate_guard` is the generic form used for any rate-limit
+  purpose (login, API token, refresh, ...) with a per-purpose storage slot.
 
 Backward compatibility is preserved: without ``REDIS_URL`` the admin falls
 back to the in-memory :class:`~fastapi_admin_kit.auth.ratelimit.RateLimiter`
@@ -197,19 +199,19 @@ class InMemoryLoginRateGuard:
         self._limiter = limiter
 
     async def check(self, key: str) -> None:
-        check_rate_limit(self._limiter, key)
+        await check_rate_limit(self._limiter, key)
 
     async def is_rate_limited(self, key: str) -> bool:
-        return self._limiter.is_rate_limited(key)
+        return await self._limiter.is_rate_limited(key)
 
     async def record_failure(self, key: str) -> None:
-        self._limiter.record_attempt(key)
+        await self._limiter.record_attempt(key)
 
     async def reset(self, key: str) -> None:
-        self._limiter.reset(key)
+        await self._limiter.reset(key)
 
     async def remaining_seconds(self, key: str) -> int:
-        return self._limiter.remaining_seconds(key)
+        return await self._limiter.remaining_seconds(key)
 
 
 class RedisLoginRateGuard:
@@ -255,6 +257,51 @@ class RedisLoginRateGuard:
         return state.retry_after
 
 
+# Per-process fallback limiters used when no Admin instance is mounted.
+# See the auth.ratelimit module docstring for multi-worker implications.
+_fallback_limiters: dict[str, RateLimiter] = {}
+
+
+async def resolve_rate_guard(
+    request: Request,
+    *,
+    limit: int,
+    window: int,
+    slot: str,
+) -> LoginRateGuard:
+    """Resolve a rate-limit guard for *request*.
+
+    Uses the distributed Redis guard when Redis is enabled; otherwise falls
+    back to the in-memory limiter. In-memory state is stored on the admin
+    instance under *slot* (one limiter per purpose — login, API token,
+    refresh, ...). When no admin instance is mounted, a module-level
+    fallback keeps limiting functional for the process lifetime.
+
+    .. warning::
+
+        The in-memory fallback is per-process. See the ``auth.ratelimit``
+        module docstring for the multi-worker implications.
+    """
+    admin = getattr(request.app.state, "admin", None)
+    redis_active = bool(getattr(admin, "redis_enabled", False)) if admin else redis_enabled()
+    if redis_active:
+        from redis_fastapi import get_rate_limit_backend
+
+        backend = await get_rate_limit_backend(request)
+        return RedisLoginRateGuard(backend, limit=limit, window=window)
+
+    limiter = getattr(admin, slot, None) if admin is not None else None
+    if limiter is None:
+        limiter = _fallback_limiters.get(slot)
+        if limiter is None:
+            limiter = RateLimiter(max_attempts=limit, window_seconds=window)
+        if admin is not None:
+            setattr(admin, slot, limiter)
+        else:
+            _fallback_limiters[slot] = limiter
+    return InMemoryLoginRateGuard(limiter)
+
+
 async def get_login_guard(request: Request) -> LoginRateGuard:
     """FastAPI dependency resolving the login rate-limit guard for a request.
 
@@ -267,19 +314,12 @@ async def get_login_guard(request: Request) -> LoginRateGuard:
     ``FASTAPI_ADMIN_KIT_LOGIN_RATE_LIMIT`` / ``_WINDOW`` env vars.
     """
     admin = getattr(request.app.state, "admin", None)
-    redis_active = bool(getattr(admin, "redis_enabled", False)) if admin else redis_enabled()
     cache_config = getattr(admin, "cache_config", None)
     login_limit = getattr(cache_config, "login_rate_limit", LOGIN_RATE_LIMIT_DEFAULT)
     login_window = getattr(cache_config, "login_rate_window", LOGIN_RATE_WINDOW_DEFAULT)
-    if redis_active:
-        from redis_fastapi import get_rate_limit_backend
-
-        backend = await get_rate_limit_backend(request)
-        return RedisLoginRateGuard(backend, limit=login_limit, window=login_window)
-
-    limiter = getattr(admin, "_login_rate_limiter", None)
-    if limiter is None:
-        limiter = RateLimiter(max_attempts=login_limit, window_seconds=login_window)
-        if admin is not None:
-            setattr(admin, "_login_rate_limiter", limiter)
-    return InMemoryLoginRateGuard(limiter)
+    return await resolve_rate_guard(
+        request,
+        limit=login_limit,
+        window=login_window,
+        slot="_login_rate_limiter",
+    )

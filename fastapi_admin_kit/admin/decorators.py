@@ -26,6 +26,7 @@ class EndpointOptions:
     response_description: str = ""
     permission: str | None = None
     include_in_schema: bool = True
+    allow_anonymous: bool = False
 
     def __call__(self, func: Callable) -> Callable:
         func._admin_endpoint = self
@@ -109,6 +110,7 @@ def endpoint(
     response_description: str = "",
     permission: str | None = None,
     include_in_schema: bool = True,
+    allow_anonymous: bool = False,
 ) -> EndpointOptions:
     """Decorator to register a custom FastAPI endpoint on a ModelAdmin.
 
@@ -116,6 +118,11 @@ def endpoint(
     ``build_model_router()`` via ``APIRouter.add_api_route()``, keeping full
     FastAPI configuration support (path, methods, tags, dependencies,
     status code, response model, ...).
+
+    Secure by default (S17): when neither ``permission`` nor
+    ``allow_anonymous=True`` is given, the endpoint requires an
+    authenticated user with ``view`` permission on the model. Pass
+    ``allow_anonymous=True`` to expose a genuinely public endpoint.
 
     Usage::
 
@@ -145,4 +152,5 @@ def endpoint(
         response_description=response_description,
         permission=permission,
         include_in_schema=include_in_schema,
+        allow_anonymous=allow_anonymous,
     )
