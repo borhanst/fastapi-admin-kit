@@ -905,22 +905,41 @@ class SqlAlchemyDatabaseBackend:
             if table is not None and table.name == schema.table_name:
                 return mapper.class_
 
-        # Cross-dialect JSON type
+        # Cross-dialect JSON type: native JSON where supported (PostgreSQL,
+        # MySQL), TEXT with json.dumps/loads elsewhere (SQLite).
         from sqlalchemy import types
 
         class JSON(types.TypeDecorator):
             impl = Text
             cache_ok = True
 
+            def load_dialect_impl(self, dialect):
+                if dialect.name in ("postgresql", "mysql"):
+                    return dialect.type_descriptor(types.JSON())
+                return dialect.type_descriptor(Text())
+
+            def _uses_native_json(self, dialect) -> bool:
+                return dialect.name in ("postgresql", "mysql")
+
             def process_bind_param(self, value, dialect):
                 import json
 
-                return json.dumps(value) if value is not None else None
+                if value is None or isinstance(value, str):
+                    return value
+                if self._uses_native_json(dialect):
+                    return value
+                return json.dumps(value)
 
             def process_result_value(self, value, dialect):
                 import json
 
-                return json.loads(value) if value is not None else None
+                if value is None:
+                    return None
+                if self._uses_native_json(dialect):
+                    return value
+                if isinstance(value, str):
+                    return json.loads(value)
+                return value
 
         type_map: dict[str, type] = {
             "integer": Integer,
