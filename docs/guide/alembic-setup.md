@@ -46,6 +46,20 @@ target_metadata = [AdminBase.metadata]
 # target_metadata.append(AppBase.metadata)  # Add your models
 ```
 
+!!! warning "All admin tables are included by default"
+
+    `AdminBase.metadata` is a single shared `MetaData` registry: every model
+    imported from `fastapi_admin_kit.migrations.models` (users, roles,
+    permissions, junction tables, refresh tokens, audit log, TOTP, login
+    attempts, and the `admin_ai_*` tables) registers itself on it. Since
+    `.metadata` refers to that whole registry — not just one model — running
+    `alembic revision --autogenerate` will generate **all** admin tables at
+    once. It is **your responsibility** to specify which models you want.
+
+    For an initial `init db` migration this is usually exactly what you want.
+    If you only want a subset of the tables, see
+    [Tracking Only Specific Tables](#tracking-only-specific-tables).
+
 ## Manual Alembic Setup
 
 If you prefer manual setup or have an existing Alembic configuration:
@@ -267,6 +281,61 @@ Then autogenerate will include both admin and app tables:
 ```bash
 alembic revision --autogenerate -m "add product table"
 ```
+
+## Tracking Only Specific Tables
+
+Because `AdminBase.metadata` is a shared registry, autogenerate compares
+**every** admin table against your database. If you only want Alembic to track
+a subset of tables, use the `include_name` (or `include_object`) hook in
+`alembic/env.py`. Excluded tables are neither reflected nor compared, so no
+statements are generated for them at all.
+
+Filter by table name:
+
+```python
+def include_name(name, type_, parent_names):
+    if type_ == "table":
+        return name in {"admin_users", "admin_roles"}  # only these tables
+    return True
+
+
+# Pass it to every context.configure() call — both offline and online:
+def run_migrations_offline() -> None:
+    ...
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        include_name=include_name,
+        ...
+    )
+
+
+def do_run_migrations(connection: Connection) -> None:
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_name=include_name,
+    )
+```
+
+Or filter by object, which also lets you inspect the `Table` itself:
+
+```python
+TRACKED = {"admin_users", "admin_roles"}
+
+
+def include_object(obj, name, type_, reflected, compare_to):
+    if type_ == "table" and obj.metadata is AdminBase.metadata:
+        return name in TRACKED  # admin tables: only the tracked set
+    return True  # everything else (e.g. your app tables) is kept
+```
+
+The `include_object` variant keeps all of *your* app tables while restricting
+admin tables to the tracked set.
+
+Alternatively, you can simply delete unwanted statements from a generated
+migration before applying it — fine for one-offs, but the hooks keep every
+future autogenerate consistent.
 
 ## Junction Tables
 

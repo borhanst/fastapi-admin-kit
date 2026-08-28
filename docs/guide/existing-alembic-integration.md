@@ -17,6 +17,19 @@ from fastapi_admin_kit.migrations.models import Base as AdminBase
 target_metadata = [AppBase.metadata, AdminBase.metadata]
 ```
 
+!!! warning "All admin tables are included by default"
+
+    `AdminBase.metadata` is a single shared `MetaData` registry: every model
+    imported from `fastapi_admin_kit.migrations.models` registers itself on
+    it. Since `.metadata` refers to that whole registry — not just one model —
+    autogenerate will generate **all** admin tables at once. It is **your
+    responsibility** to specify which models you want.
+
+    For an initial migration this is usually exactly what you want. If you
+    only want a subset of the tables, filter them with an `include_name` /
+    `include_object` hook — see
+    [Tracking Only Specific Tables](alembic-setup.md#tracking-only-specific-tables).
+
 That's it! Now run:
 
 ```bash

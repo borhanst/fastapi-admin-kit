@@ -271,7 +271,13 @@ async def obtain_token(
     if db_session is None:
         raise HTTPException(status_code=500, detail="Database session not available.")
 
-    user = await auth_backend.authenticate(email, password, db_session)
+    query_adapter = getattr(request.app.state, "admin_query_adapter", None)
+    try:
+        user = await auth_backend.authenticate(
+            email, password, db_session, query_adapter=query_adapter
+        )
+    except TypeError:
+        user = await auth_backend.authenticate(email, password, db_session)
     if user is None:
         await token_guard.record_failure(token_key)
         raise HTTPException(status_code=401, detail="Invalid credentials.")

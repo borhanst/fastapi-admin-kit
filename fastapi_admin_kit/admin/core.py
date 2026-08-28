@@ -540,6 +540,22 @@ class Admin:
         ):
             backend_database._admin_database = database
 
+        # Inject backend into the auth backend so BuiltinAuthBackend can build
+        # queries via QueryBackend instead of importing sqlalchemy directly.
+        _auth_backend = getattr(getattr(self, "config", None), "auth", None)
+        _auth_backend = getattr(_auth_backend, "auth_backend", None) if _auth_backend else None
+        if _auth_backend is not None:
+            for attr, value in (
+                ("_backend", self.backend),
+                ("backend", self.backend),
+                ("_query_backend", getattr(self.backend, "query", None)),
+                ("query_backend", getattr(self.backend, "query", None)),
+            ):
+                try:
+                    setattr(_auth_backend, attr, value)
+                except Exception:
+                    pass
+
         # Inject backend's introspection adapter into the registry's ModelInspector
         self.registry.inspector._adapter = self.backend.introspection
 
@@ -1031,9 +1047,29 @@ class Admin:
             # backend-agnostic SessionBackend, exactly like the per-request one.
             db_session = session_factory()
 
-        # Inject auth_model into the backend if provided
-        if self.config.auth.auth_backend is not None and self.config.auth.auth_model is not None:
-            self.config.auth.auth_backend._auth_model = self.config.auth.auth_model
+        # Inject auth_model and backend into the auth backend for ORM-agnostic queries.
+        # BuiltinAuthBackend uses the QueryBackend (select/where/options) and the
+        # DatabaseBackend's session_adapter_class via as_session_backend, so it
+        # must not import sqlalchemy directly.
+        if self.config.auth.auth_backend is not None:
+            if self.config.auth.auth_model is not None:
+                try:
+                    self.config.auth.auth_backend._auth_model = self.config.auth.auth_model
+                except AttributeError:
+                    pass
+            # Wire the composite backend and its query adapter — supports both
+            # BuiltinAuthBackend (stores _backend/_query_backend) and any
+            # custom backend that exposes the same attributes.
+            for attr, value in (
+                ("_backend", self.backend),
+                ("backend", self.backend),
+                ("_query_backend", getattr(self.backend, "query", None)),
+                ("query_backend", getattr(self.backend, "query", None)),
+            ):
+                try:
+                    setattr(self.config.auth.auth_backend, attr, value)
+                except Exception:
+                    pass
 
         state = AdminState(
             engine=engine,
