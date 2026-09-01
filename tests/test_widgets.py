@@ -223,6 +223,168 @@ class TestSelectWidget:
         ctx = w.render_context(field, "x")
         assert ctx["choices"] is choices
 
+    def test_render_context_normalizes_enum_value(self):
+        import enum
+
+        from fastapi_admin_kit.widgets.inputs import SelectWidget
+
+        class Status(enum.Enum):
+            pending = "pending"
+            done = "done"
+
+        w = SelectWidget(choices=[("pending", "Pending"), ("done", "Done")])
+        field = _field()
+        ctx = w.render_context(field, Status.pending)
+        assert ctx["value"] == "pending"
+
+    def test_validate_accepts_enum_member(self):
+        import enum
+
+        from fastapi_admin_kit.widgets.inputs import SelectWidget
+
+        class Status(enum.Enum):
+            pending = "pending"
+
+        w = SelectWidget(choices=[("pending", "Pending")])
+        field = _field()
+        assert w.validate(Status.pending, field) == []
+
+
+class TestSelectWidgetEnumRoundTrip:
+    """Bug regression: enum fields with name != value (and StrEnum) must
+    round-trip through the form correctly.
+
+    - Plain ``Enum`` (e.g. ``ProviderName.GOOGLE = 'google'``): SA stores
+      ``.name`` (``'GOOGLE'``); the form must show that string and submit it
+      back as the Enum member.
+    - ``str, Enum`` (e.g. ``UserRole.user = 'user'``): SA stores ``.value``;
+      the form must show the value and submit it back as the Enum member.
+    - ``StrEnum`` (e.g. ``DeviceOS.ANDROID = 'android'``): SA stores
+      ``.value``; same expectations as str-Enum.
+    """
+
+    def test_plain_enum_member_renders_as_stored_name(self):
+        import enum
+
+        from fastapi_admin_kit.widgets.inputs import SelectWidget
+
+        class ProviderName(enum.Enum):
+            GOOGLE = "google"
+            APPLE = "apple"
+
+        w = SelectWidget(
+            choices=[("GOOGLE", "Google"), ("APPLE", "Apple")],
+            enum_class=ProviderName,
+        )
+        field = _field()
+        ctx = w.render_context(field, ProviderName.GOOGLE)
+        assert ctx["value"] == "GOOGLE"
+
+    def test_str_enum_member_renders_as_stored_value(self):
+        import enum
+
+        from fastapi_admin_kit.widgets.inputs import SelectWidget
+
+        class UserRole(str, enum.Enum):
+            admin = "admin"
+            user = "user"
+
+        w = SelectWidget(
+            choices=[("admin", "Admin"), ("user", "User")],
+            enum_class=UserRole,
+        )
+        field = _field()
+        ctx = w.render_context(field, UserRole.user)
+        assert ctx["value"] == "user"
+
+    def test_strenum_member_renders_as_stored_value(self):
+        import enum
+
+        from fastapi_admin_kit.widgets.inputs import SelectWidget
+
+        class DeviceOS(enum.StrEnum):
+            ANDROID = "android"
+            IOS = "ios"
+
+        w = SelectWidget(
+            choices=[("android", "Android"), ("ios", "Ios")],
+            enum_class=DeviceOS,
+        )
+        field = _field()
+        ctx = w.render_context(field, DeviceOS.ANDROID)
+        assert ctx["value"] == "android"
+
+    def test_plain_enum_parse_returns_member(self):
+        import enum
+
+        from fastapi_admin_kit.widgets.inputs import SelectWidget
+
+        class ProviderName(enum.Enum):
+            GOOGLE = "google"
+            APPLE = "apple"
+
+        w = SelectWidget(
+            choices=[("GOOGLE", "Google"), ("APPLE", "Apple")],
+            enum_class=ProviderName,
+        )
+        assert w.parse("GOOGLE") is ProviderName.GOOGLE
+        assert w.parse("APPLE") is ProviderName.APPLE
+
+    def test_str_enum_parse_returns_member(self):
+        import enum
+
+        from fastapi_admin_kit.widgets.inputs import SelectWidget
+
+        class UserRole(str, enum.Enum):
+            admin = "admin"
+            user = "user"
+
+        w = SelectWidget(
+            choices=[("admin", "Admin"), ("user", "User")],
+            enum_class=UserRole,
+        )
+        assert w.parse("user") is UserRole.user
+
+    def test_strenum_parse_returns_member(self):
+        import enum
+
+        from fastapi_admin_kit.widgets.inputs import SelectWidget
+
+        class DeviceOS(enum.StrEnum):
+            ANDROID = "android"
+            IOS = "ios"
+
+        w = SelectWidget(
+            choices=[("android", "Android"), ("ios", "Ios")],
+            enum_class=DeviceOS,
+        )
+        assert w.parse("android") is DeviceOS.ANDROID
+
+    def test_parse_empty_returns_none(self):
+        import enum
+
+        from fastapi_admin_kit.widgets.inputs import SelectWidget
+
+        class ProviderName(enum.Enum):
+            GOOGLE = "google"
+
+        w = SelectWidget(choices=[("GOOGLE", "Google")], enum_class=ProviderName)
+        assert w.parse("") is None
+        assert w.parse(None) is None
+
+    def test_validate_stored_value_for_str_enum(self):
+        import enum
+
+        from fastapi_admin_kit.widgets.inputs import SelectWidget
+
+        class UserRole(str, enum.Enum):
+            user = "user"
+
+        w = SelectWidget(choices=[("user", "User")], enum_class=UserRole)
+        field = _field()
+        # Passing a string in stored representation should be accepted.
+        assert w.validate("user", field) == []
+
 
 class TestDatePickerWidget:
     def test_parse_valid_date(self):

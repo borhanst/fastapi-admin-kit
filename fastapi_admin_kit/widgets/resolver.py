@@ -72,7 +72,8 @@ class WidgetResolver:
             choices = [(v, v.replace("_", " ").title()) for v in col_type.enums]
             from fastapi_admin_kit.widgets.inputs import SelectWidget
 
-            return SelectWidget(choices=choices)
+            enum_class = getattr(col_type, "enum_class", None)
+            return SelectWidget(choices=choices, enum_class=enum_class)
 
         # Try SQLAlchemy type match via registry
         for sa_type, widget_cls in self._registry.type_map.items():
