@@ -469,6 +469,52 @@ class TestMaterializeForeignKeyTypeDerivation:
 
 
 class TestAdminAuthModelValidation:
+    @pytest.fixture(autouse=True)
+    def _restore_builtin_mapper_state(self):
+        """Snapshot and restore the built-in ``Role`` / ``User`` mapper
+        properties around each test in this class.
+
+        ``Admin.create_tables()`` with a non-builtin ``auth_model`` calls
+        ``SqlAlchemyDatabaseBackend.adapt_auth_model``, which permanently
+        rebinds ``Role.users`` onto the custom auth_model class (and pops
+        ``User.roles``). Without this fixture, the first test that
+        triggers adaptation leaves the global ``Role`` mapper pointing at
+        a class defined in a per-test ``DeclarativeBase``, breaking every
+        later test in the session that creates a built-in ``User``.
+        """
+
+        from fastapi_admin_kit.migrations.models import Role as BuiltinRole
+        from fastapi_admin_kit.migrations.models import User as BuiltinUser
+        from fastapi_admin_kit.models.base import Base
+
+        role_props = dict(BuiltinRole.__mapper__._props)
+        user_props = dict(BuiltinUser.__mapper__._props)
+        junction = Base.metadata.tables.get("admin_user_roles")
+        junction_fk_targets = None
+        junction_user_col_type = None
+        if junction is not None and "user_id" in junction.c:
+            col = junction.c["user_id"]
+            junction_fk_targets = [fk.target_fullname for fk in list(col.foreign_keys)]
+            junction_user_col_type = col.type
+        try:
+            yield
+        finally:
+            BuiltinRole.__mapper__._props.clear()
+            BuiltinRole.__mapper__._props.update(role_props)
+            BuiltinUser.__mapper__._props.clear()
+            BuiltinUser.__mapper__._props.update(user_props)
+            if junction is not None and "user_id" in junction.c:
+                col = junction.c["user_id"]
+                if junction_fk_targets is not None:
+                    for fk in list(col.foreign_keys):
+                        col.foreign_keys.discard(fk)
+                    from sqlalchemy import ForeignKey
+
+                    for target in junction_fk_targets:
+                        col.foreign_keys.add(ForeignKey(target))
+                if junction_user_col_type is not None:
+                    col.type = junction_user_col_type
+
     def test_admin_accepts_auth_model_param(self):
         from fastapi_admin_kit.admin.core import Admin
 
