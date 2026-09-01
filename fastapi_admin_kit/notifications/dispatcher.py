@@ -18,12 +18,47 @@ from __future__ import annotations
 import inspect
 from typing import Any
 
-from sqlalchemy import String, cast, select
-
 from fastapi_admin_kit.db import get_db_session
-from fastapi_admin_kit.migrations.models import NotificationPreference, User
+from fastapi_admin_kit.migrations.models import NotificationPreference
 from fastapi_admin_kit.notifications.config import ChangeNotificationConfig
 from fastapi_admin_kit.notifications.service import NotificationService
+
+
+def _resolve_user_model(request: Any) -> Any:
+    """Return the user model that owns ``is_superuser``/``is_active``.
+
+    Prefers the project's ``auth_model`` when one is configured (so joins and
+    recipient lookups route to the project's user table). Falls back to the
+    built-in admin ``User`` when no custom auth_model is set.
+    """
+    builtin_user: Any | None
+    try:
+        from fastapi_admin_kit.migrations.models import User as BuiltinUser
+    except Exception:
+        builtin_user = None
+    else:
+        builtin_user = BuiltinUser
+
+    admin = getattr(request.app.state, "admin", None)
+    auth_model = getattr(admin, "auth_model", None) if admin is not None else None
+    if auth_model is not None and auth_model is not builtin_user:
+        return auth_model
+    return builtin_user
+
+
+def _get_query_backend(request: Any) -> Any:
+    """Return the configured :class:`QueryBackend` from app state.
+
+    Falls back to importing the SQLAlchemy adapter when the app has not yet
+    wired the backend (e.g. very early startup paths or test harnesses that
+    bypass ``Admin()``).
+    """
+    qb = getattr(request.app.state, "admin_query_adapter", None)
+    if qb is not None:
+        return qb
+    from fastapi_admin_kit.backends import SqlAlchemyQueryAdapter
+
+    return SqlAlchemyQueryAdapter()
 
 
 async def dispatch_model_change(
@@ -81,14 +116,18 @@ async def dispatch_model_change(
     #   - regular admins only if they have enabled NotificationPreference rows
     if recipients is None:
         session = get_db_session(request)
+        user_model = _resolve_user_model(request)
+        if user_model is None:
+            return
+        qb = _get_query_backend(request)
 
         recipients = []
-        superusers = await session.all(
-            select(User).where(
-                User.is_superuser.is_(True),
-                User.is_active.is_(True),
-            )
+        superusers_q = qb.where(
+            qb.select(user_model),
+            user_model.is_superuser.is_(True),
+            user_model.is_active.is_(True),
         )
+        superusers = await session.all(superusers_q)
         for user in superusers:
             recipients.append(
                 {
@@ -99,30 +138,33 @@ async def dispatch_model_change(
                 }
             )
 
-        pref_user_ids = set(
-            await session.all(
-                select(NotificationPreference.user_id).where(
-                    NotificationPreference.enabled.is_(True)
-                )
-            )
+        pref_q = qb.where(
+            qb.select(NotificationPreference),
+            NotificationPreference.enabled.is_(True),
         )
+        pref_user_ids = {
+            str(getattr(row, "user_id", None))
+            for row in await session.all(pref_q)
+            if getattr(row, "user_id", None) is not None
+        }
         if pref_user_ids:
-            regular = await session.all(
-                select(User).where(
-                    User.is_superuser.is_(False),
-                    User.is_active.is_(True),
-                    cast(User.id, String).in_(pref_user_ids),
-                )
+            # Pull active non-superusers and filter by pref in Python so the
+            # query stays backend-agnostic (no cast()/String literal needed).
+            regular_q = qb.where(
+                qb.select(user_model),
+                user_model.is_superuser.is_(False),
+                user_model.is_active.is_(True),
             )
-            for user in regular:
-                recipients.append(
-                    {
-                        "id": getattr(user, "id", None),
-                        "email": getattr(user, "email", None),
-                        "phone": getattr(user, "phone", None),
-                        "channels": cfg.default_channels,
-                    }
-                )
+            for user in await session.all(regular_q):
+                if str(getattr(user, "id", "")) in pref_user_ids:
+                    recipients.append(
+                        {
+                            "id": getattr(user, "id", None),
+                            "email": getattr(user, "email", None),
+                            "phone": getattr(user, "phone", None),
+                            "channels": cfg.default_channels,
+                        }
+                    )
 
     # Never notify the actor about their own change.
     if cfg.exclude_actor and actor_id is not None:
