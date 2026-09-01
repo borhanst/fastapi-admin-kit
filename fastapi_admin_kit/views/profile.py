@@ -177,7 +177,7 @@ async def password_change_post(
             ),
         )
 
-    user.hashed_password = User.hash_password(new_password)
+    user.password = User.hash_password(new_password)
     user.password_changed_at = datetime.now(UTC)
     await session.flush()
 

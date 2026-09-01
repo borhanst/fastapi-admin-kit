@@ -83,7 +83,7 @@ class AuthConfig:
                 f"{', '.join(missing)}. Every auth model must have id and email."
             )
 
-        # Required: is_active, is_superuser (can be provided by AutoModelMixin)
+        # Required: is_active, is_superuser (can be provided by AuthModelMixin)
         missing_flags = []
         if not hasattr(model, "is_active"):
             missing_flags.append("is_active")
@@ -92,7 +92,7 @@ class AuthConfig:
         if missing_flags:
             raise ConfigError(
                 f"auth_model {model.__name__!r} is missing: {', '.join(missing_flags)}. "
-                f"Use AutoModelMixin or add these columns to your model."
+                f"Use AuthModelMixin or add these columns to your model."
             )
 
         # Required: roles or role_ids (for RBAC)
@@ -100,19 +100,19 @@ class AuthConfig:
             raise ConfigError(
                 f"auth_model {model.__name__!r} has no 'roles' relationship or "
                 f"'role_ids' property. RBAC requires role lookups. "
-                f"Use AutoModelMixin or define a roles relationship on your model."
+                f"Use AuthModelMixin or define a roles relationship on your model."
             )
 
         # Check password-related attributes for authentication
         missing_auth = []
-        if not hasattr(model, "hashed_password"):
-            missing_auth.append("hashed_password")
+        if not hasattr(model, "password"):
+            missing_auth.append("password")
         if not callable(getattr(model, "verify_password", None)):
             missing_auth.append("verify_password()")
         if missing_auth:
             raise ConfigError(
                 f"auth_model {model.__name__!r} is missing password-related "
                 f"attributes: {', '.join(missing_auth)}. "
-                f"Use AutoModelMixin or implement hashed_password (str) and "
+                f"Use AuthModelMixin or implement password (str) and "
                 f"verify_password(password) -> bool."
             )

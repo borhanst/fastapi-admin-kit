@@ -47,6 +47,11 @@ def _hash_password(model: type, password: str) -> str:
         return password_manager.hash(password)
 
 
+_PASSWORD_COLUMNS = ("hashed_password", "password")
+_ACTIVE_COLUMNS = ("is_active", "active", "enabled")
+_SUPERUSER_COLUMNS = ("is_superuser", "is_admin", "is_staff", "superuser", "admin")
+
+
 def _import_auth_model(import_path: str) -> type:
     """Import an auth model class from a dotted module path."""
     module_path, _, class_name = import_path.rpartition(".")
@@ -106,24 +111,42 @@ async def _create_superuser(args: argparse.Namespace) -> None:
             columns, _ = introspection.inspect_model(UserModel)
             column_keys = {c.name for c in columns}
 
-            user_kwargs = {
+            password_col = next((c for c in _PASSWORD_COLUMNS if c in column_keys), None)
+            if password_col is None:
+                print(
+                    f"Error: auth model '{UserModel.__name__}' has no password column "
+                    f"(expected one of: {', '.join(_PASSWORD_COLUMNS)})."
+                )
+                await engine.dispose()
+                sys.exit(1)
+
+            active_col = next((c for c in _ACTIVE_COLUMNS if c in column_keys), None)
+            superuser_col = next((c for c in _SUPERUSER_COLUMNS if c in column_keys), None)
+            if superuser_col is None:
+                print(
+                    f"Warning: auth model '{UserModel.__name__}' has no superuser column "
+                    f"(looked for: {', '.join(_SUPERUSER_COLUMNS)}). "
+                    "The user will be created but will not be flagged as a superuser "
+                    "and will not be able to access the admin."
+                )
+
+            user_kwargs: dict = {
                 "email": args.email,
-                "is_superuser": True,
-                "is_active": True,
+                password_col: hashed_password,
             }
-            if "hashed_password" in column_keys:
-                user_kwargs["hashed_password"] = hashed_password
-            if "password" in column_keys:
-                user_kwargs["password"] = hashed_password
+            if active_col is not None:
+                user_kwargs[active_col] = True
+            if superuser_col is not None:
+                user_kwargs[superuser_col] = True
 
             user = UserModel(**user_kwargs)
             session.add(user)
             await session.commit()
             await session.refresh(user)
 
-            if not user.hashed_password:
-                print(f"Error: hashed_password was not saved for '{user.email}'.")
-                print("  Check that your custom model's hashed_password column is not nullable")
+            if not getattr(user, password_col, None):
+                print(f"Error: {password_col} was not saved for '{user.email}'.")
+                print("  Check that your custom model's password column is not nullable")
                 print("  and that no SQLAlchemy events or custom __init__ are overriding it.")
                 await engine.dispose()
                 sys.exit(1)
@@ -158,6 +181,8 @@ async def _list_users(args: argparse.Namespace) -> None:
     async with async_session() as session:
         from sqlalchemy import select
 
+        from fastapi_admin_kit.backends import SqlAlchemyIntrospectionAdapter
+
         UserModel = _import_auth_model(args.auth_model) if args.auth_model else None  # noqa: N806
         if UserModel is None:
             from fastapi_admin_kit.auth.models import User as UserModel
@@ -170,13 +195,34 @@ async def _list_users(args: argparse.Namespace) -> None:
             await engine.dispose()
             return
 
-        print(f"{'ID':<6} {'Email':<30} {'Name':<20} {'Superuser':<10} {'Active':<8}")
-        print("-" * 74)
+        introspection = SqlAlchemyIntrospectionAdapter()
+        columns, _ = introspection.inspect_model(UserModel)
+        column_keys = {c.name for c in columns}
+        superuser_col = next((c for c in _SUPERUSER_COLUMNS if c in column_keys), None)
+        active_col = next((c for c in _ACTIVE_COLUMNS if c in column_keys), None)
+        name_col = (
+            "full_name"
+            if "full_name" in column_keys
+            else ("name" if "name" in column_keys else None)
+        )
+
+        def _flag(val_col: str | None) -> str:
+            if val_col is None:
+                return "n/a"
+            v = getattr(user, val_col, None)
+            return "Yes" if v else "No"
+
+        name_header = "Name" if name_col else ""
+        name_width = 20 if name_col else 0
+        print(
+            f"{'ID':<6} {'Email':<30} {name_header:<{name_width}} {'Superuser':<10} {'Active':<8}"
+        )
+        print("-" * (74 + name_width))
         for user in users:
+            name_val = getattr(user, name_col, "") if name_col else ""
             print(
-                f"{user.id:<6} {user.email:<30} "
-                f"{'Yes' if user.is_superuser else 'No':<10} "
-                f"{'Yes' if user.is_active else 'No':<8}"
+                f"{user.id:<6} {user.email:<30} {str(name_val):<{name_width}} "
+                f"{_flag(superuser_col):<10} {_flag(active_col):<8}"
             )
 
     await engine.dispose()
@@ -205,6 +251,8 @@ async def _change_password(args: argparse.Namespace) -> None:
         with session.no_autoflush:
             from sqlalchemy import select
 
+            from fastapi_admin_kit.backends import SqlAlchemyIntrospectionAdapter
+
             UserModel = _import_auth_model(args.auth_model) if args.auth_model else None  # noqa: N806
             if UserModel is None:
                 from fastapi_admin_kit.auth.models import User as UserModel
@@ -217,7 +265,19 @@ async def _change_password(args: argparse.Namespace) -> None:
                 await engine.dispose()
                 sys.exit(1)
 
-            user.hashed_password = _hash_password(UserModel, args.password)
+            introspection = SqlAlchemyIntrospectionAdapter()
+            columns, _ = introspection.inspect_model(UserModel)
+            column_keys = {c.name for c in columns}
+            password_col = next((c for c in _PASSWORD_COLUMNS if c in column_keys), None)
+            if password_col is None:
+                print(
+                    f"Error: auth model '{UserModel.__name__}' has no password column "
+                    f"(expected one of: {', '.join(_PASSWORD_COLUMNS)})."
+                )
+                await engine.dispose()
+                sys.exit(1)
+
+            setattr(user, password_col, _hash_password(UserModel, args.password))
             await session.commit()
 
             print(f"Password changed successfully for '{user.email}'!")

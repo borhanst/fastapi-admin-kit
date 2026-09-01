@@ -20,7 +20,7 @@ USER_SCHEMA = Schema(
     fields=[
         Field("id", type="integer", primary_key=True, auto_increment=True),
         Field("email", type="string", max_length=255, unique=True, nullable=False),
-        Field("hashed_password", type="string", max_length=255, nullable=False),
+        Field("password", type="string", max_length=255, nullable=False),
         Field("full_name", type="string", max_length=255, nullable=True),
         Field("is_active", type="boolean", default=True),
         Field("is_superuser", type="boolean", default=False),

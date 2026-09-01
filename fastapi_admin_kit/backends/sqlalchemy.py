@@ -1213,7 +1213,7 @@ class SqlAlchemyDatabaseBackend:
 
             # Add verify_password method
             def verify_password(self, password: str) -> bool:
-                return password_manager.verify(password, self.hashed_password)
+                return password_manager.verify(password, self.password)
 
             model_class.verify_password = verify_password
 

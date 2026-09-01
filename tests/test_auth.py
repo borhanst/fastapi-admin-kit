@@ -50,7 +50,7 @@ def role(session):
 def user(session, role):
     user = User(
         email="admin@example.com",
-        hashed_password=User.hash_password("secret123"),
+        password=User.hash_password("secret123"),
         full_name="Test Admin",
         is_active=True,
     )
@@ -202,7 +202,7 @@ class TestBuiltinAuthBackend:
 
             user = User(
                 email="admin@example.com",
-                hashed_password=User.hash_password("secret123"),
+                password=User.hash_password("secret123"),
                 full_name="Test Admin",
                 is_active=True,
             )
@@ -224,7 +224,7 @@ class TestBuiltinAuthBackend:
 
             user = User(
                 email="admin@example.com",
-                hashed_password=User.hash_password("secret123"),
+                password=User.hash_password("secret123"),
                 full_name="Test Admin",
                 is_active=True,
             )
@@ -245,7 +245,7 @@ class TestBuiltinAuthBackend:
 
             user = User(
                 email="admin@example.com",
-                hashed_password=User.hash_password("secret123"),
+                password=User.hash_password("secret123"),
                 full_name="Test Admin",
                 is_active=True,
             )
@@ -266,7 +266,7 @@ class TestBuiltinAuthBackend:
 
             user = User(
                 email="admin@example.com",
-                hashed_password=User.hash_password("secret123"),
+                password=User.hash_password("secret123"),
                 full_name="Test Admin",
                 is_active=False,
             )
@@ -287,7 +287,7 @@ class TestBuiltinAuthBackend:
 
             user = User(
                 email="admin@example.com",
-                hashed_password=User.hash_password("secret123"),
+                password=User.hash_password("secret123"),
                 full_name="Test Admin",
                 is_active=True,
             )
@@ -317,7 +317,7 @@ class TestBuiltinAuthBackend:
 
             user = User(
                 email="admin@example.com",
-                hashed_password=User.hash_password("secret123"),
+                password=User.hash_password("secret123"),
                 full_name="Test Admin",
                 is_active=False,
             )
@@ -341,7 +341,7 @@ class TestPasswordHashing:
         hashed = User.hash_password("mypassword")
         user = User(
             email="test@test.com",
-            hashed_password=hashed,
+            password=hashed,
             is_active=True,
             is_superuser=False,
         )
@@ -351,7 +351,7 @@ class TestPasswordHashing:
         hashed = User.hash_password("mypassword")
         user = User(
             email="test@test.com",
-            hashed_password=hashed,
+            password=hashed,
             is_active=True,
             is_superuser=False,
         )

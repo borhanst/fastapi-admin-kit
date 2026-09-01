@@ -7,9 +7,8 @@ from typing import Any
 
 SENSITIVE_FIELDS: frozenset[str] = frozenset(
     {
-        "hashed_password",
-        "password_changed_at",
         "password",
+        "password_changed_at",
         "secret",
         "secret_key",
         "token",

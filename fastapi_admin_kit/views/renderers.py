@@ -246,7 +246,7 @@ class JSONBodyParser:
     ``FormValidator.run``, ``admin.validate_create/update`` and
     ``admin.process_form_data``), so business rules cannot be bypassed by
     speaking JSON instead of submitting the HTML form. Sensitive fields
-    (``hashed_password`` etc.) are rejected from the allowed field set.
+    (``password`` etc.) are rejected from the allowed field set.
     """
 
     def __init__(self, registered: RegisteredModel):

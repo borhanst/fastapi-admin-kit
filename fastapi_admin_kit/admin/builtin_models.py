@@ -108,7 +108,7 @@ class UserAdmin(ModelAdmin):
     list_display = ["id", "email", "full_name", "is_superuser", "is_active"]
     search_fields = ["email", "full_name"]
     inline_edit = True
-    exclude = ["hashed_password", "password_changed_at"]
+    exclude = ["password", "password_changed_at"]
     extra_fields = [
         ExtraField(
             name="password",
@@ -138,7 +138,7 @@ class UserAdmin(ModelAdmin):
         Prevents privilege escalation via mass assignment: a non-superuser
         with edit permission on admin_users must not grant themselves
         ``is_superuser``, toggle ``is_active``, change ``roles``, or write
-        secret columns (``hashed_password`` etc.) directly.
+        secret columns (``password`` etc.) directly.
         """
         if self._actor_is_superuser(request):
             return data
@@ -151,14 +151,14 @@ class UserAdmin(ModelAdmin):
     def prepare_create_data(self, data, request=None):
         from fastapi_admin_kit.auth.models import User
 
-        # Strip first so a direct hashed_password injection is removed,
-        # then derive hashed_password from the (validated) password field.
+        # Strip first so a direct password injection is removed,
+        # then derive password from the (validated) password field.
         self._strip_privileged_fields(data, request)
         password = data.pop("password", None)
         if password:
-            data["hashed_password"] = User.hash_password(password)
+            data["password"] = User.hash_password(password)
         else:
-            data["hashed_password"] = ""
+            data["password"] = ""
         return data
 
     def validate_create(self, data, request=None):

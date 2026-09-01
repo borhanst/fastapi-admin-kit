@@ -15,16 +15,16 @@ if TYPE_CHECKING:
 class AuthModelMixin:
     """Mixin for custom user models to work with admin's built-in RBAC.
 
-    Provides: hashed_password, is_active, is_superuser, last_login columns,
+    Provides: password, is_active, is_superuser, last_login columns,
     role_ids property, verify_password() and hash_password() methods.
 
     Usage::
 
-        from fastapi_admin_kit.auth.mixins import AutoModelMixin
+        from fastapi_admin_kit.auth.mixins import AuthModelMixin
         from fastapi_admin_kit.auth.models import admin_user_roles, Role
         from sqlalchemy.orm import relationship
 
-        class MyUser(AutoModelMixin, Base):
+        class MyUser(AuthModelMixin, Base):
             __tablename__ = "my_users"
 
             id = Column(Integer, primary_key=True)
@@ -37,7 +37,7 @@ class AuthModelMixin:
             )
 
     The mixin provides:
-    - ``hashed_password`` column (String 255)
+    - ``password`` column (String 255) — stores the hashed password
     - ``is_active`` column (Boolean, default True)
     - ``is_superuser`` column (Boolean, default False)
     - ``last_login`` column (DateTime with timezone, nullable)
@@ -50,7 +50,7 @@ class AuthModelMixin:
 
     _hasher: ClassVar[type | None] = None
 
-    hashed_password = Column(String(255))
+    password = Column(String(255))
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
     last_login = Column(DateTime(timezone=True), nullable=True)

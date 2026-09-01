@@ -183,7 +183,7 @@ class ImportBase(ABC):
     def allowed_import_fields(self) -> set[str]:
         """Model columns an import may write (S18).
 
-        Sensitive columns (``hashed_password``, tokens, ...) are always
+        Sensitive columns (``password``, tokens, ...) are always
         excluded. On user-like models (anything exposing ``is_superuser``)
         the privilege-granting fields are excluded too — a CSV upload must
         never mint administrators or toggle account flags.
