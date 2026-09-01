@@ -63,6 +63,24 @@ class AuthModelMixin:
             return []
         return [r.id for r in roles]
 
+    def __str__(self) -> str:
+        """Return a human-readable identifier for the user.
+
+        Prefers ``email``, falls back to ``username``, then to ``id``.
+        Prevents admin templates from dumping raw SQLAlchemy ``__repr__``
+        output when the inheriting model does not define ``__str__``.
+        """
+        email = getattr(self, "email", None)
+        if email:
+            return str(email)
+        username = getattr(self, "username", None)
+        if username:
+            return str(username)
+        return str(getattr(self, "id", ""))
+
+    def __repr__(self) -> str:
+        return f"<{type(self).__name__} {self.__str__()}>"
+
     def verify_password(self, password: str) -> bool:
         """Check if plaintext password matches the stored hash."""
         from fastapi_admin_kit.auth.password import password_manager
