@@ -84,8 +84,14 @@ async def _create_superuser(args: argparse.Namespace) -> None:
         connect_args = {"timeout": 30}
     engine = create_async_engine(database_url, poolclass=NullPool, connect_args=connect_args)
 
+    UserModel = _import_auth_model(args.auth_model) if args.auth_model else None  # noqa: N806
+    if UserModel is None:
+        from fastapi_admin_kit.auth.models import User as UserModel
+
+    target_metadata = getattr(UserModel, "metadata", Base.metadata)
+
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(target_metadata.create_all)
 
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -94,10 +100,6 @@ async def _create_superuser(args: argparse.Namespace) -> None:
             from sqlalchemy import select
 
             from fastapi_admin_kit.backends import SqlAlchemyIntrospectionAdapter
-
-            UserModel = _import_auth_model(args.auth_model) if args.auth_model else None  # noqa: N806
-            if UserModel is None:
-                from fastapi_admin_kit.auth.models import User as UserModel
 
             result = await session.execute(select(UserModel).where(UserModel.email == args.email))
             existing = result.scalar_one_or_none()
@@ -138,6 +140,10 @@ async def _create_superuser(args: argparse.Namespace) -> None:
                 user_kwargs[active_col] = True
             if superuser_col is not None:
                 user_kwargs[superuser_col] = True
+            if args.name and "full_name" in column_keys:
+                user_kwargs["full_name"] = args.name
+            elif args.name and "name" in column_keys:
+                user_kwargs["name"] = args.name
 
             user = UserModel(**user_kwargs)
             session.add(user)
@@ -173,8 +179,14 @@ async def _list_users(args: argparse.Namespace) -> None:
         connect_args = {"timeout": 30}
     engine = create_async_engine(database_url, poolclass=NullPool, connect_args=connect_args)
 
+    UserModel = _import_auth_model(args.auth_model) if args.auth_model else None  # noqa: N806
+    if UserModel is None:
+        from fastapi_admin_kit.auth.models import User as UserModel
+
+    target_metadata = getattr(UserModel, "metadata", Base.metadata)
+
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(target_metadata.create_all)
 
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -182,10 +194,6 @@ async def _list_users(args: argparse.Namespace) -> None:
         from sqlalchemy import select
 
         from fastapi_admin_kit.backends import SqlAlchemyIntrospectionAdapter
-
-        UserModel = _import_auth_model(args.auth_model) if args.auth_model else None  # noqa: N806
-        if UserModel is None:
-            from fastapi_admin_kit.auth.models import User as UserModel
 
         result = await session.execute(select(UserModel))
         users = result.scalars().all()
@@ -242,8 +250,14 @@ async def _change_password(args: argparse.Namespace) -> None:
         connect_args = {"timeout": 30}
     engine = create_async_engine(database_url, poolclass=NullPool, connect_args=connect_args)
 
+    UserModel = _import_auth_model(args.auth_model) if args.auth_model else None  # noqa: N806
+    if UserModel is None:
+        from fastapi_admin_kit.auth.models import User as UserModel
+
+    target_metadata = getattr(UserModel, "metadata", Base.metadata)
+
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(target_metadata.create_all)
 
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -252,10 +266,6 @@ async def _change_password(args: argparse.Namespace) -> None:
             from sqlalchemy import select
 
             from fastapi_admin_kit.backends import SqlAlchemyIntrospectionAdapter
-
-            UserModel = _import_auth_model(args.auth_model) if args.auth_model else None  # noqa: N806
-            if UserModel is None:
-                from fastapi_admin_kit.auth.models import User as UserModel
 
             result = await session.execute(select(UserModel).where(UserModel.email == args.email))
             user = result.scalar_one_or_none()
