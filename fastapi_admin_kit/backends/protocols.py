@@ -278,3 +278,21 @@ class DatabaseBackend(Protocol):
         directly and never needs this.
         """
         ...
+
+    def adapt_auth_model(self, auth_model: type) -> None:
+        """Retarget built-in user relations at a custom ``auth_model``.
+
+        Called once during ``Admin.create_tables()`` when a custom
+        ``auth_model`` is configured. Backends should:
+
+        - retarget the built-in ``admin_user_roles`` user-side foreign key to
+          the auth_model's table,
+        - mirror the auth_model's primary-key type onto the
+          ``admin_user_roles.user_id`` column,
+        - rebind any M2M relationships that pointed at the built-in
+          ``admin_users`` model (e.g. ``Role.users``) so joins route to the
+          custom auth_model.
+
+        Non-SQLA backends (memory, future ODMs) may no-op.
+        """
+        ...

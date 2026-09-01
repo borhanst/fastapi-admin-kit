@@ -1481,6 +1481,18 @@ class Admin:
         """Return the names of built-in tables that should NOT be created when
         a custom ``auth_model`` is configured.
 
+        When the project supplies its own user model (``auth_model=``), the
+        built-in ``admin_users`` table is skipped — the custom auth_model
+        is the source of truth for user identity. ``admin_user_roles`` is
+        kept and its ``user_id`` foreign key is retargeted to the custom
+        auth_model's table at create time (see
+        ``SqlAlchemyDatabaseBackend.adapt_auth_model``) so the junction
+        links roles to the project's own user rows.
+
+        The role/permission system (``admin_roles``,
+        ``admin_role_permissions``, ``admin_permissions``) is kept so the
+        admin can still manage granular per-table access.
+
         Returns an empty tuple when the built-in ``User`` is in use (default
         installation) or when no ``auth_model`` is configured.
         """
@@ -1489,7 +1501,7 @@ class Admin:
         auth_model = self.config.auth.auth_model
         if auth_model is None or auth_model is BuiltinUser:
             return ()
-        return ("admin_users", "admin_user_roles")
+        return ("admin_users",)
 
     async def create_tables(self) -> None:
         """Create all admin database tables, correctly handling a custom
@@ -1522,6 +1534,21 @@ class Admin:
             logger.info("SKIP_CREATE_TABLES=true: skipping admin table creation")
             return
         self._adapt_builtin_user_id_columns()
+        # Ask the configured backend to retarget the built-in user
+        # relations (admin_user_roles FK, Role.users M2M, etc.) at the
+        # custom auth_model. Each backend implements this against its own
+        # ORM primitives; non-SQLA backends may no-op.
+        backend = self.backend
+        database_backend = getattr(backend, "database", None) if backend is not None else None
+        adapt = getattr(database_backend, "adapt_auth_model", None)
+        if adapt is not None and self.config.auth.auth_model is not None:
+            try:
+                from fastapi_admin_kit.migrations.models import User as BuiltinUser
+
+                if self.config.auth.auth_model is not BuiltinUser:
+                    adapt(self.config.auth.auth_model)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("adapt_auth_model failed: %s", exc)
         extra_exclude = list(self._builtin_user_tables_to_skip())
         if extra_exclude:
             logger.info(
@@ -1607,6 +1634,18 @@ class Admin:
             )
             col.type = new_type
 
+        # Note: the built-in ``admin_users`` table is excluded from
+        # ``create_all`` at the call site in ``setup()`` via
+        # ``AdminDatabase._create_tables(extra_exclude_tables=...)`` — we do
+        # NOT remove it from ``AdminBase.metadata`` here because the
+        # ``FacadeDict`` exposed by ``Base.metadata`` is immutable.
+        #
+        # FK retargeting on ``admin_user_roles`` and the ``Role.users`` M2M
+        # re-binding are delegated to the configured backend via
+        # ``backend.adapt_auth_model(auth_model)`` — this keeps ``core.py``
+        # ORM-agnostic. Backends (SQLAlchemy) implement the actual column
+        # and relationship mutations; memory/no-op backends can ignore.
+
         # Note: the built-in ``admin_users`` and ``admin_user_roles`` tables
         # are excluded from ``create_all`` at the call site in ``setup()`` via
         # ``AdminDatabase._create_tables(extra_exclude_tables=...)`` — we do
@@ -1625,12 +1664,21 @@ class Admin:
         three user-facing AI tables so they never leak into the sidebar/routes.
         When notifications are disabled, also excludes the notification tables
         so the "notifications" sidebar group never appears.
+
+        When a custom ``auth_model`` is configured, also excludes the built-in
+        ``admin_users`` model from auto-discovery (it is never created when a
+        custom auth_model is set — see ``_builtin_user_tables_to_skip``). The
+        ``admin_user_roles`` junction table is NOT excluded: it is kept and its
+        ``user_id`` foreign key is retargeted to the custom auth_model's table
+        so role relationships still work end-to-end.
         """
         excluded = set(INTERNAL_TABLE_NAMES)  # incl. admin_ai_attachments
         if not self._ai_enabled:
             excluded |= AI_TABLE_NAMES
         if not self._enable_notification:
             excluded |= NOTIFICATION_TABLE_NAMES
+        if self._builtin_user_tables_to_skip():
+            excluded |= {"admin_users"}
         return frozenset(excluded)
 
     def _add_ai_nav_group(self) -> None:

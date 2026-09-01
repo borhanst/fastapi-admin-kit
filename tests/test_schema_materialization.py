@@ -516,8 +516,10 @@ class TestAdminAuthModelValidation:
 
     def test_custom_auth_model_skips_builtin_user_tables(self):
         """When a custom auth_model is supplied, the built-in ``admin_users``
-        and ``admin_user_roles`` tables are reported as 'skip' so that
-        ``create_all`` does not emit DDL for the default user schema.
+        table is reported as 'skip' so that ``create_all`` does not emit
+        DDL for the default user schema. ``admin_user_roles`` is kept
+        and its ``user_id`` foreign key is retargeted to the custom
+        auth_model's table at create time.
         """
         from fastapi_admin_kit.admin.core import Admin
 
@@ -535,7 +537,7 @@ class TestAdminAuthModelValidation:
         admin = Admin(auth_model=CustomUser)
         skipped = admin._builtin_user_tables_to_skip()
         assert "admin_users" in skipped
-        assert "admin_user_roles" in skipped
+        assert "admin_user_roles" not in skipped
 
     def test_default_user_tables_kept_when_no_auth_model(self):
         """Default installation (auth_model is None) must NOT skip the
@@ -559,9 +561,11 @@ class TestAdminAuthModelValidation:
     @pytest.mark.asyncio
     async def test_create_tables_skips_builtin_user_when_custom_auth_model(self, monkeypatch):
         """``admin.create_tables()`` must NOT create the built-in
-        ``admin_users`` / ``admin_user_roles`` tables when a custom
-        ``auth_model`` is supplied (this is what callers in a FastAPI
-        ``lifespan`` rely on)."""
+        ``admin_users`` table when a custom ``auth_model`` is supplied
+        (this is what callers in a FastAPI ``lifespan`` rely on).
+        ``admin_user_roles`` IS created with its ``user_id`` FK
+        retargeted to the custom auth_model's table.
+        """
         from sqlalchemy import Column, Integer, String
         from sqlalchemy.orm import DeclarativeBase
 
@@ -588,7 +592,7 @@ class TestAdminAuthModelValidation:
         admin = Admin(auth_model=CustomUser)
 
         # Capture the ``tables=`` argument handed to ``create_all`` so we can
-        # assert the built-in user tables are excluded. We mock the engine
+        # assert the built-in user table is excluded. We mock the engine
         # and metadata by passing a fake backend.
         captured: dict = {}
 
@@ -616,7 +620,11 @@ class TestAdminAuthModelValidation:
         )
         emitted = {t.name for t in captured["tables"]}
         assert "admin_users" not in emitted
-        assert "admin_user_roles" not in emitted
+        # admin_user_roles IS emitted (with retargeted FK)
+        assert "admin_user_roles" in emitted
+        # The cloned auth_model table is excluded from the create list
+        # (project's own metadata owns the real table).
+        assert "users" not in emitted
         # And nothing from the expected skip leaked in.
         expected_skip = set(admin._builtin_user_tables_to_skip())
         assert emitted.isdisjoint(expected_skip)

@@ -11,6 +11,7 @@ Contains:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +21,8 @@ from fastapi_admin_kit.inspection.types import ColumnMeta, RelationMeta
 
 if TYPE_CHECKING:
     from fastapi_admin_kit.admin.admin_database import AdminDatabase
+
+logger = logging.getLogger(__name__)
 
 
 def _is_async_session(session: Any) -> bool:
@@ -846,6 +849,203 @@ class SqlAlchemyDatabaseBackend:
         """Class wrapping a raw connection into a :class:`SessionBackend`."""
         return SqlAlchemySessionAdapter
 
+    def adapt_auth_model(self, auth_model: type) -> None:
+        """Adapt built-in admin metadata for a custom ``auth_model``.
+
+        Called by ``Admin.create_tables()`` when a project supplies its own
+        user model. Performs the following ORM-specific adaptations so
+        the built-in ``admin_user_roles`` junction links roles to the
+        project's own user table (instead of the built-in ``admin_users``
+        which is being skipped):
+
+        1. Creates a minimal "shadow" table reference for the auth_model
+           inside ``AdminBase.metadata`` (same table name + PK column),
+           so the FK on ``admin_user_roles.user_id`` can resolve within
+           the same ``MetaData`` during ``create_all`` sort. The shadow
+           is NOT created in the database — the project's own metadata
+           owns the real table. The shadow's name is recorded on the
+           backend instance so ``AdminDatabase._create_tables`` can drop
+           it from the ``create_all`` table list.
+        2. Retargets the ``admin_user_roles.user_id`` foreign key from
+           ``admin_users.id`` to ``<auth_model.__tablename__>.<pk>`` and
+           mirrors the PK column type. Also drops the old
+           ``ForeignKeyConstraint`` from the junction table's
+           ``constraints`` collection (DDL is emitted from constraints,
+           not just ``col.foreign_keys``).
+        3. Rebinds the ``Role.users`` M2M relationship onto
+           *auth_model* so ORM joins route to the project user table.
+        4. Re-types the built-in log-pattern ``user_id`` columns on
+           log-style tables (``admin_audit_log``, notifications, etc.) to
+           match the custom auth_model's primary-key type.
+        """
+        from sqlalchemy import Column as SA_Column
+        from sqlalchemy import ForeignKeyConstraint
+        from sqlalchemy import Table as SA_Table
+        from sqlalchemy import inspect as sa_inspect
+        from sqlalchemy.orm import relationship
+
+        from fastapi_admin_kit.migrations.models import (
+            Role,
+        )
+        from fastapi_admin_kit.migrations.models import (
+            User as BuiltinUser,
+        )
+
+        if auth_model is BuiltinUser:
+            return
+
+        metadata = BuiltinUser.__table__.metadata
+
+        pk_cols = sa_inspect(auth_model).primary_key
+        if not pk_cols:
+            return
+        pk_col = pk_cols[0]
+        new_type = pk_col.type
+        auth_table_name = auth_model.__tablename__
+
+        # 1. Ensure the auth_model's table is resolvable within
+        #    AdminBase.metadata (needed for sort_tables_and_constraints
+        #    to order admin_user_roles after its FK target). If the table
+        #    is already in admin metadata (e.g. the project puts its User
+        #    model on AdminBase), reuse it. Otherwise create a minimal
+        #    shadow table with the same name + PK column.
+        if auth_table_name not in metadata.tables:
+            SA_Table(
+                auth_table_name,
+                metadata,
+                SA_Column(pk_col.name, new_type, primary_key=True),
+            )
+        # Record so AdminDatabase._create_tables can drop the shadow from
+        # the create_all table list (it must not be emitted as DDL).
+        # Store on the AdminDatabase instance if available so the
+        # filtering works regardless of backend instance.
+        db_inst = getattr(self, "_admin_database", None)
+        if db_inst is not None:
+            existing = getattr(db_inst, "_cloned_auth_tables", None)
+            if existing is None:
+                existing = set()
+                db_inst._cloned_auth_tables = existing
+            existing.add(auth_table_name)
+        if not hasattr(self, "_cloned_auth_tables"):
+            self._cloned_auth_tables = set()
+        self._cloned_auth_tables.add(auth_table_name)
+
+        # 2. Retarget the FK on admin_user_roles.user_id
+        junction = metadata.tables.get("admin_user_roles")
+        if junction is not None and "user_id" in junction.c:
+            col = junction.c["user_id"]
+
+            # Drop the old auto-generated ForeignKeyConstraint from the
+            # table's constraints collection (DDL is emitted from
+            # constraints, not from col.foreign_keys). Also remove the
+            # FK objects from the column's foreign_keys set AND from the
+            # table's foreign_keys set — ``Table.foreign_keys`` is a
+            # plain ``set`` that aggregates from columns + constraints,
+            # and stale entries there confuse the M2M relationship
+            # configuration in step 3.
+            old_constraints = [
+                c
+                for c in list(junction.constraints)
+                if isinstance(c, ForeignKeyConstraint)
+                and any(fk.target_fullname.startswith("admin_users") for fk in c.elements)
+            ]
+            for constraint in old_constraints:
+                junction.constraints.remove(constraint)
+                for fk in list(constraint.elements):
+                    junction.foreign_keys.discard(fk)
+                    if fk in col.foreign_keys:
+                        col.foreign_keys.discard(fk)
+            # Belt-and-braces: clear any stale admin_users FK from the
+            # table-level set.
+            for fk in list(junction.foreign_keys):
+                if fk.target_fullname.startswith("admin_users"):
+                    junction.foreign_keys.discard(fk)
+
+            # Add a single ForeignKeyConstraint — its element FK will be
+            # auto-registered on the column's foreign_keys set, so we do
+            # NOT add it manually (that would produce duplicates).
+            new_constraint = ForeignKeyConstraint(
+                ["user_id"],
+                [f"{auth_table_name}.{pk_col.name}"],
+                ondelete="CASCADE",
+            )
+            new_constraint.parent = junction
+            junction.append_constraint(new_constraint)
+            col.type = new_type
+            logger.debug(
+                "adapt_auth_model: admin_user_roles.user_id -> %s.%s (%r)",
+                auth_table_name,
+                pk_col.name,
+                new_type,
+            )
+
+        # 3. Rebind Role.users M2M to the custom auth_model
+        if hasattr(Role, "users"):
+            junction_table = metadata.tables.get("admin_user_roles")
+            auth_has_roles = hasattr(auth_model, "roles")
+            # Provide explicit primaryjoin/secondaryjoin so SQLAlchemy
+            # does not have to auto-detect the join across the
+            # secondary table — the FK on ``admin_user_roles.user_id``
+            # now points to a shadow table in admin metadata, which
+            # makes the auto-detection unreliable.
+            Role.__mapper__.add_property(
+                "users",
+                relationship(
+                    auth_model,
+                    secondary=junction_table,
+                    primaryjoin=Role.id == junction_table.c.role_id,
+                    secondaryjoin=auth_model.__table__.c[pk_col.name] == junction_table.c.user_id,
+                    back_populates="roles" if auth_has_roles else None,
+                ),
+            )
+            if auth_has_roles:
+                try:
+                    auth_model.__mapper__.add_property(
+                        "roles",
+                        relationship(
+                            Role,
+                            secondary=junction_table,
+                            primaryjoin=auth_model.__table__.c[pk_col.name]
+                            == junction_table.c.user_id,
+                            secondaryjoin=Role.id == junction_table.c.role_id,
+                            back_populates="users",
+                        ),
+                    )
+                except Exception as exc:  # pragma: no cover
+                    logger.debug(
+                        "adapt_auth_model: could not add auth_model.roles back-pop: %s",
+                        exc,
+                    )
+            logger.debug("adapt_auth_model: Role.users rebound to %s", auth_model)
+
+        # 3b. The built-in User model still has a ``roles`` M2M
+        # referencing ``admin_user_roles``. Since ``admin_users`` is
+        # being skipped and the junction's FK now points to the custom
+        # auth_model, that relationship can no longer auto-resolve.
+        # Drop it from the mapper so SQLAlchemy does not blow up at
+        # mapper configuration time. The built-in User is not used in
+        # the DB when a custom auth_model is configured.
+        if "roles" in BuiltinUser.__mapper__._props:
+            BuiltinUser.__mapper__._props.pop("roles", None)
+
+        # 4. Re-type log-pattern user_id columns
+        log_tables = [
+            "admin_audit_log",
+            "admin_user_permissions",
+            "admin_refresh_tokens",
+            "admin_user_totp",
+            "admin_notifications",
+            "admin_notification_preferences",
+            "admin_notification_logs",
+            "admin_ai_usage_log",
+            "admin_ai_conversations",
+        ]
+        for table_name in log_tables:
+            table = metadata.tables.get(table_name)
+            if table is None or "user_id" not in table.c:
+                continue
+            table.c["user_id"].type = new_type
+
     def materialize(
         self,
         schema: Any,
@@ -989,7 +1189,9 @@ class SqlAlchemyDatabaseBackend:
                     table = md[target]
                 if table is None:
                     if schemas is None:
-                        from fastapi_admin_kit.schemas.builtin import BUILTIN_SCHEMAS
+                        from fastapi_admin_kit.schemas.builtin import (
+                            BUILTIN_SCHEMAS,
+                        )
                     reg = schemas if schemas is not None else BUILTIN_SCHEMAS
                     if reg and target in reg:
                         pk = reg[target].get_pk_field()
@@ -1096,7 +1298,12 @@ class SqlAlchemyDatabaseBackend:
 
                 # Use string-based FK to allow target table to not exist yet
                 columns.append(
-                    Column(f.name, sa_type, ForeignKey(f"{fk_target}.id", use_alter=True), **kwargs)
+                    Column(
+                        f.name,
+                        sa_type,
+                        ForeignKey(f"{fk_target}.id", use_alter=True),
+                        **kwargs,
+                    )
                 )
             else:
                 columns.append(Column(f.name, sa_type, **kwargs))
@@ -1257,7 +1464,12 @@ class SqlAlchemyDatabaseBackend:
                     table_name, action = parts
 
                 attr = f"can_{action}"
-                if attr not in ("can_view", "can_create", "can_edit", "can_delete"):
+                if attr not in (
+                    "can_view",
+                    "can_create",
+                    "can_edit",
+                    "can_delete",
+                ):
                     return False
 
                 role_ids = self.role_ids
@@ -1279,7 +1491,10 @@ class SqlAlchemyDatabaseBackend:
 
                 result = await session.execute(
                     select(Permission)
-                    .join(UserPermission, UserPermission.permission_id == Permission.id)
+                    .join(
+                        UserPermission,
+                        UserPermission.permission_id == Permission.id,
+                    )
                     .where(UserPermission.user_id == self.id)
                 )
                 for perm in result.scalars():

@@ -94,6 +94,21 @@ class AdminDatabase:
 
         exclude = set(extra_exclude_tables or ())
 
+        # If the configured backend cloned the project's auth_model table
+        # into AdminBase.metadata (so its FK can resolve within the same
+        # MetaData), drop the clone from the create_all table list — the
+        # project's own metadata owns the real table and DDL for it
+        # would conflict. Check both the backend and the database
+        # instance for the cloned names (the backend stores them on the
+        # database when available, which is the more reliable path for
+        # tests that swap the backend).
+        cloned = set()
+        backend = getattr(self, "_backend", None)
+        if backend is not None:
+            cloned = getattr(backend, "_cloned_auth_tables", set()) or set()
+        cloned |= getattr(self, "_cloned_auth_tables", set()) or set()
+        exclude |= cloned
+
         def _filtered(metadata: Any) -> Any:
             drop = exclude | (set() if include_ai_tables else AI_TABLE_NAMES)
             if not drop:
