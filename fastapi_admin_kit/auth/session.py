@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import datetime as _dt
+import json as _json
 import time
+import uuid as _uuid
 from abc import ABC, abstractmethod
+from decimal import Decimal
 from typing import Any
 
 from itsdangerous import (
@@ -11,6 +15,38 @@ from itsdangerous import (
     SignatureExpired,
     URLSafeTimedSerializer,
 )
+
+
+def _json_default(obj: Any) -> Any:
+    """Coerce non-stdlib types into JSON-safe values when serializing
+    session payloads.
+
+    Custom ``auth_model`` implementations may use ``UUID``, ``datetime``,
+    ``Decimal``, or other non-JSON-native types for the user primary key
+    or session metadata. Without this handler, ``json.dumps`` raises
+    ``TypeError: Object of type UUID is not JSON serializable`` at the
+    first ``session_backend.encode({"user_id": user.id, ...})`` call.
+    """
+    if isinstance(obj, _uuid.UUID):
+        return str(obj)
+    if isinstance(obj, _dt.datetime | _dt.date | _dt.time):
+        return obj.isoformat()
+    if isinstance(obj, _dt.timedelta):
+        return obj.total_seconds()
+    if isinstance(obj, Decimal):
+        return str(obj)
+    if isinstance(obj, set | frozenset):
+        return list(obj)
+    if isinstance(obj, bytes):
+        return obj.decode("utf-8", errors="replace")
+    # Last resort: stringify so we never crash the login path. The receiving
+    # side is responsible for knowing what shape to expect.
+    return str(obj)
+
+
+# Sanity-check at import time: ensure ``json`` module is what itsdangerous
+# will resolve (it picks ``json`` when no ``serializer=`` is given).
+_ = _json
 
 
 class SessionBackend(ABC):
@@ -46,10 +82,28 @@ class SignedCookieSessionBackend(SessionBackend):
         secure: bool = False,
     ) -> None:
         self._secret_key = secret_key
-        self._serializer = URLSafeTimedSerializer(secret_key, salt="admin-session")
+        # Custom JSON module lets us encode UUIDs, datetimes, Decimals, etc.
+        # that may appear in a session payload when a project supplies a
+        # custom ``auth_model`` whose ``id`` is a UUID (e.g. SQLModel /
+        # SQLAlchemy ``Uuid`` PK). Without this, ``json.dumps`` raises
+        # ``TypeError: Object of type UUID is not JSON serializable`` the
+        # first time a user with a UUID PK tries to log in.
+        #
+        # ``itsdangerous`` forwards ``**serializer_kwargs`` to ``dumps``, so
+        # passing ``default=_json_default`` is the supported way to register
+        # a custom encoder without subclassing.
+        self._serializer = URLSafeTimedSerializer(
+            secret_key,
+            salt="admin-session",
+            serializer_kwargs={"default": _json_default},
+        )
         # Separate salt + short TTL: a pending-2FA token can never be
         # replayed as a full session cookie (different signing domain).
-        self._mfa_serializer = URLSafeTimedSerializer(secret_key, salt="admin-2fa")
+        self._mfa_serializer = URLSafeTimedSerializer(
+            secret_key,
+            salt="admin-2fa",
+            serializer_kwargs={"default": _json_default},
+        )
         self._mfa_ttl = 300
         self._session_ttl = session_ttl
         self.cookie_name = cookie_name

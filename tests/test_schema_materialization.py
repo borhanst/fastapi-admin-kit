@@ -360,6 +360,109 @@ class TestSqlAlchemyMaterialize:
         assert hasattr(model, "active")
 
 
+class TestMaterializeForeignKeyTypeDerivation:
+    """FK columns must mirror the referenced model's primary-key type.
+
+    Fixes the case where a relation to the User model (or any model) declared
+    its ``id`` as a UUID but the ``user_id`` FK column was created as an
+    integer/string. The FK type is now derived from the target PK type.
+    """
+
+    def _backend(self):
+        from sqlalchemy.orm import declarative_base
+
+        from fastapi_admin_kit.admin.admin_database import AdminDatabase
+        from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyDatabaseBackend
+
+        # A fresh declarative base avoids the shared, pre-materialized built-in
+        # ``admin_users`` (which has an integer id) interfering with these tests.
+        Base = declarative_base()  # noqa: N806
+        db = AdminDatabase.__new__(AdminDatabase)
+        return SqlAlchemyDatabaseBackend(admin_database=db), Base
+
+    def test_fk_mirrors_uuid_user_id(self):
+        from sqlalchemy.types import Uuid
+
+        backend, Base = self._backend()  # noqa: N806
+
+        user_schema = Schema(
+            table_name="admin_users",
+            fields=[
+                Field("id", type="uuid", primary_key=True),
+                Field("email", type="string", max_length=255, nullable=False),
+            ],
+        )
+        # FK column declared with a mismatching type (integer) on purpose.
+        post_schema = Schema(
+            table_name="posts",
+            fields=[
+                Field("id", type="integer", primary_key=True),
+                Field("user_id", type="integer", nullable=False),
+            ],
+            relations=[
+                Relation(name="user", target="admin_users", type="many_to_one"),
+            ],
+        )
+
+        backend.materialize(user_schema, base=Base)
+        Post = backend.materialize(post_schema, base=Base, schemas={"admin_users": user_schema})  # noqa: N806
+
+        user_id_col = Post.__table__.c.user_id
+        assert isinstance(user_id_col.type, Uuid)
+        # The FK still points at admin_users.id
+        fk = list(user_id_col.foreign_keys)[0]
+        assert fk.column.table.name == "admin_users"
+
+    def test_fk_mirrors_integer_user_id(self):
+        from sqlalchemy import Integer
+
+        backend, Base = self._backend()  # noqa: N806
+
+        user_schema = Schema(
+            table_name="admin_users",
+            fields=[
+                Field("id", type="integer", primary_key=True),
+            ],
+        )
+        # FK column declared with a string type (the old "log pattern") on purpose.
+        post_schema = Schema(
+            table_name="posts",
+            fields=[
+                Field("id", type="integer", primary_key=True),
+                Field("user_id", type="string", max_length=255, nullable=False),
+            ],
+            relations=[
+                Relation(name="user", target="admin_users", type="many_to_one"),
+            ],
+        )
+
+        backend.materialize(user_schema, base=Base)
+        Post = backend.materialize(post_schema, base=Base, schemas={"admin_users": user_schema})  # noqa: N806
+
+        assert isinstance(Post.__table__.c.user_id.type, Integer)
+
+    def test_fk_falls_back_to_field_type_when_target_unknown(self):
+        from sqlalchemy import Integer
+
+        backend, Base = self._backend()  # noqa: N806
+
+        post_schema = Schema(
+            table_name="posts",
+            fields=[
+                Field("id", type="integer", primary_key=True),
+                Field("user_id", type="integer", nullable=False),
+            ],
+            relations=[
+                Relation(name="user", target="admin_users", type="many_to_one"),
+            ],
+        )
+
+        # No schema registry and no materialized target -> keep declared type.
+        Post = backend.materialize(post_schema, base=Base)  # noqa: N806
+
+        assert isinstance(Post.__table__.c.user_id.type, Integer)
+
+
 # ---------------------------------------------------------------------------
 # Admin auth_model validation tests
 # ---------------------------------------------------------------------------
@@ -410,7 +513,185 @@ class TestAdminAuthModelValidation:
         # The validation checks hasattr, not the value
         config.validate_auth_model()
         # The validation checks hasattr, not the value
-        config.validate_auth_model()
+
+    def test_custom_auth_model_skips_builtin_user_tables(self):
+        """When a custom auth_model is supplied, the built-in ``admin_users``
+        and ``admin_user_roles`` tables are reported as 'skip' so that
+        ``create_all`` does not emit DDL for the default user schema.
+        """
+        from fastapi_admin_kit.admin.core import Admin
+
+        class CustomUser:
+            id = None
+            email = "u@x.com"
+            is_active = True
+            is_superuser = False
+            hashed_password = "h"
+            role_ids = []
+
+            def verify_password(self, password):
+                return False
+
+        admin = Admin(auth_model=CustomUser)
+        skipped = admin._builtin_user_tables_to_skip()
+        assert "admin_users" in skipped
+        assert "admin_user_roles" in skipped
+
+    def test_default_user_tables_kept_when_no_auth_model(self):
+        """Default installation (auth_model is None) must NOT skip the
+        built-in ``admin_users`` / ``admin_user_roles`` tables."""
+        from fastapi_admin_kit.admin.core import Admin
+
+        admin = Admin(auth_model=None)
+        skipped = admin._builtin_user_tables_to_skip()
+        assert skipped == ()
+
+    def test_default_user_tables_kept_when_auth_model_is_builtin(self):
+        """When ``auth_model`` is the built-in ``User`` class, the built-in
+        tables must remain (no skip)."""
+        from fastapi_admin_kit.admin.core import Admin
+        from fastapi_admin_kit.migrations.models import User as BuiltinUser
+
+        admin = Admin(auth_model=BuiltinUser)
+        skipped = admin._builtin_user_tables_to_skip()
+        assert skipped == ()
+
+    @pytest.mark.asyncio
+    async def test_create_tables_skips_builtin_user_when_custom_auth_model(self, monkeypatch):
+        """``admin.create_tables()`` must NOT create the built-in
+        ``admin_users`` / ``admin_user_roles`` tables when a custom
+        ``auth_model`` is supplied (this is what callers in a FastAPI
+        ``lifespan`` rely on)."""
+        from sqlalchemy import Column, Integer, String
+        from sqlalchemy.orm import DeclarativeBase
+
+        from fastapi_admin_kit.admin.core import Admin
+
+        class _TestBase(DeclarativeBase):
+            pass
+
+        class CustomUser(_TestBase):
+            __tablename__ = "users"
+            id = Column(Integer, primary_key=True)
+            email = Column(String, unique=True, nullable=False)
+            hashed_password = Column(String, nullable=False)
+            is_active = Column(Integer, default=True)
+            is_superuser = Column(Integer, default=False)
+
+            @property
+            def role_ids(self) -> list[int]:
+                return []
+
+            def verify_password(self, password: str) -> bool:
+                return False
+
+        admin = Admin(auth_model=CustomUser)
+
+        # Capture the ``tables=`` argument handed to ``create_all`` so we can
+        # assert the built-in user tables are excluded. We mock the engine
+        # and metadata by passing a fake backend.
+        captured: dict = {}
+
+        class FakeBackend:
+            def create_tables(self, engine, metadata, tables):
+                captured["engine"] = engine
+                captured["metadata"] = metadata
+                captured["tables"] = tables
+
+            def auto_migrate(self, engine, metadata):
+                return None
+
+            async def has_tables(self, engine, names):
+                return set()
+
+        admin.database._backend = FakeBackend()  # type: ignore[assignment]
+        admin.database.engine = object()  # any sentinel
+        admin.database._ai_enabled = admin._ai_enabled  # not used here
+
+        await admin.create_tables()
+
+        assert captured["tables"] is not None, (
+            "expected create_tables to pass an explicit tables list when a "
+            "custom auth_model is configured"
+        )
+        emitted = {t.name for t in captured["tables"]}
+        assert "admin_users" not in emitted
+        assert "admin_user_roles" not in emitted
+        # And nothing from the expected skip leaked in.
+        expected_skip = set(admin._builtin_user_tables_to_skip())
+        assert emitted.isdisjoint(expected_skip)
+
+    @pytest.mark.asyncio
+    async def test_create_tables_keeps_builtin_user_when_default(self, monkeypatch):
+        """When no custom auth_model is configured, ``admin.create_tables()``
+        must still create ``admin_users`` and ``admin_user_roles``."""
+        from fastapi_admin_kit.admin.core import Admin
+
+        admin = Admin(auth_model=None)
+
+        captured: dict = {}
+
+        class FakeBackend:
+            def create_tables(self, engine, metadata, tables):
+                captured["tables"] = tables
+
+            def auto_migrate(self, engine, metadata):
+                return None
+
+            async def has_tables(self, engine, names):
+                return set()
+
+        admin.database._backend = FakeBackend()  # type: ignore[assignment]
+        admin.database.engine = object()
+
+        await admin.create_tables()
+
+        # ``admin_users`` / ``admin_user_roles`` must be present in the
+        # tables-to-create list. The list itself may still be non-None
+        # (because AI tables are also filtered when AI is disabled) — what
+        # matters is that the user tables are NOT excluded.
+        emitted = {t.name for t in captured["tables"]}
+        assert "admin_users" in emitted
+        assert "admin_user_roles" in emitted
+
+    @pytest.mark.asyncio
+    async def test_create_tables_raises_clear_error_when_no_engine(self):
+        """When neither ``engine=`` nor ``database_config=`` is supplied,
+        ``admin.create_tables()`` must raise a clear ``RuntimeError`` —
+        not a confusing ``AttributeError`` from deep inside SQLAlchemy
+        (``'NoneType' object has no attribute '_run_ddl_visitor'``)."""
+        from fastapi_admin_kit.admin.admin_database import AdminDatabase
+        from fastapi_admin_kit.admin.core import Admin
+
+        admin = Admin(auth_model=None)
+        # Force-reset to a database with no engine and no database_config
+        # (mimics a misconfigured project that supplied neither).
+        admin.database = AdminDatabase(engine=None, base=None, database_config=None)
+
+        with pytest.raises(RuntimeError, match="no engine"):
+            await admin.create_tables()
+
+    def test_resolved_engine_lazy_creates_from_database_config(self):
+        """``AdminDatabase.resolved_engine`` must create the engine
+        from ``database_config`` when no ``engine=`` was passed at
+        construction. This is the property that fixes the
+        ``'NoneType' object has no attribute '_run_ddl_visitor'`` error
+        projects hit when they only pass ``database_config=`` to
+        ``Admin()``."""
+        from unittest.mock import MagicMock
+
+        from fastapi_admin_kit.admin.admin_database import AdminDatabase
+
+        sentinel_engine = MagicMock(name="engine")
+        cfg = MagicMock()
+        cfg.create_engine.return_value = sentinel_engine
+
+        db = AdminDatabase(database_config=cfg)
+        assert db.engine is None  # not yet resolved
+        assert db.resolved_engine is sentinel_engine
+        # And it's now cached on the instance.
+        assert db.engine is sentinel_engine
+        cfg.create_engine.assert_called_once()
 
     def test_builtin_user_satisfies_protocol(self):
         from fastapi_admin_kit.migrations.models import User

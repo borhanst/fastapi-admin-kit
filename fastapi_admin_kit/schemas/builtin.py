@@ -36,24 +36,6 @@ USER_SCHEMA = Schema(
             through="admin_user_roles",
             back_populates="users",
         ),
-        Relation(
-            name="direct_permissions",
-            target="admin_user_permissions",
-            type="one_to_many",
-            back_populates="user",
-        ),
-        Relation(
-            name="refresh_tokens",
-            target="admin_refresh_tokens",
-            type="one_to_many",
-            back_populates="user",
-        ),
-        Relation(
-            name="totp",
-            target="admin_user_totp",
-            type="one_to_many",
-            back_populates="user",
-        ),
     ],
 )
 
@@ -135,7 +117,7 @@ AUDIT_LOG_SCHEMA = Schema(
     verbose_name_plural="Audit Logs",
     fields=[
         Field("id", type="integer", primary_key=True, auto_increment=True),
-        Field("user_id", type="integer", nullable=True, index=True),
+        Field("user_id", type="string", max_length=255, nullable=True, index=True),
         Field("user_email", type="string", max_length=255, nullable=True),
         Field("action", type="string", max_length=10, nullable=False),
         Field("model_name", type="string", max_length=255, nullable=False),
@@ -187,16 +169,10 @@ USER_PERMISSION_SCHEMA = Schema(
     verbose_name_plural="User Permissions",
     fields=[
         Field("id", type="integer", primary_key=True),
-        Field("user_id", type="integer", nullable=False, index=True),
+        Field("user_id", type="string", max_length=255, nullable=False, index=True),
         Field("permission_id", type="integer", nullable=False, index=True),
     ],
     relations=[
-        Relation(
-            name="user",
-            target="admin_users",
-            type="many_to_one",
-            back_populates="direct_permissions",
-        ),
         Relation(
             name="permission",
             target="admin_permissions",
@@ -216,20 +192,13 @@ REFRESH_TOKEN_SCHEMA = Schema(
     verbose_name_plural="Refresh Tokens",
     fields=[
         Field("id", type="integer", primary_key=True),
-        Field("user_id", type="integer", nullable=False, index=True),
+        Field("user_id", type="string", max_length=255, nullable=False, index=True),
         Field("token_hash", type="string", max_length=64, nullable=False, index=True),
         Field("expires_at", type="datetime", nullable=False),
         Field("created_at", type="datetime", server_default="now()"),
         Field("revoked_at", type="datetime", nullable=True),
     ],
-    relations=[
-        Relation(
-            name="user",
-            target="admin_users",
-            type="many_to_one",
-            back_populates="refresh_tokens",
-        ),
-    ],
+    relations=[],
 )
 
 # ---------------------------------------------------------------------------
@@ -242,20 +211,13 @@ USER_TOTP_SCHEMA = Schema(
     verbose_name_plural="2FA Tokens",
     fields=[
         Field("id", type="integer", primary_key=True),
-        Field("user_id", type="integer", unique=True, nullable=False, index=True),
+        Field("user_id", type="string", max_length=255, unique=True, nullable=False, index=True),
         Field("secret_key", type="string", max_length=255, nullable=False),
         Field("enabled", type="boolean", default=False),
         Field("backup_codes", type="text", nullable=True),
         Field("created_at", type="datetime", server_default="now()"),
     ],
-    relations=[
-        Relation(
-            name="user",
-            target="admin_users",
-            type="many_to_one",
-            back_populates="totp",
-        ),
-    ],
+    relations=[],
 )
 
 # ---------------------------------------------------------------------------
@@ -466,6 +428,28 @@ INTERNAL_TABLE_NAMES = frozenset(
 )
 
 
+# Mapping of table name -> Schema for every built-in model. Used by the
+# SQLAlchemy backend to derive foreign-key column types from the referenced
+# model's primary key (e.g. a ``user_id`` column mirrors the User ``id`` type).
+BUILTIN_SCHEMAS: dict[str, Schema] = {
+    USER_SCHEMA.table_name: USER_SCHEMA,
+    ROLE_SCHEMA.table_name: ROLE_SCHEMA,
+    PERMISSION_SCHEMA.table_name: PERMISSION_SCHEMA,
+    AUDIT_LOG_SCHEMA.table_name: AUDIT_LOG_SCHEMA,
+    LOGIN_ATTEMPT_SCHEMA.table_name: LOGIN_ATTEMPT_SCHEMA,
+    USER_PERMISSION_SCHEMA.table_name: USER_PERMISSION_SCHEMA,
+    REFRESH_TOKEN_SCHEMA.table_name: REFRESH_TOKEN_SCHEMA,
+    USER_TOTP_SCHEMA.table_name: USER_TOTP_SCHEMA,
+    NOTIFICATION_SCHEMA.table_name: NOTIFICATION_SCHEMA,
+    NOTIFICATION_PREFERENCE_SCHEMA.table_name: NOTIFICATION_PREFERENCE_SCHEMA,
+    NOTIFICATION_LOG_SCHEMA.table_name: NOTIFICATION_LOG_SCHEMA,
+    AI_USAGE_LOG_SCHEMA.table_name: AI_USAGE_LOG_SCHEMA,
+    AI_CONVERSATION_SCHEMA.table_name: AI_CONVERSATION_SCHEMA,
+    AI_MESSAGE_SCHEMA.table_name: AI_MESSAGE_SCHEMA,
+    AI_ATTACHMENT_SCHEMA.table_name: AI_ATTACHMENT_SCHEMA,
+}
+
+
 __all__ = [
     "USER_SCHEMA",
     "ROLE_SCHEMA",
@@ -482,6 +466,7 @@ __all__ = [
     "AI_CONVERSATION_SCHEMA",
     "AI_MESSAGE_SCHEMA",
     "AI_ATTACHMENT_SCHEMA",
+    "BUILTIN_SCHEMAS",
     "AI_TABLE_NAMES",
     "NOTIFICATION_TABLE_NAMES",
     "INTERNAL_TABLE_NAMES",

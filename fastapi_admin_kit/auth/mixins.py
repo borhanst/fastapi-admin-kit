@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
-from sqlalchemy import Boolean, Column, String
+from sqlalchemy import Boolean, Column, DateTime, String
 
 from fastapi_admin_kit.backends import as_session_backend
 
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class AuthModelMixin:
     """Mixin for custom user models to work with admin's built-in RBAC.
 
-    Provides: hashed_password, is_active, is_superuser columns,
+    Provides: hashed_password, is_active, is_superuser, last_login columns,
     role_ids property, verify_password() and hash_password() methods.
 
     Usage::
@@ -40,6 +40,7 @@ class AuthModelMixin:
     - ``hashed_password`` column (String 255)
     - ``is_active`` column (Boolean, default True)
     - ``is_superuser`` column (Boolean, default False)
+    - ``last_login`` column (DateTime with timezone, nullable)
     - ``role_ids`` property → ``list[int]`` (reads from ``self.roles``)
     - ``verify_password(password)`` → bool
     - ``hash_password(password)`` → str (classmethod)
@@ -49,9 +50,10 @@ class AuthModelMixin:
 
     _hasher: ClassVar[type | None] = None
 
-    hashed_password = Column(String(255), nullable=False)
+    hashed_password = Column(String(255))
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
+    last_login = Column(DateTime(timezone=True), nullable=True)
 
     @property
     def role_ids(self) -> list[int]:
@@ -65,7 +67,7 @@ class AuthModelMixin:
         """Check if plaintext password matches the stored hash."""
         from fastapi_admin_kit.auth.password import password_manager
 
-        return password_manager.verify(password, self.hashed_password)
+        return password_manager.verify(password, self.password)
 
     @classmethod
     def hash_password(cls, password: str) -> str:

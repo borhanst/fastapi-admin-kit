@@ -114,14 +114,25 @@ async def login_post(
     query_adapter = getattr(request.app.state, "admin_query_adapter", None)
     try:
         user = await auth_backend.authenticate(
-            username, password, session, login_field=login_field, query_adapter=query_adapter
+            username,
+            password,
+            session,
+            login_field=login_field,
+            query_adapter=query_adapter,
         )
+        print("login user: ", user)
     except TypeError:
+        print("login user error: ", user)
         # Custom backends that don't accept query_adapter
         user = await auth_backend.authenticate(username, password, session, login_field=login_field)
     if user is not None:
         await _guard.reset(client_ip)
-        user.last_login = datetime.now(UTC)
+        now_utc = datetime.now(UTC)
+        user_fields = getattr(user, "model_fields", None) or getattr(user, "__fields__", None) or {}
+        if "last_login" in user_fields:
+            user.last_login = now_utc
+        elif "last_login_at" in user_fields:
+            user.last_login_at = now_utc
         await session.flush()
 
         # ── 2FA enforcement (S02) ────────────────────────────────────

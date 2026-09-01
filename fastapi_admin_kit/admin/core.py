@@ -18,6 +18,7 @@ from fastapi_admin_kit.admin.admin_config import AdminConfig
 from fastapi_admin_kit.admin.admin_database import AdminDatabase
 from fastapi_admin_kit.admin.admin_router import AdminRouter
 from fastapi_admin_kit.admin.admin_template import AdminTemplate
+from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
 from fastapi_admin_kit.config import (
     AIChatConfig,
     AuditConfig,
@@ -199,7 +200,7 @@ class Admin:
         admin_path: str = "/admin",
         secret_key: str = "",
         auth_model: type | None = None,
-        auth_backend: AuthBackend | None = None,
+        auth_backend: AuthBackend | None = BuiltinAuthBackend(),
         session_cookie_name: str = "admin_session",
         session_secure: bool = True,
         session_samesite: str = "strict",
@@ -800,9 +801,11 @@ class Admin:
         self.config.auth.validate_auth_model()
 
         # 2. Database tables should be created via Alembic migrations
-        skip_create_tables = os.environ.get("SKIP_CREATE_TABLES", "false").lower() == "true"
-        if not skip_create_tables:
-            await self.database._create_tables(include_ai_tables=self._ai_enabled)
+        #    ``create_tables()`` is the public entry point that projects can
+        #    also call from their lifespan before ``admin.setup(app)`` —
+        #    using it here keeps both code paths in sync (and is the only
+        #    way the custom-auth_model skip is applied).
+        await self.create_tables()
 
         # 2.1 Preflight: if AI is enabled but the tables are genuinely missing
         # (Alembic / SKIP_CREATE_TABLES mode), warn loudly but never block boot.
@@ -1430,7 +1433,6 @@ class Admin:
             )
 
         builtin_models = [
-            (User, UserAdmin),
             (Role, RoleAdmin),
             # (RefreshToken, RefreshTokenAdmin),
             (Permission, PermissionAdmin),
@@ -1439,6 +1441,17 @@ class Admin:
             (LoginAttempt, LoginAttemptAdmin),
             (AuditLog, AuditLogAdmin),
         ]
+
+        # When a custom auth_model is provided, the built-in ``User`` model is
+        # not registered: the project supplies its own user model and
+        # ``UserAdmin`` (the built-in CRUD) does not match it. Skipping here
+        # also keeps the registry consistent with the migration metadata, from
+        # which the built-in ``admin_users`` table is removed in
+        # ``_adapt_builtin_user_id_columns`` when a custom auth_model is set.
+        from fastapi_admin_kit.migrations.models import User as BuiltinUser
+
+        if self.config.auth.auth_model is None or self.config.auth.auth_model is BuiltinUser:
+            builtin_models.insert(0, (User, UserAdmin))
 
         # Notification models are exposed under the "notifications" sidebar
         # group. Register them only when notifications are enabled so the
@@ -1463,6 +1476,142 @@ class Admin:
             for model, admin_class in ai_builtin_models:
                 if model.__tablename__ not in self.registry._models:
                     self.registry.register(model, admin_class)
+
+    def _builtin_user_tables_to_skip(self) -> tuple[str, ...]:
+        """Return the names of built-in tables that should NOT be created when
+        a custom ``auth_model`` is configured.
+
+        Returns an empty tuple when the built-in ``User`` is in use (default
+        installation) or when no ``auth_model`` is configured.
+        """
+        from fastapi_admin_kit.migrations.models import User as BuiltinUser
+
+        auth_model = self.config.auth.auth_model
+        if auth_model is None or auth_model is BuiltinUser:
+            return ()
+        return ("admin_users", "admin_user_roles")
+
+    async def create_tables(self) -> None:
+        """Create all admin database tables, correctly handling a custom
+        ``auth_model``.
+
+        This is the public API projects should use in their ``lifespan`` (or
+        startup hook) instead of calling
+        ``AdminBase.metadata.create_all`` directly. Calling
+        ``AdminBase.metadata.create_all`` directly bypasses the
+        custom-auth_model logic and will create the default
+        ``admin_users`` / ``admin_user_roles`` tables even when a project
+        supplies its own user model.
+
+        What this method does, in order:
+
+        1. Validate the configured ``auth_model`` (raises ``ConfigError`` if
+           it does not satisfy :class:`AdminUserProtocol`).
+        2. Mirror the auth model's primary-key type onto the built-in
+           log-pattern ``user_id`` columns (e.g. a UUID PK becomes a UUID
+           ``user_id`` so the column type matches across tables).
+        3. Call ``AdminDatabase._create_tables(extra_exclude_tables=...)``
+           with the built-in user tables filtered out when a custom
+           ``auth_model`` is configured. Honors ``SKIP_CREATE_TABLES=true``
+           and the AI / notification feature flags exactly like
+           ``Admin.setup()`` does.
+        """
+        self.config.auth.validate_auth_model()
+        skip_create_tables = os.environ.get("SKIP_CREATE_TABLES", "false").lower() == "true"
+        if skip_create_tables:
+            logger.info("SKIP_CREATE_TABLES=true: skipping admin table creation")
+            return
+        self._adapt_builtin_user_id_columns()
+        extra_exclude = list(self._builtin_user_tables_to_skip())
+        if extra_exclude:
+            logger.info(
+                "Custom auth_model=%s configured: skipping built-in admin "
+                "tables %s at create_all (project supplies its own user "
+                "table).",
+                self.config.auth.auth_model,
+                extra_exclude,
+            )
+        await self.database._create_tables(
+            include_ai_tables=self._ai_enabled,
+            extra_exclude_tables=extra_exclude or None,
+        )
+
+    def _adapt_builtin_user_id_columns(self) -> None:
+        """
+        Adapt the built-in log-pattern ``user_id`` columns in ``AdminBase.metadata``
+        to match the primary-key type of the configured ``auth_model`` (see
+        ``schemas/builtin.py``). When a project supplies a custom
+        ``auth_model`` whose primary key differs from the built-in ``User``
+        (e.g. a ``UUID`` PK), these columns are retyped to match so that
+        ``metadata.create_all`` emits the correct DDL.
+
+        This is a no-op for the default installation (``auth_model is None``
+        or the built-in ``User``), which preserves backward compatibility
+        and never alters existing schemas/migrations.
+
+        When a custom ``auth_model`` is provided, the built-in ``admin_users``
+        table is also removed from ``AdminBase.metadata`` (and the
+        ``admin_user_roles`` junction) so that ``create_all`` does not emit
+        DDL for the default schema. The custom user model — which must
+        already be registered on a ``Base`` and present in the project's
+        metadata — becomes the sole source of truth for the user table.
+        """
+        from fastapi_admin_kit.migrations.models import User as BuiltinUser
+
+        auth_model = self.config.auth.auth_model
+        if auth_model is None:
+            return
+        if auth_model is BuiltinUser:
+            return
+
+        metadata = BuiltinUser.__table__.metadata
+
+        from sqlalchemy import inspect as sa_inspect
+
+        pk_cols = sa_inspect(auth_model).primary_key
+        if not pk_cols:
+            return
+        pk_col = pk_cols[0]
+        new_type = pk_col.type
+        logger.debug(
+            "Adapting builtin user_id columns: auth_model=%s pk_col=%s pk_type=%r",
+            auth_model,
+            pk_col.name,
+            new_type,
+        )
+
+        # user_email columns intentionally stay string (they store emails).
+        log_tables = [
+            "admin_audit_log",
+            "admin_user_permissions",
+            "admin_refresh_tokens",
+            "admin_user_totp",
+            "admin_notifications",
+            "admin_notification_preferences",
+            "admin_notification_logs",
+            "admin_ai_usage_log",
+            "admin_ai_conversations",
+        ]
+        for table_name in log_tables:
+            table = metadata.tables.get(table_name)
+            if table is None or "user_id" not in table.c:
+                continue
+            col = table.c["user_id"]
+            logger.debug(
+                "  %s.user_id: %r (%s) -> %r (%s)",
+                table_name,
+                col.type,
+                type(col.type).__name__,
+                new_type,
+                type(new_type).__name__,
+            )
+            col.type = new_type
+
+        # Note: the built-in ``admin_users`` and ``admin_user_roles`` tables
+        # are excluded from ``create_all`` at the call site in ``setup()`` via
+        # ``AdminDatabase._create_tables(extra_exclude_tables=...)`` — we do
+        # NOT remove them from ``AdminBase.metadata`` here because the
+        # ``FacadeDict`` exposed by ``Base.metadata`` is immutable.
 
     # ------------------------------------------------------------------
     # AI Setup

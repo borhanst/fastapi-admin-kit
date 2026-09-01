@@ -137,6 +137,8 @@ class BuiltinAuthBackend(AuthBackend):
         session = self._resolve_session(session)
         model = self._get_model()
         field = getattr(model, login_field, None)
+        print("model: ", model)
+        print("field: ", field)
         if field is None:
             field = getattr(model, "email", None)
         if field is None:
@@ -167,7 +169,6 @@ class BuiltinAuthBackend(AuthBackend):
 
         result = session.scalar_one_or_none(query)
         user = await result if hasattr(result, "__await__") else result
-
         if not user:
             return None
         if not user.verify_password(password):

@@ -62,6 +62,7 @@ nav:
       - All Features: guide/features.md
       - Model Registration: guide/model-registration.md
       - Authentication & RBAC: guide/auth-rbac.md
+      - Custom Auth Model: guide/custom-auth-model.md
       - Widgets & Forms: guide/widgets-forms.md
       - Themes & UI: guide/themes.md
       - Inline Editing & Actions: guide/inline-editing-actions.md

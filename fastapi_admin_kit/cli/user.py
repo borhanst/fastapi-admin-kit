@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib
 import os
 import sys
 
@@ -26,13 +27,50 @@ def _ensure_async_url(url: str) -> str:
     return url
 
 
+def _hash_password(model: type, password: str) -> str:
+    """Hash a password using the model's hash_password or the default hasher."""
+    hasher = getattr(model, "hash_password", None)
+    if hasher is None:
+        from fastapi_admin_kit.auth.password import password_manager
+
+        return password_manager.hash(password)
+    try:
+        result = hasher(password)
+        if result is None:
+            from fastapi_admin_kit.auth.password import password_manager
+
+            return password_manager.hash(password)
+        return result
+    except TypeError:
+        from fastapi_admin_kit.auth.password import password_manager
+
+        return password_manager.hash(password)
+
+
+def _import_auth_model(import_path: str) -> type:
+    """Import an auth model class from a dotted module path."""
+    module_path, _, class_name = import_path.rpartition(".")
+    if not module_path or not class_name:
+        print("Error: --auth-model must be a dotted path like 'myapp.models.MyUser'.")
+        sys.exit(1)
+    try:
+        cwd = os.getcwd()
+        if cwd not in sys.path:
+            sys.path.insert(0, cwd)
+        module = importlib.import_module(module_path)
+        model = getattr(module, class_name)
+    except (ImportError, AttributeError) as exc:
+        print(f"Error: Could not import auth_model '{import_path}': {exc}")
+        sys.exit(1)
+    return model
+
+
 async def _create_superuser(args: argparse.Namespace) -> None:
     """Create a superuser."""
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import NullPool
 
-    from fastapi_admin_kit.auth.models import User
     from fastapi_admin_kit.models.base import Base
 
     database_url = _resolve_database_url(args.database_url)
@@ -50,28 +88,49 @@ async def _create_superuser(args: argparse.Namespace) -> None:
         with session.no_autoflush:
             from sqlalchemy import select
 
-            result = await session.execute(select(User).where(User.email == args.email))
+            from fastapi_admin_kit.backends import SqlAlchemyIntrospectionAdapter
+
+            UserModel = _import_auth_model(args.auth_model) if args.auth_model else None  # noqa: N806
+            if UserModel is None:
+                from fastapi_admin_kit.auth.models import User as UserModel
+
+            result = await session.execute(select(UserModel).where(UserModel.email == args.email))
             existing = result.scalar_one_or_none()
             if existing:
                 print(f"Error: User with email '{args.email}' already exists.")
                 await engine.dispose()
                 sys.exit(1)
 
-            hashed_password = User.hash_password(args.password)
-            user = User(
-                email=args.email,
-                hashed_password=hashed_password,
-                full_name=args.name or "",
-                is_superuser=True,
-                is_active=True,
-            )
+            hashed_password = _hash_password(UserModel, args.password)
+            introspection = SqlAlchemyIntrospectionAdapter()
+            columns, _ = introspection.inspect_model(UserModel)
+            column_keys = {c.name for c in columns}
+
+            user_kwargs = {
+                "email": args.email,
+                "is_superuser": True,
+                "is_active": True,
+            }
+            if "hashed_password" in column_keys:
+                user_kwargs["hashed_password"] = hashed_password
+            if "password" in column_keys:
+                user_kwargs["password"] = hashed_password
+
+            user = UserModel(**user_kwargs)
             session.add(user)
             await session.commit()
             await session.refresh(user)
 
+            if not user.hashed_password:
+                print(f"Error: hashed_password was not saved for '{user.email}'.")
+                print("  Check that your custom model's hashed_password column is not nullable")
+                print("  and that no SQLAlchemy events or custom __init__ are overriding it.")
+                await engine.dispose()
+                sys.exit(1)
+
         print("Superuser created successfully!")
         print(f"  Email: {user.email}")
-        print(f"  Name:  {user.full_name or '(none)'}")
+        # print(f"  Name:  {user.full_name or '(none)'}")
         print(f"  ID:    {user.id}")
 
     await engine.dispose()
@@ -83,7 +142,6 @@ async def _list_users(args: argparse.Namespace) -> None:
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import NullPool
 
-    from fastapi_admin_kit.auth.models import User
     from fastapi_admin_kit.models.base import Base
 
     database_url = _resolve_database_url(args.database_url)
@@ -100,7 +158,11 @@ async def _list_users(args: argparse.Namespace) -> None:
     async with async_session() as session:
         from sqlalchemy import select
 
-        result = await session.execute(select(User))
+        UserModel = _import_auth_model(args.auth_model) if args.auth_model else None  # noqa: N806
+        if UserModel is None:
+            from fastapi_admin_kit.auth.models import User as UserModel
+
+        result = await session.execute(select(UserModel))
         users = result.scalars().all()
 
         if not users:
@@ -112,7 +174,7 @@ async def _list_users(args: argparse.Namespace) -> None:
         print("-" * 74)
         for user in users:
             print(
-                f"{user.id:<6} {user.email:<30} {(user.full_name or ''):<20} "
+                f"{user.id:<6} {user.email:<30} "
                 f"{'Yes' if user.is_superuser else 'No':<10} "
                 f"{'Yes' if user.is_active else 'No':<8}"
             )
@@ -126,7 +188,6 @@ async def _change_password(args: argparse.Namespace) -> None:
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import NullPool
 
-    from fastapi_admin_kit.auth.models import User
     from fastapi_admin_kit.models.base import Base
 
     database_url = _resolve_database_url(args.database_url)
@@ -144,7 +205,11 @@ async def _change_password(args: argparse.Namespace) -> None:
         with session.no_autoflush:
             from sqlalchemy import select
 
-            result = await session.execute(select(User).where(User.email == args.email))
+            UserModel = _import_auth_model(args.auth_model) if args.auth_model else None  # noqa: N806
+            if UserModel is None:
+                from fastapi_admin_kit.auth.models import User as UserModel
+
+            result = await session.execute(select(UserModel).where(UserModel.email == args.email))
             user = result.scalar_one_or_none()
 
             if not user:
@@ -152,7 +217,7 @@ async def _change_password(args: argparse.Namespace) -> None:
                 await engine.dispose()
                 sys.exit(1)
 
-            user.hashed_password = User.hash_password(args.password)
+            user.hashed_password = _hash_password(UserModel, args.password)
             await session.commit()
 
             print(f"Password changed successfully for '{user.email}'!")
@@ -175,6 +240,12 @@ def register_user_commands(subparsers) -> None:
         default=None,
         help="Database URL (or set DATABASE_URL env var)",
     )
+    create_parser.add_argument(
+        "-a",
+        "--auth-model",
+        default=None,
+        help="Dotted path to custom auth model (e.g. 'myapp.models.MyUser')",
+    )
 
     # users
     list_parser = subparsers.add_parser("users", help="List all admin users")
@@ -183,6 +254,12 @@ def register_user_commands(subparsers) -> None:
         "--database-url",
         default=None,
         help="Database URL (or set DATABASE_URL env var)",
+    )
+    list_parser.add_argument(
+        "-a",
+        "--auth-model",
+        default=None,
+        help="Dotted path to custom auth model (e.g. 'myapp.models.MyUser')",
     )
 
     # changepassword
@@ -194,6 +271,12 @@ def register_user_commands(subparsers) -> None:
         "--database-url",
         default=None,
         help="Database URL (or set DATABASE_URL env var)",
+    )
+    pw_parser.add_argument(
+        "-a",
+        "--auth-model",
+        default=None,
+        help="Dotted path to custom auth model (e.g. 'myapp.models.MyUser')",
     )
 
 

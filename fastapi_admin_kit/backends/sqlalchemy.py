@@ -577,6 +577,13 @@ class SqlAlchemyDatabaseBackend:
         """
         from sqlalchemy.ext.asyncio import AsyncEngine
 
+        if connection is None:
+            raise RuntimeError(
+                "create_tables called with connection=None — the Admin "
+                "instance has no engine. Pass `engine=` or `database_config=` "
+                "to Admin(), or set `use_alembic=True` to skip create_all."
+            )
+
         if isinstance(connection, AsyncEngine):
 
             async def _create() -> None:
@@ -843,6 +850,7 @@ class SqlAlchemyDatabaseBackend:
         self,
         schema: Any,
         base: Any | None = None,
+        schemas: Any | None = None,
     ) -> type:
         """Convert a :class:`Schema` into a SQLAlchemy model class.
 
@@ -857,6 +865,11 @@ class SqlAlchemyDatabaseBackend:
                 describing the model structure.
             base: The SQLAlchemy declarative base class. If ``None``, falls back
                 to the configured ``AdminDatabase.base`` or ``Base``.
+            schemas: Optional mapping of ``table_name -> Schema`` for every model
+                being materialized. Used to derive the type of a foreign-key column
+                from the referenced model's primary-key type (e.g. a ``user_id``
+                column pointing at a User whose ``id`` is a UUID becomes a UUID
+                instead of an integer/string).
 
         Returns:
             A new SQLAlchemy model class with ``__tablename__`` and mapped columns.
@@ -883,6 +896,7 @@ class SqlAlchemyDatabaseBackend:
         )
         from sqlalchemy.orm import relationship
         from sqlalchemy.sql import func
+        from sqlalchemy.types import Uuid
 
         from fastapi_admin_kit.schemas.schema import Schema as SchemaType
 
@@ -950,7 +964,44 @@ class SqlAlchemyDatabaseBackend:
             "float": Float,
             "numeric": Numeric,
             "json": JSON,
+            "uuid": Uuid,
         }
+
+        # Map a schema field to its SQLAlchemy type instance. Used both for the
+        # model columns and for deriving foreign-key column types from the
+        # referenced model's primary key.
+        def _schema_field_sa_type(fld: Any) -> Any:
+            if fld.type == "string" and fld.max_length:
+                return String(fld.max_length)
+            return type_map.get(fld.type, String)
+
+        # Resolve the SQLAlchemy type of a relation target's primary key so a
+        # foreign-key column can mirror it (uuid vs int, etc.). *target* may be
+        # a table-name string or a materialized model class.
+        def _resolve_target_pk_type(target: Any) -> Any | None:
+            if not isinstance(target, str):
+                table = getattr(target, "__table__", None)
+            else:
+                table = None
+                has_meta = base is not None and hasattr(base, "metadata")
+                md = base.metadata.tables if has_meta else None
+                if md is not None and target in md:
+                    table = md[target]
+                if table is None:
+                    if schemas is None:
+                        from fastapi_admin_kit.schemas.builtin import BUILTIN_SCHEMAS
+                    reg = schemas if schemas is not None else BUILTIN_SCHEMAS
+                    if reg and target in reg:
+                        pk = reg[target].get_pk_field()
+                        if pk is not None:
+                            return _schema_field_sa_type(pk)
+                    return None
+            if table is None:
+                return None
+            pk_cols = list(table.primary_key.columns)
+            if not pk_cols:
+                return None
+            return pk_cols[0].type
 
         columns: list[Column] = []
         existing_cols: dict[str, Any] = {}
@@ -963,6 +1014,21 @@ class SqlAlchemyDatabaseBackend:
         many_to_one_targets = {
             rel.target: rel.name for rel in schema.relations if rel.type == "many_to_one"
         }
+
+        # Mirror a custom auth_model's primary-key type onto ``user_id`` columns
+        # even when the field is NOT declared as a many_to_one FK relation. The
+        # built-in schemas hardcode ``user_id`` as ``string``/``integer`` (the
+        # legacy default) so a custom User with a UUID PK would otherwise be
+        # materialized as the wrong SQL type. We only retype columns that
+        # reference the user table (or any of the well-known user-id columns);
+        # other FK columns are left to the many_to_one branch below.
+        user_pk_type: Any | None = None
+        if base is not None and hasattr(base, "metadata"):
+            users_table = base.metadata.tables.get("admin_users")
+            if users_table is not None:
+                pk_cols_real = list(users_table.primary_key.columns)
+                if pk_cols_real:
+                    user_pk_type = pk_cols_real[0].type
 
         for f in schema.fields:
             sa_type = type_map.get(f.type, String)
@@ -980,6 +1046,8 @@ class SqlAlchemyDatabaseBackend:
                 kwargs["unique"] = True
             if f.max_length and sa_type is String:
                 sa_type = String(f.max_length)
+            if f.name == "user_id" and user_pk_type is not None:
+                sa_type = user_pk_type
             if f.default is not None:
                 kwargs["default"] = f.default
             if f.server_default is not None:
@@ -1019,6 +1087,12 @@ class SqlAlchemyDatabaseBackend:
             # Build column with ForeignKey if needed
             if fk_target:
                 from sqlalchemy import ForeignKey
+
+                # Mirror the referenced model's primary-key type (uuid vs int,
+                # etc.) instead of blindly using the field's declared type.
+                resolved_pk_type = _resolve_target_pk_type(fk_target)
+                if resolved_pk_type is not None:
+                    sa_type = resolved_pk_type
 
                 # Use string-based FK to allow target table to not exist yet
                 columns.append(
