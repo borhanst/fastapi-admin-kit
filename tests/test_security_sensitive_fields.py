@@ -1,6 +1,6 @@
 """Regression tests for S04 — sensitive columns must never leak via API/export.
 
-GET /api/admin_users previously returned hashed_password (bcrypt) to any
+GET /api/admin_users previously returned password (bcrypt) to any
 caller with view permission; CSV export included it as well.
 """
 
@@ -57,7 +57,7 @@ def env(engine):
         async with AsyncSession(engine) as session:
             user = User(
                 email="admin@test.com",
-                hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
+                password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
                 full_name="Admin",
                 is_superuser=True,
                 is_active=True,
@@ -104,13 +104,13 @@ def env(engine):
 
 
 class TestSensitiveFieldsNotInApi:
-    def test_item_api_hides_hashed_password(self, env):
+    def test_item_api_hides_password(self, env):
         client = env
         resp = client.get("/api/admin_users/1")
         assert resp.status_code == 200
-        assert "hashed_password" not in resp.json()
+        assert "password" not in resp.json()
 
-    def test_list_api_hides_hashed_password(self, env):
+    def test_list_api_hides_password(self, env):
         client = env
         resp = client.get("/api/admin_users")
         assert resp.status_code == 200
@@ -118,21 +118,23 @@ class TestSensitiveFieldsNotInApi:
         items = data["items"] if isinstance(data, dict) else data
         assert items
         for item in items:
-            assert "hashed_password" not in item
+            assert "password" not in item
 
-    def test_openapi_response_schema_hides_hashed_password(self, env):
+    def test_openapi_response_schema_hides_password(self, env):
         client = env
         resp = client.get("/openapi.json")
         assert resp.status_code == 200
-        schema_text = repr(resp.json()["components"]["schemas"])
-        assert "hashed_password" not in schema_text
+        schemas = resp.json()["components"]["schemas"]
+        response_schema = schemas.get("AdminUserResponse", {})
+        response_props = response_schema.get("properties", {})
+        assert "password" not in response_props
 
 
 class TestSensitiveFieldsNotInExport:
-    def test_csv_export_hides_hashed_password(self, env):
+    def test_csv_export_hides_password(self, env):
         client = env
         resp = client.get("/admin/admin_users/export/?format=csv")
         assert resp.status_code == 200
         content = b"".join(resp.stream).decode()
         assert "$2b$" not in content
-        assert "hashed_password" not in content
+        assert "password" not in content

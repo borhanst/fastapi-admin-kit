@@ -41,7 +41,7 @@ class TestPasswordChangeAudit:
 
         user = User(
             email="test@test.com",
-            hashed_password="hashed",
+            password="hashed",
         )
         assert user.password_changed_at is None
         user.password_changed_at = datetime.now(UTC)

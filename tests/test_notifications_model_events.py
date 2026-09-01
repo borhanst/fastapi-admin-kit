@@ -369,7 +369,7 @@ def test_regular_user_change_notifies_superuser_over_ws():
         async with factory() as s:
             sup = User(
                 email="sup@test.com",
-                hashed_password="x",
+                password="x",
                 full_name="Super",
                 is_superuser=True,
                 is_active=True,
@@ -377,7 +377,7 @@ def test_regular_user_change_notifies_superuser_over_ws():
             s.add(sup)
             reg = User(
                 email="reg@test.com",
-                hashed_password="x",
+                password="x",
                 full_name="Regular",
                 is_superuser=False,
                 is_active=True,

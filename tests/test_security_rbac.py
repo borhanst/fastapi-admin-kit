@@ -73,7 +73,7 @@ async def _make_user(engine, email: str, is_superuser: bool, with_view_perm: boo
 
         user = User(
             email=email,
-            hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
+            password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
             full_name=email,
             is_superuser=is_superuser,
             is_active=True,

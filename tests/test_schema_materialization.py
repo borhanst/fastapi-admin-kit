@@ -260,7 +260,7 @@ class TestSqlAlchemyMaterialize:
         assert model.__tablename__ == "admin_users"
         assert hasattr(model, "id")
         assert hasattr(model, "email")
-        assert hasattr(model, "hashed_password")
+        assert hasattr(model, "password")
         assert hasattr(model, "is_active")
         assert hasattr(model, "is_superuser")
 
@@ -502,7 +502,7 @@ class TestAdminAuthModelValidation:
             email = "test@test.com"
             is_active = True
             is_superuser = False
-            hashed_password = "hash"
+            password = "hash"
             role_ids = None  # has role_ids but it's not a list property
 
             def verify_password(self, password):
@@ -526,7 +526,7 @@ class TestAdminAuthModelValidation:
             email = "u@x.com"
             is_active = True
             is_superuser = False
-            hashed_password = "h"
+            password = "h"
             role_ids = []
 
             def verify_password(self, password):
@@ -574,7 +574,7 @@ class TestAdminAuthModelValidation:
             __tablename__ = "users"
             id = Column(Integer, primary_key=True)
             email = Column(String, unique=True, nullable=False)
-            hashed_password = Column(String, nullable=False)
+            password = Column(String, nullable=False)
             is_active = Column(Integer, default=True)
             is_superuser = Column(Integer, default=False)
 

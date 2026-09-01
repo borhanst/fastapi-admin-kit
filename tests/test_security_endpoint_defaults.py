@@ -77,7 +77,7 @@ async def _seed(engine):
         viewer_role = Role(name="Viewer")  # no Permission rows → view denied
         super_user = User(
             email="super@test.com",
-            hashed_password=SECRET_HASH,
+            password=SECRET_HASH,
             full_name="Super",
             is_superuser=True,
             is_active=True,
@@ -85,7 +85,7 @@ async def _seed(engine):
         super_user.roles.append(super_role)
         viewer = User(
             email="viewer@test.com",
-            hashed_password=SECRET_HASH,
+            password=SECRET_HASH,
             full_name="Viewer",
             is_superuser=False,
             is_active=True,

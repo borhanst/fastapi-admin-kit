@@ -82,7 +82,7 @@ async def _seed(engine):
         def _user(email, role, superuser=False):
             u = User(
                 email=email,
-                hashed_password=SECRET_HASH,
+                password=SECRET_HASH,
                 full_name=email,
                 is_superuser=superuser,
                 is_active=True,
@@ -385,7 +385,7 @@ class TestExportImportGating:
                 role.permissions.append(perm)
                 user = User(
                     email="creator@test.com",
-                    hashed_password=SECRET_HASH,
+                    password=SECRET_HASH,
                     full_name="c",
                     is_superuser=False,
                     is_active=True,
@@ -496,11 +496,11 @@ class TestImportFieldAllowList:
         from fastapi_admin_kit.export_import.csv import CSVImport
 
         registered = _fake_registered(
-            User, ["email", "full_name", "hashed_password", "is_superuser", "is_active"]
+            User, ["email", "full_name", "password", "is_superuser", "is_active"]
         )
         allowed = CSVImport(registered).allowed_import_fields()
         assert "email" in allowed and "full_name" in allowed
-        assert "hashed_password" not in allowed
+        assert "password" not in allowed
         assert "is_superuser" not in allowed
         assert "is_active" not in allowed
 
@@ -514,18 +514,16 @@ class TestImportFieldAllowList:
     def test_default_field_map_excludes_sensitive(self):
         from fastapi_admin_kit.export_import.csv import CSVImport
 
-        registered = _fake_registered(User, ["email", "hashed_password"])
+        registered = _fake_registered(User, ["email", "password"])
         field_map = CSVImport(registered).get_field_map()
         assert "Email" in field_map
-        assert all(target != "hashed_password" for target in field_map.values())
+        assert all(target != "password" for target in field_map.values())
 
     def test_import_rows_cannot_set_blocked_fields(self):
         """Blocked headers are dropped before validation/transform/write."""
         from fastapi_admin_kit.export_import.csv import CSVImport
 
-        registered = _fake_registered(
-            User, ["email", "hashed_password", "is_superuser", "is_active"]
-        )
+        registered = _fake_registered(User, ["email", "password", "is_superuser", "is_active"])
         importer = CSVImport(registered)
 
         class _FakeSession:
@@ -563,7 +561,7 @@ class TestImportFieldAllowList:
         obj = fake_session.added[0]
         assert obj.email == "evil@test.com"
         # Blocked fields never reached the model.
-        assert not getattr(obj, "hashed_password", None)
+        assert not getattr(obj, "password", None)
         assert not getattr(obj, "is_superuser", False)
         assert not getattr(obj, "is_active", False)
 

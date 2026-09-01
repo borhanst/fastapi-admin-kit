@@ -70,7 +70,7 @@ async def _seed(engine):
         role = Role(name="SuperAdmin")
         user = User(
             email="super@test.com",
-            hashed_password=SECRET_HASH,
+            password=SECRET_HASH,
             full_name="Super",
             is_superuser=True,
             is_active=True,

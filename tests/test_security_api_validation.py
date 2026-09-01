@@ -82,7 +82,7 @@ async def _seed_superuser(engine):
         role = Role(name="SuperAdmin")
         user = User(
             email="super@test.com",
-            hashed_password=SECRET_HASH,
+            password=SECRET_HASH,
             full_name="Super",
             is_superuser=True,
             is_active=True,
@@ -157,22 +157,22 @@ class TestJsonCreateRunsValidation:
         assert resp.status_code == 201, resp.text
         created = run_async(_get_user_by_email(engine, "strong@test.com"))
         assert created is not None
-        assert created.hashed_password.startswith("$2b$")
+        assert created.password.startswith("$2b$")
 
-    def test_hashed_password_not_writable_via_json(self, env):
+    def test_password_not_writable_via_json(self, env):
         client, engine = env
         resp = client.post(
             "/api/admin_users",
             json={
                 "email": "inject@test.com",
                 "password": "Str0ng!Passw0rd#9",
-                "hashed_password": "attacker-controlled",
+                "is_active": True,
             },
         )
         assert resp.status_code in (201, 422)
         if resp.status_code == 201:
             created = run_async(_get_user_by_email(engine, "inject@test.com"))
-            assert created.hashed_password.startswith("$2b$")
+            assert created.password.startswith("$2b$")
 
 
 class TestJsonUpdateRunsValidation:

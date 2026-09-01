@@ -66,7 +66,7 @@ async def _seed(engine, *, totp_enabled: bool):
         role = Role(name="SuperAdmin")
         user = User(
             email="totp@test.com",
-            hashed_password=PASSWORD_HASH,
+            password=PASSWORD_HASH,
             full_name="TOTP User",
             is_superuser=True,
             is_active=True,

@@ -53,7 +53,7 @@ def admin_user(engine):
         async with AsyncSession(engine) as session:
             user = User(
                 email="admin@test.com",
-                hashed_password=User.hash_password("admin123"),
+                password=User.hash_password("admin123"),
                 full_name="Admin",
                 is_superuser=True,
                 is_active=True,
@@ -88,7 +88,7 @@ def test_custom_per_model_template_renders(engine, admin_user):
     with open(os.path.join(model_dir, "list.html"), "w") as f:
         f.write(
             '{% extends "admin/base_list.html" %}'
-            '{% block list_header %}<h1>CUSTOM-PRODUCT-LIST</h1>{% endblock %}'
+            "{% block list_header %}<h1>CUSTOM-PRODUCT-LIST</h1>{% endblock %}"
         )
 
     client, _ = _make_client(engine, tmpdir)
@@ -106,7 +106,7 @@ def test_global_template_override_renders(engine, admin_user):
     with open(os.path.join(admin_dir, "form.html"), "w") as f:
         f.write(
             '{% extends "admin/base_form.html" %}'
-            '{% block form_submit_line %}<button>CUSTOM-GLOBAL-FORM</button>{% endblock %}'
+            "{% block form_submit_line %}<button>CUSTOM-GLOBAL-FORM</button>{% endblock %}"
         )
 
     client, _ = _make_client(engine, tmpdir)

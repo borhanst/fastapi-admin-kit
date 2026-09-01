@@ -1,7 +1,7 @@
 """Regression tests for S07 — privilege escalation via mass assignment.
 
 A non-superuser with edit permission on admin_users could previously set
-``is_superuser=true`` (or toggle is_active / roles / hashed_password) by
+``is_superuser=true`` (or toggle is_active / roles / password) by
 submitting it in the form or JSON body. Privileged fields are now stripped
 unless a superuser is acting.
 """
@@ -74,7 +74,7 @@ async def _seed_users(engine):
 
         admin = User(
             email="admin@test.com",
-            hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
+            password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
             full_name="Admin",
             is_superuser=True,
             is_active=True,
@@ -83,7 +83,7 @@ async def _seed_users(engine):
 
         editor = User(
             email="editor@test.com",
-            hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
+            password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
             full_name="Editor",
             is_superuser=False,
             is_active=True,
@@ -92,7 +92,7 @@ async def _seed_users(engine):
 
         victim = User(
             email="victim@test.com",
-            hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
+            password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
             full_name="Victim",
             is_superuser=False,
             is_active=True,
