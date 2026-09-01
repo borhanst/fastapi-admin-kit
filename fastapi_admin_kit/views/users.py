@@ -145,7 +145,7 @@ async def roles_search(
 
 #     user = User(
 #         email=email,
-#         hashed_password=User.hash_password(password),
+#         password=User.hash_password(password),
 #         full_name=full_name,
 #         is_superuser=is_superuser,
 #     )
@@ -277,7 +277,7 @@ async def roles_search(
 #                     },
 #                 ),
 #             )
-#         user.hashed_password = User.hash_password(password)
+#         user.password = User.hash_password(password)
 
 #     # Update roles: clear existing, add selected
 #     import json as _json

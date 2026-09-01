@@ -95,7 +95,12 @@ async def resolve_user(request: Request, user_id: int | str | None) -> AdminUser
     # it would roll back the current request's session, destroying data such as
     # newly inserted objects in API create/update flows.  The pending-rollback
     # state is better handled by SessionMiddleware or explicit error handling.
-    user = await auth_backend.get_user(user_id, session)
+    # Pass the QueryBackend so BuiltinAuthBackend stays ORM-agnostic.
+    query_adapter = getattr(request.app.state, "admin_query_adapter", None)
+    try:
+        user = await auth_backend.get_user(user_id, session, query_adapter=query_adapter)
+    except TypeError:
+        user = await auth_backend.get_user(user_id, session)
     if user is None or not getattr(user, "is_active", False):
         return None
 
@@ -188,4 +193,15 @@ async def get_current_user_from_bearer(
         user_id: int | str = int(sub)  # type: ignore[assignment]
     except (TypeError, ValueError):
         return None
-    return await resolve_user(request, user_id)
+
+    user = await resolve_user(request, user_id)
+    if user is None:
+        return None
+
+    # A password change after the token was minted kills it immediately.
+    from fastapi_admin_kit.api.auth import token_predates_password_change
+
+    if token_predates_password_change(payload, user):
+        return None
+
+    return user

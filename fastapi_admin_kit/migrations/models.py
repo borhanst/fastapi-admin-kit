@@ -22,6 +22,7 @@ from fastapi_admin_kit.schemas.builtin import (
     AI_MESSAGE_SCHEMA,
     AI_USAGE_LOG_SCHEMA,
     AUDIT_LOG_SCHEMA,
+    BUILTIN_SCHEMAS,
     LOGIN_ATTEMPT_SCHEMA,
     NOTIFICATION_LOG_SCHEMA,
     NOTIFICATION_PREFERENCE_SCHEMA,
@@ -75,31 +76,33 @@ admin_role_permissions = Table(
 
 # Auth models - order matters for foreign key resolution
 # Materialize child tables first so parent relationships can find FK columns
-UserPermission = _backend.materialize(USER_PERMISSION_SCHEMA, base=Base)
-RefreshToken = _backend.materialize(REFRESH_TOKEN_SCHEMA, base=Base)
-UserTOTP = _backend.materialize(USER_TOTP_SCHEMA, base=Base)
+UserPermission = _backend.materialize(USER_PERMISSION_SCHEMA, base=Base, schemas=BUILTIN_SCHEMAS)
+RefreshToken = _backend.materialize(REFRESH_TOKEN_SCHEMA, base=Base, schemas=BUILTIN_SCHEMAS)
+UserTOTP = _backend.materialize(USER_TOTP_SCHEMA, base=Base, schemas=BUILTIN_SCHEMAS)
 
 # Then parent tables with relationships to children
 # Order matters for many-to-many back_populates relationships
 # Role must be materialized before User so the reverse relationship is available
-Role = _backend.materialize(ROLE_SCHEMA, base=Base)
-User = _backend.materialize(USER_SCHEMA, base=Base)
-Permission = _backend.materialize(PERMISSION_SCHEMA, base=Base)
+Role = _backend.materialize(ROLE_SCHEMA, base=Base, schemas=BUILTIN_SCHEMAS)
+User = _backend.materialize(USER_SCHEMA, base=Base, schemas=BUILTIN_SCHEMAS)
+Permission = _backend.materialize(PERMISSION_SCHEMA, base=Base, schemas=BUILTIN_SCHEMAS)
 
 # Audit models
-AuditLog = _backend.materialize(AUDIT_LOG_SCHEMA, base=Base)
-LoginAttempt = _backend.materialize(LOGIN_ATTEMPT_SCHEMA, base=Base)
+AuditLog = _backend.materialize(AUDIT_LOG_SCHEMA, base=Base, schemas=BUILTIN_SCHEMAS)
+LoginAttempt = _backend.materialize(LOGIN_ATTEMPT_SCHEMA, base=Base, schemas=BUILTIN_SCHEMAS)
 
 # Notification models
-Notification = _backend.materialize(NOTIFICATION_SCHEMA, base=Base)
-NotificationPreference = _backend.materialize(NOTIFICATION_PREFERENCE_SCHEMA, base=Base)
-NotificationLog = _backend.materialize(NOTIFICATION_LOG_SCHEMA, base=Base)
+Notification = _backend.materialize(NOTIFICATION_SCHEMA, base=Base, schemas=BUILTIN_SCHEMAS)
+NotificationPreference = _backend.materialize(
+    NOTIFICATION_PREFERENCE_SCHEMA, base=Base, schemas=BUILTIN_SCHEMAS
+)
+NotificationLog = _backend.materialize(NOTIFICATION_LOG_SCHEMA, base=Base, schemas=BUILTIN_SCHEMAS)
 
 # AI models
-AIUsageLog = _backend.materialize(AI_USAGE_LOG_SCHEMA, base=Base)
-AIConversation = _backend.materialize(AI_CONVERSATION_SCHEMA, base=Base)
-AIMessage = _backend.materialize(AI_MESSAGE_SCHEMA, base=Base)
-AIAttachment = _backend.materialize(AI_ATTACHMENT_SCHEMA, base=Base)
+AIUsageLog = _backend.materialize(AI_USAGE_LOG_SCHEMA, base=Base, schemas=BUILTIN_SCHEMAS)
+AIConversation = _backend.materialize(AI_CONVERSATION_SCHEMA, base=Base, schemas=BUILTIN_SCHEMAS)
+AIMessage = _backend.materialize(AI_MESSAGE_SCHEMA, base=Base, schemas=BUILTIN_SCHEMAS)
+AIAttachment = _backend.materialize(AI_ATTACHMENT_SCHEMA, base=Base, schemas=BUILTIN_SCHEMAS)
 
 # Junction tables are now available via metadata
 admin_user_roles = Base.metadata.tables.get("admin_user_roles")

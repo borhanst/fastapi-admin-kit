@@ -58,7 +58,7 @@ def client(engine):
             await session.flush()
             user = User(
                 email="test@example.com",
-                hashed_password="$2b$12$DOXzSwSZYp0Y1pTzEvWjO.KOLQg3wA/Ez1RkN4RHMiLqngoLM2lMG",
+                password="$2b$12$DOXzSwSZYp0Y1pTzEvWjO.KOLQg3wA/Ez1RkN4RHMiLqngoLM2lMG",
                 full_name="Test User",
                 is_superuser=True,
                 is_active=True,
@@ -167,7 +167,7 @@ def onupdate_client(onupdate_engine):
         async with AsyncSession(onupdate_engine) as session:
             user = User(
                 email="upd@example.com",
-                hashed_password="$2b$12$DOXzSwSZYp0Y1pTzEvWjO.KOLQg3wA/Ez1RkN4RHMiLqngoLM2lMG",
+                password="$2b$12$DOXzSwSZYp0Y1pTzEvWjO.KOLQg3wA/Ez1RkN4RHMiLqngoLM2lMG",
                 full_name="Upd User",
                 is_superuser=True,
                 is_active=True,

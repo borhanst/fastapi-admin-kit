@@ -63,7 +63,7 @@ def admin_user(engine):
             await session.flush()
             user = User(
                 email="admin@test.com",
-                hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
+                password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
                 full_name="Admin",
                 is_superuser=True,
                 is_active=True,

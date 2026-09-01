@@ -66,7 +66,7 @@ class TestAuthConfig:
             is_active = None
             is_superuser = None
             roles = None
-            hashed_password = ""
+            password = ""
 
             def verify_password(self, p: str) -> bool:
                 return True

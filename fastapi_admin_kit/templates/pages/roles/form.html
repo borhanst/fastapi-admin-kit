@@ -101,7 +101,7 @@
         <div class="form-save-bar__left">
             {% if role %}
             <button type="button" class="btn btn-danger btn-sm"
-                    onclick="confirmAction('Delete Role', 'Are you sure you want to delete this role?', () => { window.location='{{ request.app.state.admin_config.admin_path }}/roles/{{ role.id }}/delete'; })">
+                    onclick='confirmAction("Delete Role", "Are you sure you want to delete this role?", () => { window.location = {{ (request.app.state.admin_config.admin_path ~ "/roles/" ~ role.id ~ "/delete") | tojson }}; })'>
                 Delete Role
             </button>
             {% endif %}

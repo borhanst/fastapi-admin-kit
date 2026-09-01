@@ -268,11 +268,11 @@
         {% else %}
         {# boolean, enum, relation — render as dropdown #}
         <button type="button" class="filter-chip"
-                :class="{ 'active': activeFilters['{{ field_name }}'] }"
+                :class="{ 'active': activeFilters[{{ field_name | tojson }}] }"
                 @click="open = !open">
           {{ field_name | replace('_', ' ') | title }}
-          <template x-if="activeFilters['{{ field_name }}']">
-            <span class="filter-chip-count" x-text="activeFilters['{{ field_name }}']"></span>
+          <template x-if="activeFilters[{{ field_name | tojson }}]">
+            <span class="filter-chip-count" x-text="activeFilters[{{ field_name | tojson }}]"></span>
           </template>
           {{ icon("chevron-right", size="16px") }}
         </button>
@@ -280,13 +280,13 @@
           <div class="filter-dropdown-header">
             <span>{{ field_name | replace('_', ' ') | title }}</span>
             <button type="button" class="filter-dropdown-clear"
-                    @click="clearFilter('{{ field_name }}'); open = false">Clear</button>
+                    @click="clearFilter({{ field_name | tojson }}); open = false">Clear</button>
           </div>
           {% for value, label in field_info.choices %}
           <div class="filter-dropdown-item">
             <input type="radio" name="filter_{{ field_name }}" value="{{ value }}"
-                   :checked="activeFilters['{{ field_name }}'] === '{{ value }}'"
-                   @change="setFilter('{{ field_name }}', '{{ value }}'); open = false"
+                   :checked="activeFilters[{{ field_name | tojson }}] === {{ value | tojson }}"
+                   @change="setFilter({{ field_name | tojson }}, {{ value | tojson }}); open = false"
                    id="filter_{{ field_name }}_{{ value }}">
             <label for="filter_{{ field_name }}_{{ value }}">{{ label }}</label>
           </div>

@@ -714,7 +714,7 @@ class TestAutoDiscover:
             role = Role(name="Existing")
             user = User(
                 email="keep@me.com",
-                hashed_password="x",
+                password="x",
                 is_superuser=True,
                 is_active=True,
             )

@@ -40,13 +40,16 @@ class PasswordManager:
 
         Returns True if the stored hash was created with fewer rounds
         than the current default, or if the hash cannot be parsed.
+
+        bcrypt format: ``$2b$<cost>$<22-char salt><31-char hash>`` — the
+        cost factor lives in ``parts[2]`` (S13: previously read from
+        ``parts[3]``, the hash body, so rehashing triggered always/never).
         """
         try:
-            # bcrypt hashes encode rounds as: $2b$<rounds>$...
             parts = hashed.split("$")
-            if len(parts) < 3:
+            if len(parts) < 4 or not parts[2].isdigit():
                 return True
-            actual_rounds = int(parts[3]) if parts[3].isdigit() else 0
+            actual_rounds = int(parts[2])
             return actual_rounds < cls._default_rounds
         except (IndexError, ValueError):
             return True

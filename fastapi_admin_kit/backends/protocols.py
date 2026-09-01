@@ -262,7 +262,7 @@ class DatabaseBackend(Protocol):
         """
         ...
 
-    def materialize(self, schema: Any, base: Any | None = None) -> type:
+    def materialize(self, schema: Any, base: Any | None = None, schemas: Any | None = None) -> type:
         """Convert a :class:`Schema` into a native model class.
 
         Returns a model understood by the backend's introspection adapter.

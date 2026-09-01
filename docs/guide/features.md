@@ -32,6 +32,8 @@ Everything FastAPI Admin Kit offers, in one place.
 | TOTP Two-Factor Auth | QR code setup, enable/disable, backup codes via `/admin/profile/2fa` | [Auth & RBAC](auth-rbac.md) |
 | CSRF Protection | Signed CSRF tokens on all state-changing requests | [Auth & RBAC](auth-rbac.md) |
 | Rate Limiting | Sliding-window rate limiter on authentication endpoints | [Auth & RBAC](auth-rbac.md) |
+| Redis Rate Limiting | Distributed Redis-backed login rate limiting with in-memory fallback | [Redis & Caching](redis-caching.md) |
+| Redis Response Caching | Opt-in Redis-backed cache for list/detail endpoints with `X-Redis-Cache` headers | [Redis & Caching](redis-caching.md) |
 | Password Hashing | bcrypt with configurable rounds | [Auth & RBAC](auth-rbac.md) |
 | Session Security | Signed cookies with `SameSite=Strict`, `Secure`, and configurable TTL | [Configuration](../getting-started/configuration.md) |
 | Secret Key Validation | Enforces minimum 32-character secret key at startup | [Configuration](../getting-started/configuration.md) |

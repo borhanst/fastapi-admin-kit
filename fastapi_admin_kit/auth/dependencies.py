@@ -68,6 +68,11 @@ async def get_current_admin_user(
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid session payload.")
 
+    # S18: every session token must carry an ``iat`` — without it the
+    # password-change invalidation below would silently not apply.
+    if session_payload.get("iat") is None:
+        raise HTTPException(status_code=401, detail="Invalid session payload.")
+
     # request.state.admin_user is populated as a side effect.
     from fastapi_admin_kit.auth.identity import resolve_user
 

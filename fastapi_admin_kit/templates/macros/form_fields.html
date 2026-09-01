@@ -100,8 +100,7 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
   {{ _label(field_ctx) }}
-  {% set safe_suggestions = suggestions | tojson | forceescape %}
-  <div x-data="autocompleteField({{ safe_suggestions }}, '{{ val | e }}')"
+  <div x-data='autocompleteField({{ suggestions | tojson }}, {{ val | tojson }})'
        @click.outside="open = false" style="position: relative;">
     <div style="position: relative; display: flex; align-items: center;">
       <input type="text" id="{{ name }}" name="{{ name }}"
@@ -451,7 +450,7 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
   {{ _label(field_ctx) }}
-  <div class="flex items-center gap-2" x-data="slugWidget('{{ source }}', '{{ name }}')">
+  <div class="flex items-center gap-2" x-data='slugWidget({{ source | tojson }}, {{ name | tojson }})'>
     <input type="text" id="{{ name }}" name="{{ name }}"
            :value="slug"
            @input="onManualEdit($event.target.value)"
@@ -500,13 +499,13 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set val = field_ctx.widget_context.value | default('') %}
 {{ _field_wrapper_open(field_ctx) }}
   {{ _label(field_ctx) }}
-  <div x-data="imageUpload('{{ val }}')">
+  <div x-data='imageUpload({{ val | tojson }})'>
     <input type="hidden" name="{{ name }}_action" :value="action">
     <input type="file" id="{{ name }}" name="{{ name }}" accept="image/*"
            @change="onFileSelect($event)" class="sr-only" x-ref="fileInput">
     {% if val %}
     <div style="margin-bottom: 8px;">
-      <img :src="existingUrl || '{{ val }}'" style="width: 128px; height: 128px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--surface-border);">
+      <img :src="existingUrl || {{ val | tojson }}" style="width: 128px; height: 128px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--surface-border);">
     </div>
     {% endif %}
     <div x-show="previewUrl" style="margin-bottom: 8px;">
@@ -534,7 +533,7 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set val = field_ctx.widget_context.value | default('') %}
 {{ _field_wrapper_open(field_ctx) }}
   {{ _label(field_ctx) }}
-  <div x-data="fileUpload('{{ val }}')">
+  <div x-data='fileUpload({{ val | tojson }})'>
     <input type="hidden" name="{{ name }}_action" :value="action">
     <input type="file" id="{{ name }}" name="{{ name }}"
            @change="onFileSelect($event)" class="sr-only" x-ref="fileInput">
@@ -594,7 +593,7 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set related_table = field_ctx.widget_context.related_table | default('') %}
 {{ _field_wrapper_open(field_ctx) }}
   {{ _label(field_ctx) }}
-  <div x-data="relationPicker('{{ val }}', '{{ label_text }}', '{{ admin_path }}/{{ related_table }}/search')">
+  <div x-data='relationPicker({{ val | tojson }}, {{ label_text | tojson }}, {{ (admin_path ~ "/" ~ related_table ~ "/search") | tojson }})'>
     <input type="hidden" name="{{ name }}" :value="selectedId">
     <div class="relation-picker">
       <input type="text" x-model="searchQuery" @input="search()" @click.outside="open = false" @focus="open = true"
@@ -629,7 +628,7 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set url = search_url if search_url else (admin_path + '/' + related_table + '/search') %}
 {{ _field_wrapper_open(field_ctx) }}
   {{ _label(field_ctx) }}
-  <div x-data="multiRelation({{ val | tojson | forceescape }}, '{{ url }}', [])">
+  <div x-data='multiRelation({{ val | tojson }}, {{ url | tojson }}, [])'>
     <input type="hidden" name="{{ name }}" x-effect="$el.value = JSON.stringify(selectedIds)">
     <div class="flex flex-wrap gap-2" style="margin-bottom: 8px;">
       <template x-for="(item, index) in selectedItems" :key="item.id">

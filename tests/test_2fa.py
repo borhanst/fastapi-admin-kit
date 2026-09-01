@@ -70,7 +70,20 @@ class TestBackupCodes:
 
         code = "TESTCODE"
         hashed = hash_backup_code(code)
-        assert len(hashed) == 64
+        # S12: bcrypt, not bare SHA256
+        assert hashed.startswith("$2")
+        assert len(hashed) == 60
+
+    def test_verify_accepts_legacy_sha256_hashes(self):
+        """Pre-S12 records stored unsalted SHA256 — must still verify."""
+        import hashlib
+
+        from fastapi_admin_kit.auth.totp import verify_backup_code
+
+        code = "OLDCODE1"
+        legacy = [hashlib.sha256(code.encode()).hexdigest()]
+        assert verify_backup_code(code, legacy)
+        assert not verify_backup_code("WRONGCODE", [])
 
     def test_verify_backup_code(self):
         from fastapi_admin_kit.auth.totp import (

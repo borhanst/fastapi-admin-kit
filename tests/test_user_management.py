@@ -46,7 +46,7 @@ class TestSoftDelete:
 
         user = User(
             email="test@test.com",
-            hashed_password="hashed",
+            password="hashed",
             is_active=True,
         )
         assert user.is_active is True
@@ -95,7 +95,7 @@ class TestDirectPermissionRemoval:
             async with AsyncSession(async_engine, expire_on_commit=False) as session:
                 admin = User(
                     email="admin@test.com",
-                    hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
+                    password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
                     full_name="Admin",
                     is_superuser=True,
                     is_active=True,
@@ -103,7 +103,7 @@ class TestDirectPermissionRemoval:
                 session.add(admin)
                 target = User(
                     email="target@test.com",
-                    hashed_password="hashed",
+                    password="hashed",
                     full_name="Target",
                     is_superuser=False,
                     is_active=True,

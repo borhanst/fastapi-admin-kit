@@ -6,7 +6,7 @@ import csv
 import io
 from typing import Any
 
-from fastapi_admin_kit.export_import.base import ExportBase, ImportBase
+from fastapi_admin_kit.export_import.base import ExportBase, ImportBase, sanitize_export_cell
 
 
 class CSVExport(ExportBase):
@@ -58,7 +58,7 @@ class CSVExport(ExportBase):
                 for col in columns:
                     value = self.get_value(obj, col)
                     value = self.format_value(value, col)
-                    row.append(value)
+                    row.append(sanitize_export_cell(value))
                 writer.writerow(row)
                 row_count += 1
 

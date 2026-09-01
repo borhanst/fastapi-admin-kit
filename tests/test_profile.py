@@ -16,7 +16,7 @@ class TestPasswordChangeFlow:
 
         user = User(
             email="test@test.com",
-            hashed_password="hashed",
+            password="hashed",
         )
         assert user.password_changed_at is None
         user.password_changed_at = datetime.now(UTC)
@@ -29,7 +29,7 @@ class TestPasswordChangeFlow:
         hashed = User.hash_password("currentpassword")
         user = User(
             email="test@test.com",
-            hashed_password=hashed,
+            password=hashed,
             is_active=True,
             is_superuser=False,
         )
@@ -70,7 +70,7 @@ class TestProfileUpdate:
 
         user = User(
             email="test@test.com",
-            hashed_password="hashed",
+            password="hashed",
             full_name="Old Name",
         )
         user.full_name = "New Name"

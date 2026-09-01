@@ -4,6 +4,7 @@ from fastapi_admin_kit.config.ai_chat import AIChatConfig
 from fastapi_admin_kit.config.audit import AuditConfig
 from fastapi_admin_kit.config.auth import AuthConfig
 from fastapi_admin_kit.config.behavior import BehaviorConfig
+from fastapi_admin_kit.config.cache import CacheConfig
 from fastapi_admin_kit.config.database import DatabaseConfig, DatabaseType
 from fastapi_admin_kit.config.nav import NavConfig
 from fastapi_admin_kit.config.storage import StorageConfig
@@ -14,6 +15,7 @@ __all__ = [
     "AIChatConfig",
     "AuthConfig",
     "AuditConfig",
+    "CacheConfig",
     "DatabaseConfig",
     "DatabaseType",
     "UIConfig",

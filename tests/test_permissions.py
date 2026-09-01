@@ -51,7 +51,7 @@ async def viewer_role(session):
 async def superuser(session, editor_role):
     user = User(
         email="super@example.com",
-        hashed_password="hash",
+        password="hash",
         full_name="Super Admin",
         is_superuser=True,
         is_active=True,
@@ -67,7 +67,7 @@ async def superuser(session, editor_role):
 async def normal_user(session, editor_role):
     user = User(
         email="editor@example.com",
-        hashed_password="hash",
+        password="hash",
         full_name="Editor",
         is_superuser=False,
         is_active=True,
@@ -83,7 +83,7 @@ async def normal_user(session, editor_role):
 async def multi_role_user(session, editor_role, viewer_role):
     user = User(
         email="multi@example.com",
-        hashed_password="hash",
+        password="hash",
         full_name="Multi Role",
         is_superuser=False,
         is_active=True,
@@ -100,7 +100,7 @@ async def multi_role_user(session, editor_role, viewer_role):
 async def no_role_user(session):
     user = User(
         email="norole@example.com",
-        hashed_password="hash",
+        password="hash",
         full_name="No Role",
         is_superuser=False,
         is_active=True,

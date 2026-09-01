@@ -34,11 +34,16 @@ def _get_secret_key(request: Request) -> str | None:
 
 
 def generate_csrf_token(secret_key: str) -> str:
-    """Generate a signed CSRF token: ``timestamp.random_hex.signature``."""
+    """Generate a signed CSRF token: ``timestamp.random_hex.signature``.
+
+    The HMAC-SHA256 signature is kept at FULL length (64 hex chars) — the
+    previous 32-char truncation halved the signature strength for no gain
+    (S18).
+    """
     random_bytes = os.urandom(16)
     timestamp = str(int(time.time()))
     payload = f"{timestamp}.{random_bytes.hex()}"
-    signature = hmac.new(secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
+    signature = hmac.new(secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return f"{payload}.{signature}"
 
 
@@ -49,7 +54,7 @@ def _verify_csrf_token(secret_key: str, token: str) -> bool:
         return False
     timestamp_str, random_hex, provided_sig = parts
     payload = f"{timestamp_str}.{random_hex}"
-    expected_sig = hmac.new(secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
+    expected_sig = hmac.new(secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(provided_sig, expected_sig):
         return False
     try:
@@ -62,7 +67,16 @@ def _verify_csrf_token(secret_key: str, token: str) -> bool:
 
 
 def set_csrf_cookie(response: Response, secret_key: str, secure: bool = False) -> str:
-    """Generate and set the CSRF cookie on a response. Returns the token."""
+    """Generate and set the CSRF cookie on a response. Returns the token.
+
+    .. note::
+
+        The cookie is intentionally ``httponly=False`` — the double-submit
+        pattern requires JavaScript to read it for ``X-CSRF-Token`` headers.
+        Because the token is readable from JS, an XSS can exfiltrate it;
+        deploy a restrictive Content-Security-Policy (no inline scripts from
+        untrusted sources) alongside this admin to keep that window closed.
+    """
     token = generate_csrf_token(secret_key)
     response.set_cookie(
         key=CSRF_COOKIE_NAME,
@@ -146,6 +160,41 @@ async def require_csrf_token(request: Request) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _extract_multipart_field(body: bytes, content_type: str, field_name: str) -> str | None:
+    """Extract a single field's value from a raw multipart/form-data body.
+
+    Multipart bodies are NOT urlencoded — ``parse_qs`` on them never finds
+    the CSRF field (S18). We split on the boundary and read the part whose
+    ``Content-Disposition`` names *field_name*, without consuming the
+    request stream the route still needs.
+    """
+    boundary = None
+    for piece in content_type.split(";"):
+        piece = piece.strip()
+        if piece.lower().startswith("boundary="):
+            boundary = piece[len("boundary=") :].strip('"').encode()
+            break
+    if not boundary:
+        return None
+
+    delimiter = b"--" + boundary
+    for part in body.split(delimiter):
+        if part in (b"", b"--", b"--\r\n") or part.startswith(b"--"):
+            continue
+        header_end = part.find(b"\r\n\r\n")
+        if header_end == -1:
+            continue
+        headers = part[:header_end]
+        name_marker = f'name="{field_name}"'.encode()
+        if name_marker not in headers:
+            continue
+        value = part[header_end + 4 :]
+        if value.endswith(b"\r\n"):
+            value = value[:-2]
+        return value.decode("utf-8", errors="replace")
+    return None
+
+
 class CSRFMiddleware(BaseHTTPMiddleware):
     """Middleware that:
     1. Generates a CSRF token per request and stores it in ``request.state.csrf_token``
@@ -173,19 +222,23 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         # On state-changing requests, extract CSRF token from form body
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
             content_type = request.headers.get("content-type", "")
-            is_form = (
-                "application/x-www-form-urlencoded" in content_type
-                or "multipart/form-data" in content_type
-            )
-            if is_form:
+            is_urlencoded = "application/x-www-form-urlencoded" in content_type
+            is_multipart = "multipart/form-data" in content_type
+            if is_urlencoded or is_multipart:
                 try:
                     body = await request.body()
-                    from urllib.parse import parse_qs
+                    token: str | None = None
+                    if is_multipart:
+                        token = _extract_multipart_field(body, content_type, CSRF_FORM_FIELD)
+                    else:
+                        from urllib.parse import parse_qs
 
-                    form_data = parse_qs(body.decode("utf-8", errors="replace"))
-                    csrf_values = form_data.get(CSRF_FORM_FIELD)
-                    if csrf_values:
-                        request.state._csrf_token = csrf_values[0]
+                        form_data = parse_qs(body.decode("utf-8", errors="replace"))
+                        csrf_values = form_data.get(CSRF_FORM_FIELD)
+                        if csrf_values:
+                            token = csrf_values[0]
+                    if token:
+                        request.state._csrf_token = token
                 except Exception:
                     pass  # Let the dependency handle missing token
 

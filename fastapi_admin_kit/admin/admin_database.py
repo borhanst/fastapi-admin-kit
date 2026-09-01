@@ -43,13 +43,31 @@ class AdminDatabase:
             admin_database=self, database_config=database_config
         )
 
+    @property
+    def resolved_engine(self) -> Any:
+        """Return the SQLAlchemy engine, lazily creating it from
+        ``database_config`` if no engine was passed at construction time.
+
+        This is the property to use everywhere a backend call needs an
+        engine. Reading the raw ``self.engine`` attribute can be ``None``
+        when the project supplied a ``database_config`` instead of an
+        ``engine`` — calling methods on it then surfaces a confusing
+        ``AttributeError: 'NoneType' object has no attribute
+        '_run_ddl_visitor'`` from deep inside SQLAlchemy.
+        """
+        return self._ensure_engine()
+
     def _ensure_engine(self) -> Any:
         """Create the async engine from ``database_config`` if no engine is set."""
         if self.engine is None and self.database_config is not None:
             self.engine = self.database_config.create_engine()
         return self.engine
 
-    async def _create_tables(self, include_ai_tables: bool = True) -> None:
+    async def _create_tables(
+        self,
+        include_ai_tables: bool = True,
+        extra_exclude_tables: list[str] | None = None,
+    ) -> None:
         """Create all admin database tables (async-safe).
 
         If ``use_alembic=True`` (production mode), this method does nothing
@@ -59,6 +77,13 @@ class AdminDatabase:
         ``admin_ai_*`` tables are skipped. This is safe because the AI schemas
         declare ``relations=[]`` and no FK columns (the "log pattern"), so
         excluding them cannot break ``create_all`` dependency sorting.
+
+        ``extra_exclude_tables`` lets callers (typically the ``Admin`` setup
+        path) drop built-in tables that should not be created for this
+        installation — most notably the default ``admin_users`` /
+        ``admin_user_roles`` tables when a project supplies a custom
+        ``auth_model``. Filtering at ``create_all`` time avoids mutating the
+        shared ``AdminBase.metadata`` (whose FacadeDict is immutable).
         """
         if self.use_alembic:
             logger.info("use_alembic=True: skipping create_all; schema managed by Alembic")
@@ -67,24 +92,42 @@ class AdminDatabase:
         from fastapi_admin_kit.migrations.models import Base as AdminBase
         from fastapi_admin_kit.schemas.builtin import AI_TABLE_NAMES
 
+        exclude = set(extra_exclude_tables or ())
+
         def _filtered(metadata: Any) -> Any:
-            if include_ai_tables:
+            drop = exclude | (set() if include_ai_tables else AI_TABLE_NAMES)
+            if not drop:
                 return None  # create_all(tables=None) == all tables
-            return [t for name, t in metadata.tables.items() if name not in AI_TABLE_NAMES]
+            return [t for name, t in metadata.tables.items() if name not in drop]
 
         ai_filtered_admin = _filtered(AdminBase.metadata)
         ai_filtered_base = _filtered(self.base.metadata) if self.base is not None else None
 
+        engine = self.resolved_engine
+        if engine is None:
+            raise RuntimeError(
+                "AdminDatabase has no engine: pass `engine=` or "
+                "`database_config=` to Admin() so the admin tables can be "
+                "created. If you manage schema via Alembic, set "
+                "`use_alembic=True` on Admin() to skip create_all."
+            )
+
         await self._run_backend(
-            self._backend.create_tables, self.engine, AdminBase.metadata, ai_filtered_admin
+            self._backend.create_tables,
+            engine,
+            AdminBase.metadata,
+            ai_filtered_admin,
         )
         if self.base is not None:
             await self._run_backend(
-                self._backend.create_tables, self.engine, self.base.metadata, ai_filtered_base
+                self._backend.create_tables,
+                engine,
+                self.base.metadata,
+                ai_filtered_base,
             )
-        await self._run_backend(self._backend.auto_migrate, self.engine, AdminBase.metadata)
+        await self._run_backend(self._backend.auto_migrate, engine, AdminBase.metadata)
         if self.base is not None:
-            await self._run_backend(self._backend.auto_migrate, self.engine, self.base.metadata)
+            await self._run_backend(self._backend.auto_migrate, engine, self.base.metadata)
 
     async def _missing_tables(self, ai_enabled: bool, names: list[str]) -> set[str]:
         """Return the subset of ``names`` whose tables do not exist yet.

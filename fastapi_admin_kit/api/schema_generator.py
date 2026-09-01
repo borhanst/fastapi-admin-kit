@@ -87,6 +87,23 @@ def _collect_relationships(registered: Any) -> list[Any]:
     return relationships
 
 
+def _add_extra_fields(admin: Any, fields: dict[str, Any], *, required_on_create: bool) -> None:
+    """Add ModelAdmin.extra_fields (e.g. ``password``) to a request schema.
+
+    The HTML form exposes these virtual fields; the JSON API must accept
+    them too so create/update validation behaves identically on both
+    transports.
+    """
+    readonly = set(admin.readonly_fields or [])
+    for extra in getattr(admin, "extra_fields", None) or []:
+        if extra.name in fields or extra.name in readonly:
+            continue
+        if required_on_create and extra.required_on_create:
+            fields[extra.name] = (str | None, Field(...))
+        else:
+            fields[extra.name] = (str | None, Field(default=None))
+
+
 def _relationship_python_type(rel: Any) -> type:
     """Get the Python type for a relationship field in a request schema.
 
@@ -127,6 +144,8 @@ def build_create_schema(registered: Any) -> type[BaseModel]:
         python_type = _relationship_python_type(rel)
         fields[rel.name] = (python_type | None, Field(default=None))
 
+    _add_extra_fields(admin, fields, required_on_create=True)
+
     model_name = f"{registered.verbose_name.replace(' ', '')}Create"
     return create_model(model_name, __config__=None, **fields)
 
@@ -155,13 +174,17 @@ def build_update_schema(registered: Any) -> type[BaseModel]:
         python_type = _relationship_python_type(rel)
         fields[rel.name] = (python_type | None, Field(default=None))
 
+    _add_extra_fields(admin, fields, required_on_create=False)
+
     model_name = f"{registered.verbose_name.replace(' ', '')}Update"
     return create_model(model_name, __config__=None, **fields)
 
 
 def build_response_schema(registered: Any) -> type[BaseModel]:
     """Build a Pydantic model for response output."""
-    columns = list(registered.columns)
+    from fastapi_admin_kit.inspection.types import SENSITIVE_FIELDS
+
+    columns = [c for c in registered.columns if c.name not in SENSITIVE_FIELDS]
 
     fields: dict[str, Any] = {}
     for col in columns:

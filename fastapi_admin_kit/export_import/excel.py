@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 from typing import Any
 
-from fastapi_admin_kit.export_import.base import ExportBase, ImportBase
+from fastapi_admin_kit.export_import.base import ExportBase, ImportBase, sanitize_export_cell
 
 try:
     import openpyxl
@@ -40,7 +40,8 @@ class ExcelExport(ExportBase):
 
         Converts non-Excel-safe types (dicts, lists, etc.) to strings so
         openpyxl does not raise a ValueError. Native Excel types (int, float,
-        bool, datetime, str, None) are returned unchanged.
+        bool, datetime, str, None) are returned unchanged. String cells that
+        could be interpreted as formulas are neutralised (S14).
         """
         import datetime
 
@@ -50,10 +51,12 @@ class ExcelExport(ExportBase):
         if isinstance(
             value, int | float | bool | str | datetime.datetime | datetime.date | datetime.time
         ):
-            return value
+            return sanitize_export_cell(value)
         # Related objects serialised as dicts → use their label/name/str
         if isinstance(value, dict):
-            return value.get("label") or value.get("name") or value.get("title") or str(value)
+            return sanitize_export_cell(
+                value.get("label") or value.get("name") or value.get("title") or str(value)
+            )
         # Many-to-many / one-to-many lists
         if isinstance(value, list | tuple | set):
             parts = []
@@ -66,7 +69,7 @@ class ExcelExport(ExportBase):
                     parts.append(str(item))
             return ", ".join(parts)
         # Fallback for any other unexpected type
-        return str(value)
+        return sanitize_export_cell(str(value))
 
     def export(self, queryset: Any, request: Any = None) -> io.BytesIO:
         """Export queryset to Excel format.

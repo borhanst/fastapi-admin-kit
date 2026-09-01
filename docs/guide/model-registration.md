@@ -448,8 +448,13 @@ usual (query/path params, bodies, etc.).
 | `summary` | `str` | No | `""` | OpenAPI summary |
 | `response_description` | `str` | No | `""` | OpenAPI response description |
 | `permission` | `str` | No | `None` | RBAC action enforced via `require_permission` |
+| `allow_anonymous` | `bool` | No | `False` | Set `True` to expose the endpoint without authentication |
 
 ### RBAC
+
+Endpoints are **secure by default**: without an explicit `permission` (or
+`allow_anonymous=True`) an endpoint requires an authenticated user with
+`view` permission on the model.
 
 Setting `permission` enforces the same RBAC used by the built-in routes (a
 `require_permission("<model>", "<permission>")` dependency). You can also pass
@@ -465,6 +470,14 @@ from fastapi_admin_kit.auth.dependencies import require_permission
 )
 async def stats(self, request):
     pass
+```
+
+To publish a genuinely public endpoint, opt out explicitly:
+
+```python
+@endpoint(path="/health", allow_anonymous=True)
+async def health(self, request):
+    return {"status": "ok"}
 ```
 
 ## Customizing Built-in Admin Models

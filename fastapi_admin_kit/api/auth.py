@@ -18,12 +18,31 @@ from fastapi_admin_kit.api.schemas import (
     TokenResponse,
 )
 from fastapi_admin_kit.api.security import basic_scheme, bearer_scheme
-from fastapi_admin_kit.auth.ratelimit import RateLimiter, check_rate_limit
+from fastapi_admin_kit.auth.proxy import get_client_ip
 from fastapi_admin_kit.db import get_db_session
 
 router = APIRouter(prefix="/auth", tags=["api-auth"])
 
-_api_rate_limiter = RateLimiter(max_attempts=10, window_seconds=900)
+# Rate limits (S11). The token endpoint counts FAILED attempts per
+# (client IP, email) so legitimate users behind shared NATs are not locked
+# out by other people's typos; refresh/logout count every request per IP
+# because they are unauthenticated DB-touching endpoints.
+TOKEN_RATE_LIMIT = 10
+TOKEN_RATE_WINDOW = 900
+REFRESH_RATE_LIMIT = 60
+REFRESH_RATE_WINDOW = 300
+LOGOUT_RATE_LIMIT = 30
+LOGOUT_RATE_WINDOW = 300
+
+DEFAULT_ACCESS_TOKEN_TTL = 600
+"""Default access-token lifetime (seconds).
+
+Access tokens are intentionally short-lived: revocation on logout is
+best-effort (the refresh token is revoked server-side; a held access
+token simply expires within this window). Password changes kill
+outstanding tokens immediately via the ``iat`` vs ``password_changed_at``
+check — no server-side token store needed.
+"""
 
 
 def _get_secret_key(request: Request) -> str:
@@ -48,9 +67,21 @@ def _get_secret_key(request: Request) -> str:
 
 
 def _get_token_ttl(request: Request) -> int:
-    """Get access token TTL in seconds from admin config."""
+    """Get the access-token TTL in seconds.
+
+    Resolution order:
+
+    1. ``access_token_ttl`` — dedicated knob (recommended). Defaults to
+       600 s (10 min): short enough that a stolen bearer token expires
+       quickly, while ``/api/auth/refresh`` keeps sessions alive.
+    2. ``session_ttl`` — legacy fallback for apps that configured it
+       before the dedicated knob existed.
+    """
     config = getattr(request.app.state, "admin_config", {})
-    return config.get("session_ttl", 1800)
+    ttl = config.get("access_token_ttl")
+    if ttl is None:
+        ttl = config.get("session_ttl", DEFAULT_ACCESS_TOKEN_TTL)
+    return int(ttl)
 
 
 def _get_refresh_ttl() -> int:
@@ -121,9 +152,15 @@ def create_access_token(
     permissions: dict[str, list[str]] | None = None,
     expires_delta: timedelta | None = None,
 ) -> str:
-    """Create a JWT access token with embedded roles and permissions."""
+    """Create a short-lived JWT access token.
+
+    The token carries a ``jti`` (for audit correlation) and an ``iat``
+    used to reject tokens minted before the user's last password change.
+    Authorization is *not* trusted from this token — permission checks
+    always resolve live DB state (see ``api/deps.py``).
+    """
     now = datetime.now(UTC)
-    expire = now + (expires_delta or timedelta(minutes=30))
+    expire = now + (expires_delta or timedelta(seconds=DEFAULT_ACCESS_TOKEN_TTL))
     jti = str(uuid.uuid4())
 
     role_names = []
@@ -145,6 +182,39 @@ def create_access_token(
         "jti": jti,
     }
     return jwt.encode(payload, secret_key, algorithm="HS256")
+
+
+def token_predates_password_change(payload: dict[str, Any], user: Any) -> bool:
+    """True when the token was minted before the user's last password change.
+
+    Used to invalidate outstanding access tokens immediately after a
+    credential rotation. Tokens without ``iat`` (legacy/foreign minters)
+    fail open — they still expire within the short TTL.
+    """
+    from datetime import datetime as _dt
+
+    iat = payload.get("iat")
+    pwd_changed_at = getattr(user, "password_changed_at", None)
+    if iat is None or pwd_changed_at is None:
+        return False
+
+    if isinstance(iat, int | float):
+        try:
+            iat_dt = _dt.fromtimestamp(iat, tz=UTC)
+        except (OverflowError, OSError, ValueError):
+            return False
+    elif isinstance(iat, _dt):
+        iat_dt = iat
+    else:
+        return False
+
+    if isinstance(pwd_changed_at, _dt):
+        if pwd_changed_at.tzinfo is None:
+            pwd_changed_at = pwd_changed_at.replace(tzinfo=UTC)
+    else:
+        return False
+
+    return iat_dt < pwd_changed_at
 
 
 def decode_access_token(token: str, secret_key: str) -> dict[str, Any] | None:
@@ -178,7 +248,20 @@ async def obtain_token(
     else:
         raise HTTPException(status_code=422, detail="Credentials required.")
 
-    check_rate_limit(_api_rate_limiter, email)
+    # Rate-limit failed attempts per (client IP, email). The client IP is
+    # resolved through the trusted-proxy helper: spoofed X-Forwarded-For
+    # headers cannot rotate the bucket (S11).
+    from fastapi_admin_kit.redis import resolve_rate_guard
+
+    client_ip = get_client_ip(request)
+    token_guard = await resolve_rate_guard(
+        request,
+        limit=TOKEN_RATE_LIMIT,
+        window=TOKEN_RATE_WINDOW,
+        slot="_api_token_rate_limiter",
+    )
+    token_key = f"{client_ip}|{email.strip().lower()}"
+    await token_guard.check(token_key)
 
     auth_backend = getattr(request.app.state, "admin_auth_backend", None)
     if auth_backend is None:
@@ -188,12 +271,18 @@ async def obtain_token(
     if db_session is None:
         raise HTTPException(status_code=500, detail="Database session not available.")
 
-    user = await auth_backend.authenticate(email, password, db_session)
+    query_adapter = getattr(request.app.state, "admin_query_adapter", None)
+    try:
+        user = await auth_backend.authenticate(
+            email, password, db_session, query_adapter=query_adapter
+        )
+    except TypeError:
+        user = await auth_backend.authenticate(email, password, db_session)
     if user is None:
-        _api_rate_limiter.record_attempt(email)
+        await token_guard.record_failure(token_key)
         raise HTTPException(status_code=401, detail="Invalid credentials.")
 
-    _api_rate_limiter.reset(email)
+    await token_guard.reset(token_key)
 
     secret_key = _get_secret_key(request)
     ttl = _get_token_ttl(request)
@@ -230,6 +319,20 @@ async def refresh_token(
     body: RefreshRequest,
 ) -> RefreshResponse:
     """POST /api/auth/refresh — exchange refresh token for new access token."""
+    # Unauthenticated endpoint that hits the DB and rotates tokens —
+    # rate-limit every request per client IP (S11).
+    from fastapi_admin_kit.redis import resolve_rate_guard
+
+    refresh_guard = await resolve_rate_guard(
+        request,
+        limit=REFRESH_RATE_LIMIT,
+        window=REFRESH_RATE_WINDOW,
+        slot="_api_refresh_rate_limiter",
+    )
+    refresh_key = f"ip:{get_client_ip(request)}"
+    await refresh_guard.check(refresh_key)
+    await refresh_guard.record_failure(refresh_key)
+
     db_session = get_db_session(request)
     if db_session is None:
         raise HTTPException(status_code=500, detail="Database session not available.")
@@ -300,7 +403,24 @@ async def api_logout(
     request: Request,
     body: RefreshRequest | None = None,
 ) -> dict[str, str]:
-    """POST /api/auth/logout — revoke refresh token."""
+    """POST /api/auth/logout — revoke the refresh token.
+
+    The presented access token is not server-revoked: it expires within
+    the short ``access_token_ttl`` window. Clients must discard it.
+    """
+    # Unauthenticated endpoint — rate-limit every request per client IP (S11).
+    from fastapi_admin_kit.redis import resolve_rate_guard
+
+    logout_guard = await resolve_rate_guard(
+        request,
+        limit=LOGOUT_RATE_LIMIT,
+        window=LOGOUT_RATE_WINDOW,
+        slot="_api_logout_rate_limiter",
+    )
+    logout_key = f"ip:{get_client_ip(request)}"
+    await logout_guard.check(logout_key)
+    await logout_guard.record_failure(logout_key)
+
     if body and body.refresh_token:
         db_session = get_db_session(request)
         if db_session:
@@ -327,7 +447,13 @@ async def get_current_user_info(
     request: Request,
     _: Any = Depends(bearer_scheme),
 ) -> dict[str, Any]:
-    """GET /api/auth/me — return current user info from JWT (no DB hit)."""
+    """GET /api/auth/me — current user info resolved from the live database.
+
+    The JWT only authenticates identity; the response reflects current DB
+    state (email, name, superuser flag, roles). Deactivation, deletion, or
+    a password change after the token was minted invalidates it
+    immediately.
+    """
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header.")
@@ -338,10 +464,34 @@ async def get_current_user_info(
     if payload is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token.")
 
+    sub = payload.get("sub")
+    if sub is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired token.")
+    try:
+        user_id: int | str = int(sub)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid or expired token.") from None
+
+    # Resolve through the AuthBackend seam: honours BYO user models and
+    # returns None for deleted/deactivated accounts.
+    from fastapi_admin_kit.auth.identity import resolve_user
+
+    user = await resolve_user(request, user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Account not found or inactive.")
+
+    if token_predates_password_change(payload, user):
+        raise HTTPException(status_code=401, detail="Token has been revoked.")
+
+    try:
+        role_names = [getattr(r, "name", "") for r in getattr(user, "roles", [])]
+    except Exception:  # noqa: BLE001 — roles may be unavailable on BYO models
+        role_names = payload.get("roles", [])
+
     return {
-        "user_id": payload.get("sub"),
-        "email": payload.get("email"),
-        "full_name": payload.get("full_name"),
-        "roles": payload.get("roles", []),
-        "is_superuser": payload.get("is_superuser", False),
+        "user_id": str(user_id),
+        "email": getattr(user, "email", None),
+        "full_name": getattr(user, "full_name", None),
+        "roles": role_names,
+        "is_superuser": bool(getattr(user, "is_superuser", False)),
     }

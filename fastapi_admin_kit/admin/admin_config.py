@@ -7,6 +7,7 @@ from fastapi_admin_kit.config import (
     AuditConfig,
     AuthConfig,
     BehaviorConfig,
+    CacheConfig,
     NavConfig,
     StorageConfig,
     UIConfig,
@@ -29,6 +30,7 @@ class AdminConfig:
         nav: NavConfig | None = None,
         template_dirs: list[str] | None = None,
         ai_chat: AIChatConfig | None = None,
+        cache: CacheConfig | None = None,
     ):
         self.ui = ui or UIConfig()
         self.auth = auth or AuthConfig()
@@ -38,6 +40,7 @@ class AdminConfig:
         self.nav = nav or NavConfig()
         self.template_dirs = template_dirs or []
         self.ai_chat = ai_chat or AIChatConfig()
+        self.cache = cache or CacheConfig()
 
     def validate_all(self) -> None:
         """Validate all configuration components."""
@@ -45,6 +48,7 @@ class AdminConfig:
         self.audit.validate_audit_config()
         self.storage.validate_storage_config()
         self.nav.validate_nav_config()
+        self.cache.validate_cache_config()
 
     def get_ui_context(self) -> dict:
         """Get UI configuration for template context."""

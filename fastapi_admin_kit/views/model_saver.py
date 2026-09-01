@@ -43,9 +43,14 @@ class ModelSaver:
         Relationship fields (e.g. ``"user"``) are resolved to their
         local foreign-key column (e.g. ``"user_id"``) so that the
         correct column is persisted by the ORM.
+
+        Fields declared ``readonly`` on the ModelAdmin are skipped as
+        defence-in-depth against mass assignment, even if a parser let
+        them through.
         """
         introspection = self._get_introspection(request)
         col_names = {c.name for c in self.registered.columns}
+        readonly = set(self.registered.admin.get_readonly_fields(obj=obj) or [])
 
         # Build mapping: relationship key -> local FK column key
         rel_fk_map: dict[str, str] = {}
@@ -75,6 +80,8 @@ class ModelSaver:
                         rel_fk_map[rel_key] = local_cols[0]
 
         for key, value in parsed.items():
+            if key in readonly:
+                continue
             if key in col_names:
                 setattr(obj, key, value)
             elif key in rel_fk_map:

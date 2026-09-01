@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from fastapi_admin_kit.auth.csrf import require_csrf_token
-from fastapi_admin_kit.auth.dependencies import require_permission
+from fastapi_admin_kit.auth.dependencies import (
+    get_permission_checker,
+    require_permission,
+)
 from fastapi_admin_kit.db import get_db_session
 from fastapi_admin_kit.notifications.dispatcher import dispatch_model_change
 from fastapi_admin_kit.registry import RegisteredModel
@@ -55,18 +60,32 @@ def _endpoint_handler(fn):
     return wrapper
 
 
-def build_model_router(registered: RegisteredModel, *, force: bool = False) -> APIRouter | None:
+def build_model_router(
+    registered: RegisteredModel,
+    *,
+    force: bool = False,
+    cache_config: Any | None = None,
+) -> APIRouter | None:
     """Build the HTML admin router for a model.
 
     Returns ``None`` when the model is API-only (``export_endpoint == "api"``)
     so callers know no admin router should be mounted. Pass ``force=True`` to
     build the router regardless (used by the standalone
     ``ModelAdmin.export_admin_route`` helper).
+
+    When *cache_config* is enabled (and Redis is available) the GET list and
+    GET detail endpoints get a Redis-backed ``cache()`` dependency keyed on an
+    eviction group per model table — every cached response carries the
+    ``X-Redis-Cache: HIT/MISS`` header automatically.
     """
     # Models with export_endpoint="api" only expose their JSON API router —
     # the admin HTML router is skipped entirely.
     if not force and getattr(registered.admin, "export_endpoint", None) == "api":
         return None
+
+    from fastapi_admin_kit.redis import cache_dependency, rate_limit_dependency
+
+    cache_dep = cache_dependency(cache_config, eviction_group=registered.table_name)
 
     router = APIRouter(prefix=f"/{registered.table_name}", tags=[registered.verbose_name])
 
@@ -79,11 +98,22 @@ def build_model_router(registered: RegisteredModel, *, force: bool = False) -> A
     bulk_v = _resolve_view_class(admin, "bulk_view_class", BulkView)(registered)
     search_v = _resolve_view_class(admin, "search_view_class", SearchView)(registered)
 
+    list_deps = [Depends(require_permission(registered.table_name, "view"))]
+    if cache_dep is not None:
+        list_deps.append(cache_dep)
+    rate_dep = rate_limit_dependency(
+        cache_config,
+        limit=getattr(admin, "rate_limit", None),
+        window=getattr(admin, "rate_window", None),
+    )
+    if rate_dep is not None:
+        list_deps.append(rate_dep)
+
     router.add_api_route(
         "/",
         list_v.html_response,
         methods=["GET"],
-        dependencies=[Depends(require_permission(registered.table_name, "view"))],
+        dependencies=list_deps,
         include_in_schema=False,
     )
     router.add_api_route(
@@ -134,8 +164,11 @@ def build_model_router(registered: RegisteredModel, *, force: bool = False) -> A
             error_msg = str(exc) or "An unexpected error occurred."
 
         if error_msg:
+            # Proper status codes (S16): 401 unauthenticated / 403 forbidden —
+            # a 200 body with {"error": ...} hid failures from API clients.
+            status = 401 if current_user is None else 403
             return JSONResponse(
-                status_code=200,
+                status_code=status,
                 content={"error": error_msg, "results": []},
             )
 
@@ -158,15 +191,21 @@ def build_model_router(registered: RegisteredModel, *, force: bool = False) -> A
     async def export_data(
         request: Request,
         format: str = "csv",
-        _: None = Depends(require_permission(registered.table_name, "view")),
+        _: None = Depends(require_permission(registered.table_name, "export")),
     ):
-        """Export data in the specified format."""
+        """Export data in the specified format.
+
+        Single gate (S16): the ``export`` permission — previously the outer
+        dependency required only ``view`` while the in-handler check
+        required ``export``, so the two gates disagreed.
+        """
         from fastapi.responses import StreamingResponse
 
         from fastapi_admin_kit.auth.identity import get_current_user_from_cookie
         from fastapi_admin_kit.db import get_db_session
 
-        # Check export permission
+        # Resolve the user for audit attribution (permission already
+        # enforced by the require_permission dependency above).
         current_user = await get_current_user_from_cookie(request)
         if current_user is None:
             raise HTTPException(status_code=401, detail="Not authenticated")
@@ -175,11 +214,6 @@ def build_model_router(registered: RegisteredModel, *, force: bool = False) -> A
         user_email = getattr(current_user, "email", None)
 
         session = get_db_session(request)
-        from fastapi_admin_kit.auth.permissions import PermissionChecker
-
-        checker = PermissionChecker(session=session, user=current_user)
-        if not await checker.has_permission(registered.table_name, "export"):
-            raise HTTPException(status_code=403, detail="Export permission denied")
 
         # Get export class
         export_class = admin.get_export_class(format)
@@ -247,27 +281,25 @@ def build_model_router(registered: RegisteredModel, *, force: bool = False) -> A
     async def import_data(
         request: Request,
         format: str = "csv",
-        _: None = Depends(require_permission(registered.table_name, "create")),
+        _: None = Depends(require_permission(registered.table_name, "import")),
         _csrf: bool = Depends(require_csrf_token),
     ):
-        """Import data from uploaded file."""
-        from fastapi_admin_kit.auth.identity import get_current_user_from_cookie
-        from fastapi_admin_kit.db import get_db_session
+        """Import data from uploaded file.
 
-        # Check import permission
+        Single gate (S16): the ``import`` permission — previously the outer
+        dependency required only ``create`` while the in-handler check
+        required ``import``.
+        """
+        from fastapi_admin_kit.auth.identity import get_current_user_from_cookie
+
+        # Resolve the user for audit attribution (permission already
+        # enforced by the require_permission dependency above).
         current_user = await get_current_user_from_cookie(request)
         if current_user is None:
             raise HTTPException(status_code=401, detail="Not authenticated")
 
         user_id = getattr(current_user, "id", None)
         user_email = getattr(current_user, "email", None)
-
-        session = get_db_session(request)
-        from fastapi_admin_kit.auth.permissions import PermissionChecker
-
-        checker = PermissionChecker(session=session, user=current_user)
-        if not await checker.has_permission(registered.table_name, "import"):
-            raise HTTPException(status_code=403, detail="Import permission denied")
 
         # Get import class
         import_class = admin.get_import_class(format)
@@ -360,11 +392,26 @@ def build_model_router(registered: RegisteredModel, *, force: bool = False) -> A
         html = templates.TemplateResponse(request, "partials/list_table.html", ctx)
         return html
 
+    async def _require_create_or_edit(
+        checker: Any = Depends(get_permission_checker),
+    ) -> None:
+        """Field validation previews form errors for create/edit flows (S16):
+        requiring only ``view`` let read-only users probe validator logic."""
+        table = registered.table_name
+        if not (
+            await checker.has_permission(table, "create")
+            or await checker.has_permission(table, "edit")
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=f"You do not have permission to validate {table} fields.",
+            )
+
     @router.post("/validate-field", include_in_schema=False)
     async def validate_field_endpoint(
         request: Request,
         _csrf: bool = Depends(require_csrf_token),
-        _: None = Depends(require_permission(registered.table_name, "view")),
+        _: None = Depends(_require_create_or_edit),
     ):
         templates = request.app.state.admin_jinja_env
         form = await request.form()
@@ -417,6 +464,12 @@ def build_model_router(registered: RegisteredModel, *, force: bool = False) -> A
         dependencies = list(opts.dependencies or [])
         if opts.permission:
             dependencies.append(Depends(require_permission(registered.table_name, opts.permission)))
+        elif not opts.allow_anonymous:
+            # Secure by default (S17): a custom endpoint without an explicit
+            # permission is NOT public — it requires authentication plus
+            # view permission on the model. Opt out with
+            # ``@endpoint(..., allow_anonymous=True)``.
+            dependencies.append(Depends(require_permission(registered.table_name, "view")))
 
         router.add_api_route(
             opts.path,
@@ -433,11 +486,43 @@ def build_model_router(registered: RegisteredModel, *, force: bool = False) -> A
             include_in_schema=opts.include_in_schema,
         )
 
+    # ── Sortable Endpoint ──────────────────────────────────────────
+    # Registered before the ``/{id}`` catch-all so POST /sort is not
+    # swallowed by the edit-view route.
+
+    @router.post("/sort", include_in_schema=False)
+    async def sort_items(
+        request: Request,
+        _csrf: bool = Depends(require_csrf_token),
+        _: None = Depends(require_permission(registered.table_name, "edit")),
+    ):
+        """Handle drag-drop sort updates."""
+        body = await request.json()
+        ordering_field = getattr(registered.admin, "ordering_field", None)
+        if not ordering_field:
+            raise HTTPException(status_code=400, detail="Sorting not configured")
+
+        session = get_db_session(request)
+        items = body.get("items", [])
+        for idx, item_id in enumerate(items):
+            obj = await session.get(registered.model, item_id)
+            if obj:
+                setattr(obj, ordering_field, idx)
+        await session.flush()
+
+        from fastapi.responses import HTMLResponse
+
+        return HTMLResponse(content="OK")
+
+    detail_deps = [Depends(require_permission(registered.table_name, "edit"))]
+    if cache_dep is not None:
+        detail_deps.append(cache_dep)
+
     router.add_api_route(
         "/{id}",
         edit_v.html_response,
         methods=["GET"],
-        dependencies=[Depends(require_permission(registered.table_name, "edit"))],
+        dependencies=detail_deps,
         include_in_schema=False,
     )
     router.add_api_route(
@@ -696,6 +781,7 @@ def build_model_router(registered: RegisteredModel, *, force: bool = False) -> A
         request: Request,
         action_name: str,
         _csrf: bool = Depends(require_csrf_token),
+        _: None = Depends(require_permission(registered.table_name, "edit")),
     ):
         """Execute a list-level action on selected objects."""
         session = get_db_session(request)
@@ -731,6 +817,7 @@ def build_model_router(registered: RegisteredModel, *, force: bool = False) -> A
         action_name: str,
         id: str,
         _csrf: bool = Depends(require_csrf_token),
+        _: None = Depends(require_permission(registered.table_name, "edit")),
     ):
         """Execute a row-level action on a single object."""
         session = get_db_session(request)
@@ -751,31 +838,6 @@ def build_model_router(registered: RegisteredModel, *, force: bool = False) -> A
             raise HTTPException(status_code=404, detail="Not found")
 
         await action_obj.execute([obj], request)
-        await session.flush()
-
-        from fastapi.responses import HTMLResponse
-
-        return HTMLResponse(content="OK")
-
-    # ── Sortable Endpoint ──────────────────────────────────────────
-
-    @router.post("/sort", include_in_schema=False)
-    async def sort_items(
-        request: Request,
-        _csrf: bool = Depends(require_csrf_token),
-    ):
-        """Handle drag-drop sort updates."""
-        body = await request.json()
-        ordering_field = getattr(registered.admin, "ordering_field", None)
-        if not ordering_field:
-            raise HTTPException(status_code=400, detail="Sorting not configured")
-
-        session = get_db_session(request)
-        items = body.get("items", [])
-        for idx, item_id in enumerate(items):
-            obj = await session.get(registered.model, item_id)
-            if obj:
-                setattr(obj, ordering_field, idx)
         await session.flush()
 
         from fastapi.responses import HTMLResponse
@@ -820,6 +882,7 @@ def build_model_router(registered: RegisteredModel, *, force: bool = False) -> A
         request: Request,
         id: str,
         _csrf: bool = Depends(require_csrf_token),
+        _: None = Depends(require_permission(registered.table_name, "edit")),
     ):
         """Inline field update — used by toggle switches in list view."""
         from fastapi_admin_kit.auth.csrf import _get_secret_key, generate_csrf_token

@@ -70,7 +70,7 @@
               {% if selected_role_items.append({"id": r.id, "label": r.name | string}) %}{% endif %}
             {% endfor %}
           {% endif %}
-          <div x-data="multiRelation({{ selected_role_ids | tojson | forceescape }}, '{{ admin_path | default('/admin') }}/users/roles/search', {{ selected_role_items | tojson | forceescape }})">
+          <div x-data='multiRelation({{ selected_role_ids | tojson }}, {{ (admin_path | default("/admin") ~ "/users/roles/search") | tojson }}, {{ selected_role_items | tojson }})'>
             <input type="hidden" name="role_ids" :value="JSON.stringify(selectedIds)">
             <div class="flex flex-wrap gap-2" style="margin-bottom: 8px;">
               <template x-for="(item, index) in selectedItems" :key="item.id">
@@ -101,7 +101,7 @@
         <div class="field-wrapper field-wrapper--full">
           <label class="field-label">Direct Permissions</label>
           {% set perm_search_url = admin_path | default('/admin') ~ '/permissions/search' %}
-          <div x-data="permissionWidget('{{ perm_search_url }}', {{ perm_data | tojson | forceescape }})">
+          <div x-data='permissionWidget({{ perm_search_url | tojson }}, {{ perm_data | tojson }})'>
             <input type="hidden" name="perm_data" :value="serializedPermData">
 
             {# Selected permissions list #}

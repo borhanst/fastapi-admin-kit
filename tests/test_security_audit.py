@@ -41,7 +41,7 @@ class TestPasswordChangeAudit:
 
         user = User(
             email="test@test.com",
-            hashed_password="hashed",
+            password="hashed",
         )
         assert user.password_changed_at is None
         user.password_changed_at = datetime.now(UTC)
@@ -69,17 +69,19 @@ class TestRateLimiting:
 
     def test_rate_limit_blocks_after_max_attempts(self):
         from fastapi_admin_kit.auth.ratelimit import RateLimiter
+        from tests.conftest import run_async
 
         limiter = RateLimiter(max_attempts=3, window_seconds=900)
         for _ in range(3):
-            limiter.record_attempt("test@email.com")
-        assert limiter.is_rate_limited("test@email.com")
+            run_async(limiter.record_attempt("test@email.com"))
+        assert run_async(limiter.is_rate_limited("test@email.com"))
 
     def test_rate_limit_resets_on_success(self):
         from fastapi_admin_kit.auth.ratelimit import RateLimiter
+        from tests.conftest import run_async
 
         limiter = RateLimiter(max_attempts=3, window_seconds=900)
-        limiter.record_attempt("test@email.com")
-        limiter.record_attempt("test@email.com")
-        limiter.reset("test@email.com")
-        assert not limiter.is_rate_limited("test@email.com")
+        run_async(limiter.record_attempt("test@email.com"))
+        run_async(limiter.record_attempt("test@email.com"))
+        run_async(limiter.reset("test@email.com"))
+        assert not run_async(limiter.is_rate_limited("test@email.com"))

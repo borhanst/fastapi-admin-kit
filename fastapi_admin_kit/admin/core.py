@@ -18,11 +18,13 @@ from fastapi_admin_kit.admin.admin_config import AdminConfig
 from fastapi_admin_kit.admin.admin_database import AdminDatabase
 from fastapi_admin_kit.admin.admin_router import AdminRouter
 from fastapi_admin_kit.admin.admin_template import AdminTemplate
+from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
 from fastapi_admin_kit.config import (
     AIChatConfig,
     AuditConfig,
     AuthConfig,
     BehaviorConfig,
+    CacheConfig,
     DatabaseConfig,
     NavConfig,
     StorageConfig,
@@ -56,6 +58,7 @@ def _merge_legacy_kwargs_into_config(
     behavior: dict[str, Any],
     storage: dict[str, Any],
     nav: dict[str, Any],
+    cache: dict[str, Any] | None = None,
 ) -> AdminConfig:
     """Merge explicitly-provided legacy Admin() kwargs into a user-supplied config.
 
@@ -91,6 +94,8 @@ def _merge_legacy_kwargs_into_config(
     _merge(config.behavior, behavior)
     _merge(config.storage, storage)
     _merge(config.nav, nav)
+    if cache is not None:
+        _merge(config.cache, cache)
     return config
 
 
@@ -195,10 +200,14 @@ class Admin:
         admin_path: str = "/admin",
         secret_key: str = "",
         auth_model: type | None = None,
-        auth_backend: AuthBackend | None = None,
+        auth_backend: AuthBackend | None = BuiltinAuthBackend(),
         session_cookie_name: str = "admin_session",
         session_secure: bool = True,
         session_samesite: str = "strict",
+        access_token_ttl: int = 600,
+        api_token_middleware: bool = True,
+        api_token_strict: bool = False,
+        trusted_proxies: list[str] | None = None,
         seed_roles: list[SeedRole] | None = None,
         seed_roles_overwrite: bool = False,
         superuser_emails: list[str] | None = None,
@@ -246,6 +255,9 @@ class Admin:
         # AI chat file attachments
         ai_chat_max_file_size_mb: int = 10,
         ai_chat_allowed_extensions: list[str] | None = None,
+        # Optional Redis-backed caching (opt-in)
+        cache_enabled: bool | None = None,
+        cache_ttl: int | None = None,
     ):
         self.registry = AdminRegistry()
         self._app: FastAPI | None = app
@@ -269,6 +281,14 @@ class Admin:
             app.add_middleware(CSRFMiddleware)
             self._csrf_middleware_added = True
 
+            # API bearer-token pre-validation. Added BEFORE SessionMiddleware
+            # so it runs inside it (Starlette: last added = outermost) and can
+            # use the per-request DB session to resolve the live user.
+            from fastapi_admin_kit.api.middleware import AccessTokenMiddleware
+
+            app.add_middleware(AccessTokenMiddleware)
+            self._api_token_middleware_added = True
+
             # Register the per-request session + audit-context middlewares here
             # (at construction time) rather than in ``setup()``. Starlette builds
             # ``app.middleware_stack`` on the *first* scope it receives — which is
@@ -288,6 +308,7 @@ class Admin:
             self._audit_middleware_added = True
         else:
             self._csrf_middleware_added = False
+            self._api_token_middleware_added = False
             self._session_middleware_added = False
             self._audit_middleware_added = False
 
@@ -338,6 +359,10 @@ class Admin:
                     session_secure=session_secure,
                     superuser_emails=superuser_emails,
                     session_samesite=session_samesite,
+                    access_token_ttl=access_token_ttl,
+                    api_token_middleware=api_token_middleware,
+                    api_token_strict=api_token_strict,
+                    trusted_proxies=trusted_proxies,
                 ),
                 audit=AuditConfig(audit_retention_days=audit_retention_days),
                 behavior=BehaviorConfig(
@@ -372,6 +397,7 @@ class Admin:
                         ".webp",
                     ],
                 ),
+                cache=CacheConfig(enabled=cache_enabled, ttl=cache_ttl),
             )
         else:
             config = _merge_legacy_kwargs_into_config(
@@ -414,6 +440,10 @@ class Admin:
                     session_secure=session_secure,
                     superuser_emails=superuser_emails,
                     session_samesite=session_samesite,
+                    access_token_ttl=access_token_ttl,
+                    api_token_middleware=api_token_middleware,
+                    api_token_strict=api_token_strict,
+                    trusted_proxies=trusted_proxies,
                 ),
                 audit=dict(audit_retention_days=audit_retention_days),
                 behavior=dict(
@@ -431,7 +461,15 @@ class Admin:
                     settings_permission=settings_permission,
                     sidebar_bottom_links=sidebar_bottom_links,
                 ),
+                cache=dict(enabled=cache_enabled, ttl=cache_ttl),
             )
+            # The merge helper compares against CacheConfig's *constructor*
+            # defaults, but the default instance already resolved the env
+            # flag at construction — so apply explicit enabled/ttl overrides.
+            if cache_enabled is not None:
+                config.cache.enabled = cache_enabled
+            if cache_ttl is not None:
+                config.cache.ttl = cache_ttl
 
         if database is None:
             database = AdminDatabase(
@@ -465,6 +503,12 @@ class Admin:
         self.database = database
         self.router = router
         self.template = template
+        self.cache_config = config.cache
+
+        # Redis availability flags (populated by _setup_redis).
+        self.redis_enabled = False
+        self.redis_configured = False
+        self._redis_wired = False
 
         # Store notification paths on config for template access
         default_notifications_path = f"{self.router.admin_path}/notifications"
@@ -497,6 +541,22 @@ class Admin:
         ):
             backend_database._admin_database = database
 
+        # Inject backend into the auth backend so BuiltinAuthBackend can build
+        # queries via QueryBackend instead of importing sqlalchemy directly.
+        _auth_backend = getattr(getattr(self, "config", None), "auth", None)
+        _auth_backend = getattr(_auth_backend, "auth_backend", None) if _auth_backend else None
+        if _auth_backend is not None:
+            for attr, value in (
+                ("_backend", self.backend),
+                ("backend", self.backend),
+                ("_query_backend", getattr(self.backend, "query", None)),
+                ("query_backend", getattr(self.backend, "query", None)),
+            ):
+                try:
+                    setattr(_auth_backend, attr, value)
+                except Exception:
+                    pass
+
         # Inject backend's introspection adapter into the registry's ModelInspector
         self.registry.inspector._adapter = self.backend.introspection
 
@@ -520,6 +580,11 @@ class Admin:
         self._session_backend: Any = None
         self._jinja_env: Environment | None = None
         self._router_built: bool = False
+
+        # Wire Redis now (before startup) so the SDK can wrap the lifespan
+        # before it begins. Degrades gracefully when Redis is unavailable.
+        if app is not None:
+            self._setup_redis(app)
 
         if app is not None and engine is not None:
             # Deferred setup — user will call await admin.setup() via lifespan
@@ -660,6 +725,11 @@ class Admin:
 
         app = self._app
 
+        # Wire Redis when the app was supplied after construction (e.g. via
+        # ``await admin.setup(app)`` inside a manual lifespan).
+        if not getattr(self, "_redis_wired", False):
+            self._setup_redis(app)
+
         # Add CSRF middleware if not already added in __init__
         if not getattr(self, "_csrf_middleware_added", False):
             from fastapi_admin_kit.auth.csrf import (
@@ -674,6 +744,18 @@ class Admin:
                 app.add_middleware(CSRFMiddleware)
             except RuntimeError:
                 pass  # Already started — middleware was added in __init__
+
+        # Add API bearer-token middleware if not already added in __init__
+        if not getattr(self, "_api_token_middleware_added", False):
+            from fastapi_admin_kit.api.middleware import AccessTokenMiddleware
+
+            try:
+                app.add_middleware(AccessTokenMiddleware)
+                self._api_token_middleware_added = True
+            except RuntimeError:
+                app.middleware_stack = None
+                app.add_middleware(AccessTokenMiddleware)
+                self._api_token_middleware_added = True
 
         # Add per-request session middleware
         if app is not None and not getattr(self, "_session_middleware_added", False):
@@ -719,9 +801,11 @@ class Admin:
         self.config.auth.validate_auth_model()
 
         # 2. Database tables should be created via Alembic migrations
-        skip_create_tables = os.environ.get("SKIP_CREATE_TABLES", "false").lower() == "true"
-        if not skip_create_tables:
-            await self.database._create_tables(include_ai_tables=self._ai_enabled)
+        #    ``create_tables()`` is the public entry point that projects can
+        #    also call from their lifespan before ``admin.setup(app)`` —
+        #    using it here keeps both code paths in sync (and is the only
+        #    way the custom-auth_model skip is applied).
+        await self.create_tables()
 
         # 2.1 Preflight: if AI is enabled but the tables are genuinely missing
         # (Alembic / SKIP_CREATE_TABLES mode), warn loudly but never block boot.
@@ -891,6 +975,38 @@ class Admin:
     # Internal wiring
     # ------------------------------------------------------------------
 
+    def _setup_redis(self, app: FastAPI) -> None:
+        """Wire the optional Redis-backed caching/rate-limiting integration.
+
+        Checks ``REDIS_URL`` at startup: when present (and the
+        ``fastapi-redis-sdk`` is installed) the SDK's lifespan wrapper plus
+        caching/rate-limiting support are registered on the app. Otherwise the
+        admin falls back to the existing in-memory rate limiter and no cache
+        middleware — full backward compatibility.
+        """
+        if self._redis_wired:
+            return
+        self._redis_wired = True
+
+        from fastapi_admin_kit.redis import (
+            redis_configured,
+            redis_enabled,
+            setup_redis,
+        )
+
+        self.redis_configured = redis_configured()
+        self.redis_enabled = redis_enabled()
+
+        if not self.redis_enabled:
+            return
+
+        setup_redis(
+            app,
+            cache_enabled=self.cache_config.enabled,
+            cache_ttl=self.cache_config.ttl,
+            rate_limiting=True,
+        )
+
     def _validate_auth_model(self) -> None:
         """Validate that auth_model satisfies AdminUserProtocol."""
         self.config.auth.validate_auth_model()
@@ -908,6 +1024,10 @@ class Admin:
             "dark_mode_default": self.config.ui.dark_mode_default,
             "per_page_default": self.config.ui.per_page_default,
             "session_ttl": self.config.auth.session_ttl,
+            "access_token_ttl": self.config.auth.access_token_ttl,
+            "api_token_middleware": self.config.auth.api_token_middleware,
+            "api_token_strict": self.config.auth.api_token_strict,
+            "trusted_proxies": self.config.auth.trusted_proxies,
             "audit_retention_days": self.config.audit.audit_retention_days,
             "dashboard_stats": self.config.behavior.dashboard_stats,
             "dashboard_charts": self.config.behavior.dashboard_charts,
@@ -930,9 +1050,29 @@ class Admin:
             # backend-agnostic SessionBackend, exactly like the per-request one.
             db_session = session_factory()
 
-        # Inject auth_model into the backend if provided
-        if self.config.auth.auth_backend is not None and self.config.auth.auth_model is not None:
-            self.config.auth.auth_backend._auth_model = self.config.auth.auth_model
+        # Inject auth_model and backend into the auth backend for ORM-agnostic queries.
+        # BuiltinAuthBackend uses the QueryBackend (select/where/options) and the
+        # DatabaseBackend's session_adapter_class via as_session_backend, so it
+        # must not import sqlalchemy directly.
+        if self.config.auth.auth_backend is not None:
+            if self.config.auth.auth_model is not None:
+                try:
+                    self.config.auth.auth_backend._auth_model = self.config.auth.auth_model
+                except AttributeError:
+                    pass
+            # Wire the composite backend and its query adapter — supports both
+            # BuiltinAuthBackend (stores _backend/_query_backend) and any
+            # custom backend that exposes the same attributes.
+            for attr, value in (
+                ("_backend", self.backend),
+                ("backend", self.backend),
+                ("_query_backend", getattr(self.backend, "query", None)),
+                ("query_backend", getattr(self.backend, "query", None)),
+            ):
+                try:
+                    setattr(self.config.auth.auth_backend, attr, value)
+                except Exception:
+                    pass
 
         state = AdminState(
             engine=engine,
@@ -1210,7 +1350,7 @@ class Admin:
             # API-only models (export_endpoint="api") get no admin HTML router.
             if getattr(registered.admin, "export_endpoint", None) == "api":
                 continue
-            model_router = build_model_router(registered)
+            model_router = build_model_router(registered, cache_config=self.cache_config)
             if model_router is None:
                 continue
             app.include_router(model_router, prefix=self.router.admin_path)
@@ -1293,7 +1433,6 @@ class Admin:
             )
 
         builtin_models = [
-            (User, UserAdmin),
             (Role, RoleAdmin),
             # (RefreshToken, RefreshTokenAdmin),
             (Permission, PermissionAdmin),
@@ -1302,6 +1441,17 @@ class Admin:
             (LoginAttempt, LoginAttemptAdmin),
             (AuditLog, AuditLogAdmin),
         ]
+
+        # When a custom auth_model is provided, the built-in ``User`` model is
+        # not registered: the project supplies its own user model and
+        # ``UserAdmin`` (the built-in CRUD) does not match it. Skipping here
+        # also keeps the registry consistent with the migration metadata, from
+        # which the built-in ``admin_users`` table is removed in
+        # ``_adapt_builtin_user_id_columns`` when a custom auth_model is set.
+        from fastapi_admin_kit.migrations.models import User as BuiltinUser
+
+        if self.config.auth.auth_model is None or self.config.auth.auth_model is BuiltinUser:
+            builtin_models.insert(0, (User, UserAdmin))
 
         # Notification models are exposed under the "notifications" sidebar
         # group. Register them only when notifications are enabled so the
@@ -1326,6 +1476,142 @@ class Admin:
             for model, admin_class in ai_builtin_models:
                 if model.__tablename__ not in self.registry._models:
                     self.registry.register(model, admin_class)
+
+    def _builtin_user_tables_to_skip(self) -> tuple[str, ...]:
+        """Return the names of built-in tables that should NOT be created when
+        a custom ``auth_model`` is configured.
+
+        Returns an empty tuple when the built-in ``User`` is in use (default
+        installation) or when no ``auth_model`` is configured.
+        """
+        from fastapi_admin_kit.migrations.models import User as BuiltinUser
+
+        auth_model = self.config.auth.auth_model
+        if auth_model is None or auth_model is BuiltinUser:
+            return ()
+        return ("admin_users", "admin_user_roles")
+
+    async def create_tables(self) -> None:
+        """Create all admin database tables, correctly handling a custom
+        ``auth_model``.
+
+        This is the public API projects should use in their ``lifespan`` (or
+        startup hook) instead of calling
+        ``AdminBase.metadata.create_all`` directly. Calling
+        ``AdminBase.metadata.create_all`` directly bypasses the
+        custom-auth_model logic and will create the default
+        ``admin_users`` / ``admin_user_roles`` tables even when a project
+        supplies its own user model.
+
+        What this method does, in order:
+
+        1. Validate the configured ``auth_model`` (raises ``ConfigError`` if
+           it does not satisfy :class:`AdminUserProtocol`).
+        2. Mirror the auth model's primary-key type onto the built-in
+           log-pattern ``user_id`` columns (e.g. a UUID PK becomes a UUID
+           ``user_id`` so the column type matches across tables).
+        3. Call ``AdminDatabase._create_tables(extra_exclude_tables=...)``
+           with the built-in user tables filtered out when a custom
+           ``auth_model`` is configured. Honors ``SKIP_CREATE_TABLES=true``
+           and the AI / notification feature flags exactly like
+           ``Admin.setup()`` does.
+        """
+        self.config.auth.validate_auth_model()
+        skip_create_tables = os.environ.get("SKIP_CREATE_TABLES", "false").lower() == "true"
+        if skip_create_tables:
+            logger.info("SKIP_CREATE_TABLES=true: skipping admin table creation")
+            return
+        self._adapt_builtin_user_id_columns()
+        extra_exclude = list(self._builtin_user_tables_to_skip())
+        if extra_exclude:
+            logger.info(
+                "Custom auth_model=%s configured: skipping built-in admin "
+                "tables %s at create_all (project supplies its own user "
+                "table).",
+                self.config.auth.auth_model,
+                extra_exclude,
+            )
+        await self.database._create_tables(
+            include_ai_tables=self._ai_enabled,
+            extra_exclude_tables=extra_exclude or None,
+        )
+
+    def _adapt_builtin_user_id_columns(self) -> None:
+        """
+        Adapt the built-in log-pattern ``user_id`` columns in ``AdminBase.metadata``
+        to match the primary-key type of the configured ``auth_model`` (see
+        ``schemas/builtin.py``). When a project supplies a custom
+        ``auth_model`` whose primary key differs from the built-in ``User``
+        (e.g. a ``UUID`` PK), these columns are retyped to match so that
+        ``metadata.create_all`` emits the correct DDL.
+
+        This is a no-op for the default installation (``auth_model is None``
+        or the built-in ``User``), which preserves backward compatibility
+        and never alters existing schemas/migrations.
+
+        When a custom ``auth_model`` is provided, the built-in ``admin_users``
+        table is also removed from ``AdminBase.metadata`` (and the
+        ``admin_user_roles`` junction) so that ``create_all`` does not emit
+        DDL for the default schema. The custom user model — which must
+        already be registered on a ``Base`` and present in the project's
+        metadata — becomes the sole source of truth for the user table.
+        """
+        from fastapi_admin_kit.migrations.models import User as BuiltinUser
+
+        auth_model = self.config.auth.auth_model
+        if auth_model is None:
+            return
+        if auth_model is BuiltinUser:
+            return
+
+        metadata = BuiltinUser.__table__.metadata
+
+        from sqlalchemy import inspect as sa_inspect
+
+        pk_cols = sa_inspect(auth_model).primary_key
+        if not pk_cols:
+            return
+        pk_col = pk_cols[0]
+        new_type = pk_col.type
+        logger.debug(
+            "Adapting builtin user_id columns: auth_model=%s pk_col=%s pk_type=%r",
+            auth_model,
+            pk_col.name,
+            new_type,
+        )
+
+        # user_email columns intentionally stay string (they store emails).
+        log_tables = [
+            "admin_audit_log",
+            "admin_user_permissions",
+            "admin_refresh_tokens",
+            "admin_user_totp",
+            "admin_notifications",
+            "admin_notification_preferences",
+            "admin_notification_logs",
+            "admin_ai_usage_log",
+            "admin_ai_conversations",
+        ]
+        for table_name in log_tables:
+            table = metadata.tables.get(table_name)
+            if table is None or "user_id" not in table.c:
+                continue
+            col = table.c["user_id"]
+            logger.debug(
+                "  %s.user_id: %r (%s) -> %r (%s)",
+                table_name,
+                col.type,
+                type(col.type).__name__,
+                new_type,
+                type(new_type).__name__,
+            )
+            col.type = new_type
+
+        # Note: the built-in ``admin_users`` and ``admin_user_roles`` tables
+        # are excluded from ``create_all`` at the call site in ``setup()`` via
+        # ``AdminDatabase._create_tables(extra_exclude_tables=...)`` — we do
+        # NOT remove them from ``AdminBase.metadata`` here because the
+        # ``FacadeDict`` exposed by ``Base.metadata`` is immutable.
 
     # ------------------------------------------------------------------
     # AI Setup

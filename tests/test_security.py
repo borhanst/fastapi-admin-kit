@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from fastapi_admin_kit.auth.password import validate_password_strength
 from fastapi_admin_kit.auth.ratelimit import RateLimiter
+from tests.conftest import run_async
 
 
 class TestPasswordStrength:
@@ -52,37 +53,37 @@ class TestPasswordStrength:
 
 
 class TestRateLimiter:
-    """Test in-memory sliding window rate limiter."""
+    """Test in-memory sliding window rate limiter (async API)."""
 
     def test_allows_within_limit(self):
         limiter = RateLimiter(max_attempts=3, window_seconds=60)
         for _ in range(3):
-            assert not limiter.is_rate_limited("key1")
-            limiter.record_attempt("key1")
+            assert not run_async(limiter.is_rate_limited("key1"))
+            run_async(limiter.record_attempt("key1"))
 
     def test_blocks_after_limit(self):
         limiter = RateLimiter(max_attempts=2, window_seconds=60)
-        limiter.record_attempt("key2")
-        limiter.record_attempt("key2")
-        assert limiter.is_rate_limited("key2")
+        run_async(limiter.record_attempt("key2"))
+        run_async(limiter.record_attempt("key2"))
+        assert run_async(limiter.is_rate_limited("key2"))
 
     def test_reset_clears_attempts(self):
         limiter = RateLimiter(max_attempts=2, window_seconds=60)
-        limiter.record_attempt("key3")
-        limiter.record_attempt("key3")
-        limiter.reset("key3")
-        assert not limiter.is_rate_limited("key3")
+        run_async(limiter.record_attempt("key3"))
+        run_async(limiter.record_attempt("key3"))
+        run_async(limiter.reset("key3"))
+        assert not run_async(limiter.is_rate_limited("key3"))
 
     def test_different_keys_independent(self):
         limiter = RateLimiter(max_attempts=1, window_seconds=60)
-        limiter.record_attempt("a")
-        assert limiter.is_rate_limited("a")
-        assert not limiter.is_rate_limited("b")
+        run_async(limiter.record_attempt("a"))
+        assert run_async(limiter.is_rate_limited("a"))
+        assert not run_async(limiter.is_rate_limited("b"))
 
     def test_remaining_seconds(self):
         limiter = RateLimiter(max_attempts=5, window_seconds=60)
-        limiter.record_attempt("key4")
-        remaining = limiter.remaining_seconds("key4")
+        run_async(limiter.record_attempt("key4"))
+        remaining = run_async(limiter.remaining_seconds("key4"))
         assert 55 <= remaining <= 61
 
 

@@ -13,6 +13,31 @@ if TYPE_CHECKING:
     from fastapi_admin_kit.nav import NavItemConfig
 
 
+def sanitize_ordering(
+    model: Any,
+    order: list[str],
+    extra_allowed: Any = (),
+) -> list[str]:
+    """Restrict ordering terms to real model columns / relationships (S18).
+
+    ``?ordering=`` is client-controlled; without an allow-list it could name
+    arbitrary model attributes (``metadata``, ``__table__``, ...) producing
+    500s or odd SQL. Terms whose name (minus a leading ``-``) is not a
+    mapped column or relationship are dropped.
+    """
+    if not order:
+        return []
+    try:
+        from sqlalchemy import inspect as sa_inspect
+
+        mapper = sa_inspect(model)
+    except Exception:  # noqa: BLE001 — non-mapped model: keep admin defaults
+        return list(order)
+    allowed = {c.key for c in mapper.column_attrs} | {r.key for r in mapper.relationships}
+    allowed.update(extra_allowed)
+    return [term for term in order if term.lstrip("-") in allowed]
+
+
 class ModelAdmin:
     """Base class for model admin configuration.
 
@@ -31,7 +56,11 @@ class ModelAdmin:
     list_filter_horizontal: bool = False
 
     @staticmethod
-    def get_ordering(request_params: dict, admin_ordering: list[str] | None) -> list[str]:
+    def get_ordering(
+        request_params: dict,
+        admin_ordering: list[str] | None,
+        model: Any = None,
+    ) -> list[str]:
         """Resolve ordering configuration based on request params and admin settings.
 
         Priority (highest to lowest):
@@ -39,14 +68,22 @@ class ModelAdmin:
         2. Admin class ordering (from ModelAdmin.ordering)
         3. Empty list (no default ordering applied)
 
-        This prevents unwanted default sorting when ordering is not explicitly configured.
+        This prevents unwanted default sorting when ordering is not explicitly
+        configured. When *model* is given, the result is restricted to real
+        model columns/relationships via :func:`sanitize_ordering` — the query
+        parameter is client-controlled and must not reach arbitrary
+        ``getattr(model, ...)`` calls.
         """
         query_ordering = request_params.get("ordering", "")
         if query_ordering:
-            return [query_ordering]
+            order = [query_ordering]
         elif admin_ordering:
-            return admin_ordering
-        return []
+            order = admin_ordering
+        else:
+            return []
+        if model is not None:
+            order = sanitize_ordering(model, order)
+        return order
 
     # Inline editing config
     inline_edit: bool = False
@@ -75,6 +112,12 @@ class ModelAdmin:
 
     # Inline admin config
     inlines: list[Any] = []  # list of InlineModelAdmin subclasses
+
+    # Optional Redis rate limiting for this model's list endpoint.
+    # ``None`` falls back to the global default
+    # (``CacheConfig.rate_limit`` / ``rate_window``).
+    rate_limit: int | None = None
+    rate_window: int | None = None
 
     # Conditional fields
     conditional_fields: dict[str, dict[str, Any]] = {}

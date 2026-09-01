@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
@@ -19,16 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi_admin_kit.auth.backend import AuthBackend
 from fastapi_admin_kit.auth.csrf import CSRF_COOKIE_NAME, require_csrf_token
 from fastapi_admin_kit.auth.dependencies import _get_db_session, get_session
-from fastapi_admin_kit.auth.ratelimit import (
-    RateLimiter,
-    _client_ip,
-    check_rate_limit,
-)
+from fastapi_admin_kit.auth.proxy import get_client_ip
 from fastapi_admin_kit.auth.session import SessionBackend
+from fastapi_admin_kit.redis import LoginRateGuard, get_login_guard
 
 router = APIRouter()
-
-_login_rate_limiter = RateLimiter(max_attempts=5, window_seconds=900)
 
 
 def _is_safe_url(url: str | None) -> bool:
@@ -105,20 +101,63 @@ async def login_post(
     next: str | None = Form(None),
     session: AsyncSession = Depends(_get_db_session),
     _csrf: bool = Depends(require_csrf_token),
+    _guard: LoginRateGuard = Depends(get_login_guard),
 ) -> HTMLResponse | RedirectResponse:
     """POST /admin/login — process login form."""
-    client_ip = _client_ip(request)
-    check_rate_limit(_login_rate_limiter, client_ip)
+    client_ip = get_client_ip(request)
+    await _guard.check(client_ip)
 
     auth_backend: AuthBackend = request.app.state.admin_auth_backend
     login_field = request.app.state.admin_config.get("login_field", "email")
-    user = await auth_backend.authenticate(username, password, session, login_field=login_field)
+    # Use the multi-ORM seam: pass the QueryBackend so BuiltinAuthBackend
+    # builds queries via backend.query instead of importing sqlalchemy.
+    query_adapter = getattr(request.app.state, "admin_query_adapter", None)
+    try:
+        user = await auth_backend.authenticate(
+            username,
+            password,
+            session,
+            login_field=login_field,
+            query_adapter=query_adapter,
+        )
+        print("login user: ", user)
+    except TypeError:
+        print("login user error: ", user)
+        # Custom backends that don't accept query_adapter
+        user = await auth_backend.authenticate(username, password, session, login_field=login_field)
     if user is not None:
-        _login_rate_limiter.reset(client_ip)
-        user.last_login = datetime.now(UTC)
+        await _guard.reset(client_ip)
+        now_utc = datetime.now(UTC)
+        user_fields = getattr(user, "model_fields", None) or getattr(user, "__fields__", None) or {}
+        if "last_login" in user_fields:
+            user.last_login = now_utc
+        elif "last_login_at" in user_fields:
+            user.last_login_at = now_utc
         await session.flush()
 
+        # ── 2FA enforcement (S02) ────────────────────────────────────
+        # If the user has TOTP enabled, do NOT issue a session cookie.
+        # Issue a short-lived pending token and redirect to /verify-2fa.
         from fastapi_admin_kit.auth.models import LoginAttempt
+        from fastapi_admin_kit.auth.totp import has_totp_enabled
+
+        query_adapter = getattr(request.app.state, "admin_query_adapter", None)
+        if await has_totp_enabled(session, user.id, query_adapter):
+            attempt = LoginAttempt(
+                email=username,
+                ip_address=client_ip,
+                user_agent=request.headers.get("user-agent", ""),
+                success=True,
+                note="Credentials verified — 2FA required",
+            )
+            session.add(attempt)
+            await session.flush()
+
+            session_backend: SessionBackend = request.app.state.admin_session_backend
+            temp_token = session_backend.encode_pending_2fa(user.id)
+            admin_path = request.app.state.admin_config["admin_path"]
+            redirect_url = f"{admin_path}/verify-2fa?temp_token={temp_token}"
+            return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
 
         attempt = LoginAttempt(
             email=username,
@@ -130,7 +169,10 @@ async def login_post(
         await session.flush()
 
         session_backend: SessionBackend = request.app.state.admin_session_backend
-        session_data = {"user_id": user.id}
+        # Random session id (S18): guarantees a fresh cookie value on every
+        # login — two logins in the same second must never mint identical
+        # session tokens (itsdangerous timestamps alone are second-granular).
+        session_data = {"user_id": user.id, "sid": secrets.token_urlsafe(32)}
         token = session_backend.encode(session_data)
 
         if next and _is_safe_url(next):
@@ -153,13 +195,13 @@ async def login_post(
 
         return response
 
-    _login_rate_limiter.record_attempt(client_ip)
+    await _guard.record_failure(client_ip)
 
     from fastapi_admin_kit.auth.models import LoginAttempt
 
     note = "Invalid credentials"
-    if _login_rate_limiter.is_rate_limited(client_ip):
-        remaining = _login_rate_limiter.remaining_seconds(client_ip)
+    if await _guard.is_rate_limited(client_ip):
+        remaining = await _guard.remaining_seconds(client_ip)
         note = f"Too many failed attempts. Rate limited for {remaining}s"
 
     attempt = LoginAttempt(
@@ -175,9 +217,9 @@ async def login_post(
     jinja_env = request.app.state.admin_jinja_env
     template = jinja_env.get_template("pages/login.html")
     csrf_token = getattr(request.state, "csrf_token", "")
-    remaining = _login_rate_limiter.remaining_seconds(client_ip)
+    remaining = await _guard.remaining_seconds(client_ip)
     error_msg = "Invalid credentials. Please try again."
-    if _login_rate_limiter.is_rate_limited(client_ip):
+    if await _guard.is_rate_limited(client_ip):
         error_msg = f"Too many failed attempts. Try again in {remaining} seconds."
 
     return HTMLResponse(

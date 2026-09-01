@@ -171,7 +171,7 @@ async def admin_app(app, engine):
             session.flush()
         user = User(
             email="admin@test.com",
-            hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
+            password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
             full_name="Admin",
             is_superuser=True,
             is_active=True,
@@ -234,7 +234,7 @@ async def m2m_admin_app(app, engine):
             session.flush()
         user = User(
             email="admin@test.com",
-            hashed_password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
+            password="$2b$12$HQlaDF1uaZvpsppxtnwD5uXp1VxiNXsiS5OCEkXRn7G0xNjUEo8cG",
             full_name="Admin",
             is_superuser=True,
             is_active=True,
@@ -409,12 +409,14 @@ class TestSearchFallback:
 
 class TestSearchUnauthorized:
     def test_unauthorized_returns_json_error(self, admin_app):
+        """S16: unauthenticated search returns a proper 401, not a
+        200 response with an error body."""
         client = TestClient(admin_app)
         resp = client.get(
             "/admin/search_products/search",
             params={"q": "Laptop"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 401
         data = resp.json()
         assert "error" in data
         assert "Not authenticated" in data["error"]
@@ -773,7 +775,9 @@ class TestM2MSave:
             cookies={"admin_session": cookie},
         )
         assert resp.status_code == 200
-        assert f"multiRelation([&#34;{tag_id}&#34;]" in resp.text
+        # S05/S06 fix: values are emitted via |tojson inside a single-quoted
+        # attribute — raw JSON, no HTML entity escaping.
+        assert f'multiRelation(["{tag_id}"]' in resp.text
 
 
 class TestTupleSearchFields:

@@ -26,6 +26,9 @@ from fastapi_admin_kit.views.file_handler import (
     handle_file_field as _handle_file_field,
 )
 
+MAX_PER_PAGE = 100
+"""Upper bound for client-supplied ``?per_page=`` (DoS guard)."""
+
 # ---------------------------------------------------------------------------
 # HTML Renderers (SRP: only HTML template logic)
 # ---------------------------------------------------------------------------
@@ -152,9 +155,11 @@ class ItemAPIRenderer:
 
     def serialize(self, obj: Any) -> dict[str, Any]:
         """Serialize an object to a dict using registered columns."""
+        from fastapi_admin_kit.inspection.types import SENSITIVE_FIELDS
+
         item_dict: dict[str, Any] = {"id": getattr(obj, "id", None)}
         for col in self.registered.columns:
-            if col.name != "id":
+            if col.name != "id" and col.name not in SENSITIVE_FIELDS:
                 item_dict[col.name] = serialize_value(getattr(obj, col.name, None))
         return item_dict
 
@@ -234,21 +239,37 @@ class HTMLFormParser:
 
 
 class JSONBodyParser:
-    """SRP: Parse JSON body from API requests."""
+    """SRP: Parse JSON body from API requests.
+
+    Security parity with :class:`HTMLFormParser`: the parsed payload runs
+    through the same shared validation pipeline (widget validation via
+    ``FormValidator.run``, ``admin.validate_create/update`` and
+    ``admin.process_form_data``), so business rules cannot be bypassed by
+    speaking JSON instead of submitting the HTML form. Sensitive fields
+    (``password`` etc.) are rejected from the allowed field set.
+    """
 
     def __init__(self, registered: RegisteredModel):
         self.registered = registered
+        self.admin = registered.admin
+        self.validator = FormValidator()
 
     async def parse(
         self, request: Request, obj: Any | None = None
     ) -> tuple[dict[str, Any], dict[str, list[str]]]:
         from sqlalchemy import inspect as sa_inspect
 
+        from fastapi_admin_kit.form.types import FieldError
+        from fastapi_admin_kit.inspection.types import SENSITIVE_FIELDS
+
         # Pre-parsed body supplied by the API wrapper handler (so FastAPI can
         # document the request body schema in Swagger/OpenAPI).
         body = getattr(request.state, "_api_payload", None)
         if body is None:
             body = await request.json()
+        if not isinstance(body, dict):
+            return {}, {"__all__": ["Request body must be a JSON object."]}
+
         valid_fields = {col.name for col in self.registered.columns}
         # Relationship keys (FK / many-to-many) are handled separately by the
         # view (resolved to FK columns or applied as m2m collections), so they
@@ -259,9 +280,51 @@ class JSONBodyParser:
             rel_fields = {r.key for r in mapper.relationships}
         except Exception:
             pass
-        allowed = (valid_fields | rel_fields) - {"id"}
+        allowed = (valid_fields | rel_fields) - {"id"} - set(SENSITIVE_FIELDS)
+        # Admin-declared extra fields (e.g. the virtual "password" input on
+        # UserAdmin) are intentional write-only inputs — they are not secret
+        # columns and must survive the sensitive-field filter so the JSON
+        # path can carry them exactly like the HTML form does.
+        extra_names = {f.name for f in getattr(self.admin, "extra_fields", None) or []}
+        allowed |= extra_names
         filtered = {k: v for k, v in body.items() if k in allowed}
-        return filtered, {}
+
+        # Coerce raw JSON values (ISO date strings etc.) through the same
+        # widgets the HTML path uses, so widget validators see typed values.
+        for name, value in list(filtered.items()):
+            if value is None:
+                continue
+            try:
+                widget = self.registered.get_widget(name)
+                parsed_value = widget.parse(value)
+            except Exception:
+                continue
+            if parsed_value is not None:
+                filtered[name] = parsed_value
+
+        # Shared validation identical to the HTML path. Creates validate the
+        # full field set; updates only the fields present in the payload so
+        # partial PATCH bodies keep working.
+        errors = self.validator.run(
+            self.registered,
+            filtered,
+            obj=obj,
+            only_fields=None if obj is None else set(filtered),
+        )
+
+        if not errors:
+            try:
+                if obj is None:
+                    result = self.admin.validate_create(filtered, request)
+                else:
+                    result = self.admin.validate_update(obj, filtered, request)
+                filtered = self.admin.process_form_data(result, request)
+            except FieldError as exc:
+                errors = exc.field_errors
+            except ValueError as exc:
+                errors = {"__all__": [str(exc)]}
+
+        return filtered, errors
 
 
 # ---------------------------------------------------------------------------
@@ -381,7 +444,7 @@ class DefaultQueryProvider:
 
         query_ordering = request.query_params.get("ordering", "") or order
         order = registered.admin.get_ordering(
-            {"ordering": query_ordering}, registered.admin.ordering
+            {"ordering": query_ordering}, registered.admin.ordering, model
         )
         if order:
             col_name = order[0].lstrip("-")
@@ -402,7 +465,16 @@ class DefaultQueryProvider:
 
                         base = base.order_by(desc(col) if order[0].startswith("-") else asc(col))
 
-        per_page = int(request.query_params.get("per_page", registered.admin.per_page))
+        try:
+            requested_per_page = int(
+                request.query_params.get("per_page", registered.admin.per_page)
+            )
+        except (TypeError, ValueError):
+            requested_per_page = registered.admin.per_page
+        # DoS guard: client-supplied per_page is capped at MAX_PER_PAGE.
+        # An explicitly larger admin configuration still wins.
+        cap = max(MAX_PER_PAGE, int(registered.admin.per_page or 0))
+        per_page = max(1, min(requested_per_page, cap))
 
         from fastapi_admin_kit.pagination import (
             OffsetPagination,

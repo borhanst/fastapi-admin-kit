@@ -348,7 +348,7 @@ class ListContextBuilder:
 
         query_ordering = request.query_params.get("ordering", "")
         order = registered.admin.get_ordering(
-            {"ordering": query_ordering}, registered.admin.ordering
+            {"ordering": query_ordering}, registered.admin.ordering, model
         )
         if order:
             col_name = order[0].lstrip("-")
@@ -382,7 +382,9 @@ class ListContextBuilder:
         filter_fields = await self._build_filter_fields(request, model, registered, session)
 
         resolved_ordering = registered.admin.get_ordering(
-            {"ordering": request.query_params.get("ordering", "")}, registered.admin.ordering
+            {"ordering": request.query_params.get("ordering", "")},
+            registered.admin.ordering,
+            model,
         )
         ordering = resolved_ordering[0] if resolved_ordering else ""
 

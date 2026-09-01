@@ -1,10 +1,14 @@
-"""API dependencies — JWT-based permission checking with DB fallback.
+"""API dependencies — JWT authentication with live DB authorization.
 
-Primary source of truth is the permission snapshot embedded in the JWT at
-login time (fast, no DB hit). When the snapshot does not grant the action,
-we fall back to a live :class:`PermissionChecker` query so permissions that
-were granted *after* the token was issued take effect immediately instead of
-requiring the user to log in again.
+The JWT authenticates *identity* (signature + expiry). Authorization is
+always checked against the live database via :class:`PermissionChecker`, so
+revoked roles/permissions and demoted or deactivated users take effect
+immediately instead of persisting until token expiry.
+
+``AccessTokenMiddleware`` (see ``api/middleware.py``) pre-validates bearer
+tokens for ``/api/*`` routes and stashes the decoded payload on
+``request.state.admin_jwt_payload``; these dependencies reuse it instead of
+decoding twice.
 """
 
 from __future__ import annotations
@@ -13,14 +17,23 @@ from typing import Any
 
 from fastapi import HTTPException, Request
 
-from fastapi_admin_kit.api.auth import _get_secret_key, decode_access_token
+from fastapi_admin_kit.api.auth import (
+    _get_secret_key,
+    decode_access_token,
+    token_predates_password_change,
+)
 
 
 async def get_api_current_user(request: Request) -> dict[str, Any]:
     """Decode JWT and return user payload (no DB hit).
 
-    Raises 401 if token is missing or invalid.
+    Reuses the payload stashed by ``AccessTokenMiddleware`` when present.
+    Raises 401 if the token is missing or invalid.
     """
+    cached = getattr(request.state, "admin_jwt_payload", None)
+    if cached is not None:
+        return cached
+
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header.")
@@ -33,48 +46,30 @@ async def get_api_current_user(request: Request) -> dict[str, Any]:
     return payload
 
 
-async def _check_live_permission(
-    request: Request,
-    user: dict[str, Any],
-    table_name: str,
-    action: str,
-) -> bool:
-    """Check *action* on *table_name* against the database.
+async def _resolve_live_user(request: Request, user: dict[str, Any]) -> Any | None:
+    """Resolve the JWT subject to the current DB user.
 
-    Resolves the current user from the JWT subject via the configured auth
-    backend and runs a fresh :class:`PermissionChecker`. Used as a fallback
-    when the JWT-embedded permission snapshot is stale.
+    Returns ``None`` when the account was deleted or deactivated, so stale
+    tokens cannot keep working after the account is removed.
     """
     sub = user.get("sub")
     if sub is None:
-        return False
+        return None
     try:
         user_id: int | str = int(sub)
     except (TypeError, ValueError):
-        return False
+        return None
 
     from fastapi_admin_kit.auth.identity import resolve_user
-    from fastapi_admin_kit.auth.permissions import PermissionChecker
-    from fastapi_admin_kit.db import get_db_session
 
-    session = get_db_session(request)
-    if session is None:
-        return False
-
-    resolved = await resolve_user(request, user_id)
-    if resolved is None:
-        return False
-
-    checker = PermissionChecker(
-        session=session,
-        user=resolved,
-        user_snapshot=getattr(request.state, "admin_user_snapshot", None),
-    )
-    return await checker.has_permission(table_name, action)
+    try:
+        return await resolve_user(request, user_id)
+    except Exception:
+        return None
 
 
 def require_api_permission(table_name: str, action: str):
-    """Return a dependency that checks JWT-embedded permissions.
+    """Return a dependency that authorizes *action* on *table_name*.
 
     Usage::
 
@@ -82,40 +77,64 @@ def require_api_permission(table_name: str, action: str):
         async def list_view(user=Depends(require_api_permission("products", "view"))):
             ...
 
-    Superusers always pass. When the JWT snapshot does not grant the action,
-    a live DB check is performed so newly-granted permissions take effect
-    without requiring the user to re-authenticate.
+    The JWT authenticates identity; authorization is always evaluated
+    against the live database so permission revocations, role changes,
+    superuser demotion and account deactivation apply immediately.
     """
 
     async def _check(request: Request) -> dict[str, Any]:
         user = await get_api_current_user(request)
 
-        if user.get("is_superuser"):
-            return user
+        from fastapi_admin_kit.auth.permissions import PermissionChecker
+        from fastapi_admin_kit.db import get_db_session
 
-        permissions = user.get("permissions", {})
-        table_perms = permissions.get(table_name, [])
-        if action in table_perms:
-            return user
+        resolved = await _resolve_live_user(request, user)
+        if resolved is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Account not found or inactive.",
+            )
 
-        if await _check_live_permission(request, user, table_name, action):
-            return user
+        # A password change after the token was minted kills it immediately.
+        if token_predates_password_change(user, resolved):
+            raise HTTPException(status_code=401, detail="Token has been revoked.")
 
-        raise HTTPException(
-            status_code=403,
-            detail=f"You do not have permission to {action} {table_name}.",
+        session = get_db_session(request)
+        if session is None:
+            raise HTTPException(status_code=503, detail="Database unavailable.")
+
+        checker = PermissionChecker(
+            session=session,
+            user=resolved,
+            user_snapshot=getattr(request.state, "admin_user_snapshot", None),
         )
+        if not await checker.has_permission(table_name, action):
+            raise HTTPException(
+                status_code=403,
+                detail=f"You do not have permission to {action} {table_name}.",
+            )
+        return user
 
     return _check
 
 
 def require_api_superuser():
-    """Return a dependency that enforces superuser access from JWT."""
+    """Return a dependency that enforces superuser access from live DB state."""
 
     async def _check(request: Request) -> dict[str, Any]:
         user = await get_api_current_user(request)
 
-        if not user.get("is_superuser"):
+        resolved = await _resolve_live_user(request, user)
+        if resolved is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Account not found or inactive.",
+            )
+
+        if token_predates_password_change(user, resolved):
+            raise HTTPException(status_code=401, detail="Token has been revoked.")
+
+        if not getattr(resolved, "is_superuser", False):
             raise HTTPException(status_code=403, detail="Superuser access required.")
         return user
 

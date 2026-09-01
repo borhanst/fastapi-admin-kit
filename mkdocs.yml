@@ -62,6 +62,7 @@ nav:
       - All Features: guide/features.md
       - Model Registration: guide/model-registration.md
       - Authentication & RBAC: guide/auth-rbac.md
+      - Custom Auth Model: guide/custom-auth-model.md
       - Widgets & Forms: guide/widgets-forms.md
       - Themes & UI: guide/themes.md
       - Inline Editing & Actions: guide/inline-editing-actions.md
@@ -70,6 +71,7 @@ nav:
       - Navigation & Sidebar: guide/navigation.md
       - Audit Logging: guide/audit-logging.md
       - Storage & File Uploads: guide/storage.md
+      - Redis & Caching: guide/redis-caching.md
       - Notifications: guide/notifications.md
       - JSON API: guide/json-api.md
       - CLI Tools: guide/cli.md

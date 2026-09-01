@@ -69,7 +69,7 @@ def test_admin_user_create(session):
 
     user = User(
         email="admin@example.com",
-        hashed_password="hashed_secret",
+        password="hashed_secret",
         full_name="Test Admin",
         is_superuser=False,
         is_active=True,
@@ -83,10 +83,10 @@ def test_admin_user_create(session):
 
 
 def test_admin_user_unique_email(session):
-    session.add(User(email="dup@example.com", hashed_password="h"))
+    session.add(User(email="dup@example.com", password="h"))
     session.flush()
     with pytest.raises(Exception):
-        session.add(User(email="dup@example.com", hashed_password="h"))
+        session.add(User(email="dup@example.com", password="h"))
         session.flush()
 
 
@@ -97,7 +97,7 @@ def test_admin_user_role_relationship(session):
 
     user = User(
         email="viewer@example.com",
-        hashed_password="h",
+        password="h",
     )
     user.roles.append(role)
     session.add(user)
@@ -109,7 +109,7 @@ def test_admin_user_role_relationship(session):
 
 
 def test_admin_user_defaults(session):
-    user = User(email="def@example.com", hashed_password="h")
+    user = User(email="def@example.com", password="h")
     session.add(user)
     session.flush()
     assert user.is_superuser is False
@@ -201,7 +201,7 @@ def test_admin_user_satisfies_protocol():
     """User instances must satisfy AdminUserProtocol at runtime."""
     user = User(
         email="test@example.com",
-        hashed_password="h",
+        password="h",
         is_active=True,
         is_superuser=False,
     )
