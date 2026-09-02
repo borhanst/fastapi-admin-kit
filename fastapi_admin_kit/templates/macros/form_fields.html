@@ -505,7 +505,7 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
            @change="onFileSelect($event)" class="sr-only" x-ref="fileInput">
     {% if val %}
     <div style="margin-bottom: 8px;">
-      <img :src="existingUrl || {{ val | tojson }}" style="width: 128px; height: 128px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--surface-border);">
+      <img :src="{{ val | tojson }}" style="width: 128px; height: 128px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--surface-border);">
     </div>
     {% endif %}
     <div x-show="previewUrl" style="margin-bottom: 8px;">

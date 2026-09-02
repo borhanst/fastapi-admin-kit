@@ -370,6 +370,7 @@ class CreateView(BaseView):
             "fieldsets": ctx.fieldsets,
             "errors": ctx.errors,
             "is_create": is_create,
+            "has_file_field": ctx.has_file_field,
             "permissions": checker.permission_set(self.registered.table_name)
             if checker
             else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),
@@ -789,6 +790,7 @@ class EditView(BaseView):
             "fieldsets": ctx.fieldsets,
             "errors": ctx.errors,
             "is_create": is_create,
+            "has_file_field": ctx.has_file_field,
             "permissions": checker.permission_set(self.registered.table_name)
             if checker
             else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),
@@ -1047,6 +1049,7 @@ class EditView(BaseView):
             "form_fields": ctx.fieldsets[0].fields if ctx.fieldsets else [],
             "fieldsets": ctx.fieldsets,
             "is_create": False,
+            "has_file_field": ctx.has_file_field,
             "permissions": checker.permission_set(self.registered.table_name)
             if checker
             else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),

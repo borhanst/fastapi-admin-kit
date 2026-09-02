@@ -265,6 +265,7 @@ class ViewContextBuilder:
             "fieldsets": ctx.fieldsets,
             "errors": ctx.errors,
             "is_create": is_create,
+            "has_file_field": ctx.has_file_field,
             "permissions": permission_checker.permission_set(registered.table_name)
             if permission_checker
             else PermissionSet(can_view=True, can_create=True, can_edit=True, can_delete=True),

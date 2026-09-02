@@ -71,6 +71,7 @@
   {% set _ui = ui_config | default({}) %}
   <form method="post"
         action="{{ admin_path | default('/admin') }}/{{ registered.table_name }}{% if obj %}/{{ obj.id }}{% else %}/create{% endif %}"
+        {% if has_file_field %}enctype="multipart/form-data"{% endif %}
         @input="unsaved = true"
         class="space-y-6 form--{{ _ui.form_layout | default('two-column') }} form--{{ _ui.form_spacing | default('normal') }}">
     <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">

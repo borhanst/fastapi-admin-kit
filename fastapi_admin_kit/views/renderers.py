@@ -198,7 +198,7 @@ class HTMLFormParser:
             widget = self.registered.get_widget(field_meta.name)
 
             if isinstance(widget, _FILE_WIDGET_TYPES):
-                action = form_data.get(f"_action_{field_meta.name}", "keep") if obj else None
+                action = form_data.get(f"{field_meta.name}_action", "keep") if obj else None
                 await _handle_file_field(
                     request,
                     widget,
