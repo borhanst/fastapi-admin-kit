@@ -94,10 +94,12 @@ class LocalStorageBackend(StorageBackend):
         with open(target_path, "wb") as f:
             f.write(content)
 
-        # Return path relative to upload_dir, using forward slashes
+        # Return path with leading / for database storage
+        # e.g., "/uploads/filename.jpg" or "/uploads/directory/filename.jpg"
+        # The leading / ensures the path is stored with a slash prefix
         if directory:
-            return f"{directory}/{filename}"
-        return filename
+            return f"/{self.upload_dir}/{directory}/{filename}"
+        return f"/{self.upload_dir}/{filename}"
 
     async def delete(self, path: str) -> None:
         """Delete a file at the given relative path.
@@ -108,9 +110,32 @@ class LocalStorageBackend(StorageBackend):
         if target.is_file():
             os.remove(target)
 
-    def url(self, path: str) -> str:
-        """Return the public URL for a stored file."""
-        return f"{self.base_url}/{path}"
+    def url(self, path: str, strip_prefix: bool = False) -> str:
+        """Return the public URL for a stored file.
+
+        Parameters
+        ----------
+        path : str
+            The relative path stored in the database.
+        strip_prefix : bool, default False
+            When True, strips the leading ``/`` from the URL.
+            Use ``strip_prefix=True`` when you want the path without
+            leading slash for ``src`` attributes in templates.
+        """
+        # Strip upload_dir prefix if present, to avoid double-prefix in URL
+        upload_dir_str = str(self.upload_dir)
+        if path.startswith(upload_dir_str + "/"):
+            path = path[len(upload_dir_str) + 1 :]
+        elif path.startswith(upload_dir_str):
+            path = path[len(upload_dir_str) :]
+
+        url = f"{self.base_url}/{path}"
+
+        # Optionally strip leading / from URL
+        if strip_prefix:
+            url = url.lstrip("/")
+
+        return url
 
     def ensure_dir(self) -> None:
         """Create the upload directory if it doesn't exist."""
