@@ -716,11 +716,11 @@ async def seed_demo_data(session: AsyncSession) -> None:
 
     user1 = User(
         email="alice@example.com", full_name="Alice Johnson", is_active=True,
-        hashed_password=password_manager.hash("alice"),
+        password=password_manager.hash("alice"),
     )
     user2 = User(
         email="bob@example.com", full_name="Bob Smith", is_active=True,
-        hashed_password=password_manager.hash("bob"),
+        password=password_manager.hash("bob"),
     )
     session.add_all([user1, user2])
     await session.flush()
@@ -755,7 +755,7 @@ async def seed_admin_user(session: AsyncSession) -> None:
     hashed = bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode()
     admin_user = User(
         email="admin@example.com",
-        hashed_password=hashed,
+        password=hashed,
         full_name="Admin",
         is_superuser=True,
         is_active=True,
@@ -824,13 +824,6 @@ admin = Admin(
         {"label": "Settings", "url": "/admin/users/", "icon": "cog-6-tooth"},
         {"label": "Help", "url": "https://docs.example.com"},
     ],
-    # Theme configuration
-    theme=ThemeConfig(
-        preset="paper",
-        primary_color="#6366F1",
-        show_grain_texture=False,
-        show_accent_line=True,
-    ),
     # UI component configuration
     sidebar_style="compact",
     table_style="striped",
