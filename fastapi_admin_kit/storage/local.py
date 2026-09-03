@@ -95,6 +95,9 @@ class LocalStorageBackend(StorageBackend):
             f.write(content)
 
         # Return path relative to upload_dir, using forward slashes
+        # e.g., "filename.jpg" or "directory/filename.jpg".
+        # Callers build public URLs via ``url()`` and filesystem targets
+        # via ``upload_dir / path`` — both expect a relative path.
         if directory:
             return f"{directory}/{filename}"
         return filename
@@ -108,9 +111,41 @@ class LocalStorageBackend(StorageBackend):
         if target.is_file():
             os.remove(target)
 
-    def url(self, path: str) -> str:
-        """Return the public URL for a stored file."""
-        return f"{self.base_url}/{path}"
+    def url(self, path: str, strip_prefix: bool = False) -> str:
+        """Return the public URL for a stored file.
+
+        Parameters
+        ----------
+        path : str
+            The relative path stored in the database.
+        strip_prefix : bool, default False
+            When True, strips the leading ``/`` from the URL.
+            Use ``strip_prefix=True`` when you want the path without
+            leading slash for ``src`` attributes in templates.
+        """
+        # Accept legacy values stored with a leading "/" or with the
+        # upload_dir prefix (e.g. "/documents/f.txt" or
+        # "/tmp/.../uploads/documents/f.txt" from the regressed save()).
+        # Normal stored values are relative ("documents/f.txt").
+        upload_dir_str = str(self.upload_dir)
+        if upload_dir_str and path.startswith(upload_dir_str + "/"):
+            path = path[len(upload_dir_str) + 1 :]
+        elif upload_dir_str and path == upload_dir_str:
+            path = ""
+        else:
+            # Strip a single cosmetic leading slash ("/documents/f.txt"
+            # -> "documents/f.txt"); "//" is left for the jail check
+            # to reject downstream.
+            if path.startswith("/") and not path.startswith("//"):
+                path = path[1:]
+
+        url = f"{self.base_url}/{path}"
+
+        # Optionally strip leading / from URL
+        if strip_prefix:
+            url = url.lstrip("/")
+
+        return url
 
     def ensure_dir(self) -> None:
         """Create the upload directory if it doesn't exist."""

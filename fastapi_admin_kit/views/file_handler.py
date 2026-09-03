@@ -6,6 +6,7 @@ to eliminate three-way duplication.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from fastapi import Request
@@ -17,6 +18,42 @@ from fastapi_admin_kit.widgets.inputs import FileUploadWidget, ImageUploadWidget
 # Widgets that handle file uploads
 FILE_WIDGET_TYPES = (FileUploadWidget, ImageUploadWidget)
 
+_SAFE_DIRECTORY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _safe_directory_name(name: str) -> str:
+    """Return a storage-safe directory name derived from *name*.
+
+    Form field names (used as storage subdirectories) must match the
+    strict ``[A-Za-z0-9_-]`` character set enforced by
+    :class:`LocalStorageBackend`. This helper maps anything else to a
+    safe equivalent so field names with spaces, dots, or non-ASCII
+    characters still work without weakening the security checks at the
+    storage layer.
+    """
+    sanitized = re.sub(r"[^A-Za-z0-9_-]", "_", name).strip("_")
+    if not sanitized or not _SAFE_DIRECTORY_RE.match(sanitized):
+        return "files"
+    return sanitized
+
+
+def _normalize_stored_path(path: str) -> str:
+    """Normalize a stored path before passing it back to the storage layer.
+
+    Stored values may have a leading forward-slash (because the
+    application saves them as ``"directory/filename"`` but legacy or
+    application-defined defaults use ``"/directory/filename"`` for
+    URL-style serving). Storage treats the input as relative to the
+    upload directory, so we strip a single cosmetic leading slash while
+    preserving any path-traversal components (which the storage layer
+    will still reject).
+    """
+    if not path:
+        return path
+    if path.startswith("/") and not path.startswith("//"):
+        return path[1:]
+    return path
+
 
 def get_storage(request: Request) -> Any:
     """Get the storage backend from app.state, or None."""
@@ -24,7 +61,10 @@ def get_storage(request: Request) -> Any:
 
 
 async def _enforce_size_limit(
-    raw: UploadFile, max_size_mb: float | None, field_name: str, errors: dict[str, list[str]]
+    raw: UploadFile,
+    max_size_mb: float | None,
+    field_name: str,
+    errors: dict[str, list[str]],
 ) -> bool:
     """Enforce the size limit *before* reading the body into RAM.
 
@@ -73,7 +113,7 @@ async def handle_file_field(
     storage = get_storage(request)
     field_name = field_meta.name
     raw = form_data.get(field_name)
-
+    print("file raw", raw, form_data)
     if isinstance(raw, UploadFile) and raw.filename:
         # New file uploaded — enforce the size limit before reading content
         if not await _enforce_size_limit(raw, widget.max_size_mb, field_name, errors):
@@ -84,7 +124,8 @@ async def handle_file_field(
             return
 
         try:
-            path = await storage.save(raw, directory=field_meta.name)
+            path = await storage.save(raw, directory=_safe_directory_name(field_meta.name))
+            print("file path", path)
         except ValueError as exc:
             errors[field_name] = [str(exc)]
             return
@@ -94,7 +135,7 @@ async def handle_file_field(
             old_path = getattr(obj, field_name, None)
             if old_path:
                 try:
-                    await storage.delete(old_path)
+                    await storage.delete(_normalize_stored_path(old_path))
                 except ValueError as exc:
                     errors[field_name] = [str(exc)]
                     return
@@ -107,7 +148,7 @@ async def handle_file_field(
             old_path = getattr(obj, field_name, None)
             if old_path:
                 try:
-                    await storage.delete(old_path)
+                    await storage.delete(_normalize_stored_path(old_path))
                 except ValueError as exc:
                     errors[field_name] = [str(exc)]
                     return

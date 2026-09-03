@@ -120,9 +120,8 @@ async def login_post(
             login_field=login_field,
             query_adapter=query_adapter,
         )
-        print("login user: ", user)
+
     except TypeError:
-        print("login user error: ", user)
         # Custom backends that don't accept query_adapter
         user = await auth_backend.authenticate(username, password, session, login_field=login_field)
     if user is not None:

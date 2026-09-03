@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import enum
 import json
 from datetime import date, datetime
 from typing import Any
@@ -88,19 +89,67 @@ class ToggleWidget(Widget):
 class SelectWidget(Widget):
     macro_name = "select"
 
-    def __init__(self, choices: list[tuple[str, str]] | None = None):
+    def __init__(
+        self,
+        choices: list[tuple[str, str]] | None = None,
+        enum_class: type | None = None,
+    ):
         self.choices = choices or []
+        self.enum_class = enum_class
+
+    @staticmethod
+    def _enum_stored_value(value: enum.Enum) -> Any:
+        """Return the representation SA actually stores in the DB for this enum.
+
+        SQLAlchemy's ``Enum`` type stores ``.value`` for ``str``-Enum subclasses
+        (including ``StrEnum``) and ``.name`` for plain ``Enum``. We mirror that
+        here so the value rendered into the ``<option value=...>`` and the
+        pre-selected comparison match what's stored.
+        """
+        if isinstance(value, str):
+            return value.value
+        return value.name
+
+    def _coerce_enum(self, value: Any) -> Any:
+        if isinstance(value, enum.Enum):
+            if self.enum_class is not None and type(value) is self.enum_class:
+                return self._enum_stored_value(value)
+            if isinstance(value, str):
+                return value.value
+            return value.name
+        return value
 
     def render_context(self, field: FieldMeta, value: Any) -> dict:
-        ctx = super().render_context(field, value)
+        ctx = super().render_context(field, self._coerce_enum(value))
         ctx["choices"] = self.choices
         return ctx
+
+    def parse(self, raw: str | None) -> Any:
+        """Convert the submitted stored string back to the Enum member.
+
+        Without this, the form would submit a raw string (e.g. ``"GOOGLE"``)
+        and ``setattr`` on the model would store the string instead of the
+        Enum member — silently breaking equality checks elsewhere in the app.
+        """
+        if raw is None or raw == "":
+            return None
+        if self.enum_class is not None:
+            try:
+                if isinstance(self.enum_class, type) and issubclass(self.enum_class, enum.Enum):
+                    for member in self.enum_class:
+                        stored = self._enum_stored_value(member)
+                        if stored == raw or member.name == raw:
+                            return member
+            except TypeError:
+                pass
+        return raw
 
     def validate(self, value: Any, field: FieldMeta) -> list[str]:
         errors = super().validate(value, field)
         if value and self.choices:
             valid = {c[0] for c in self.choices}
-            if value not in valid:
+            check = self._coerce_enum(value)
+            if check not in valid:
                 errors.append(f"'{value}' is not a valid choice for {field.label}.")
         return errors
 

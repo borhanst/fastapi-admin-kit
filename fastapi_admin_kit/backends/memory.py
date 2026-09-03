@@ -565,6 +565,16 @@ class MemoryDatabaseBackend:
     def session_adapter_class(self) -> type:
         return MemorySessionBackend
 
+    def adapt_auth_model(self, auth_model: Any) -> None:
+        """No-op for the in-memory backend.
+
+        Memory backend schemas are flat dicts; there is no foreign-key or
+        relationship machinery to retarget. Custom auth_models work as-is
+        because the auth layer always queries through the model attribute
+        lookup, not the table.
+        """
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Composite backend

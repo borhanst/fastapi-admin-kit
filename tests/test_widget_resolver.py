@@ -134,7 +134,7 @@ class TestResolverTypeMapping:
         # The String -> TextInputWidget mapping matches first in the type_map.
         # This is consistent with the original behavior.
         w = resolver.resolve(_col(col_type=Text()))
-        assert isinstance(w, (TextareaWidget, TextInputWidget))
+        assert isinstance(w, TextareaWidget | TextInputWidget)
 
     def test_integer_resolves_to_number_input(self):
         from sqlalchemy import Integer
@@ -362,6 +362,27 @@ class TestResolverEnumTypes:
         col = _col(name="status", col_type=type("NoEnum", (), {}))
         w = resolver.resolve(col)
         assert isinstance(w, TextInputWidget)
+
+    def test_enum_class_plumbed_to_widget(self):
+        """Regression: the SA enum class must reach SelectWidget so it can
+        round-trip the form value back to an Enum member on save."""
+        import enum
+
+        from fastapi_admin_kit.widgets.inputs import SelectWidget
+
+        class ProviderName(enum.Enum):
+            GOOGLE = "google"
+            APPLE = "apple"
+
+        class FakeEnum:
+            enums = ["GOOGLE", "APPLE"]
+            enum_class = ProviderName
+
+        resolver = WidgetResolver(_default_registry())
+        col = _col(name="provider", col_type=FakeEnum())
+        w = resolver.resolve(col)
+        assert isinstance(w, SelectWidget)
+        assert w.enum_class is ProviderName
 
 
 # ===========================================================================

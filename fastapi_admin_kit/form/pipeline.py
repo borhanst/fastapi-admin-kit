@@ -11,6 +11,7 @@ from fastapi_admin_kit.types import (
     InlineFormsetData,
     PermissionSet,
 )
+from fastapi_admin_kit.views.file_handler import FILE_WIDGET_TYPES
 
 
 async def build_inline_formsets(
@@ -422,6 +423,10 @@ def build_form_context(
 
     fieldsets[0].fields = rendered
 
+    has_file_field = any(
+        isinstance(registered.get_widget(fm.name), FILE_WIDGET_TYPES)
+        for fm in registered.form_fields
+    )
     return FormContext(
         model_name=registered.table_name,
         verbose_name=registered.verbose_name,
@@ -436,4 +441,5 @@ def build_form_context(
         permissions=PermissionSet(),
         readonly=False,
         inline_formsets=inline_formsets or [],
+        has_file_field=has_file_field,
     )

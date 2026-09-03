@@ -17,7 +17,7 @@
 <span class="breadcrumb-separator">/</span>
 <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/" class="breadcrumb-segment hover:text-[var(--color-primary-600)] transition-colors">{{ registered.verbose_name_plural }}</a>
 <span class="breadcrumb-separator">/</span>
-<span class="breadcrumb-current">{{ obj }}</span>
+<span class="breadcrumb-current">{{ obj.email | default(obj.username, true) | default(obj.id, true) }}</span>
 {% endblock %}
 
 {% block content %}
@@ -32,7 +32,8 @@
       <h1 class="page-header-title">View {{ registered.verbose_name }}</h1>
       <p class="page-header-subtitle">
         <span class="mono">#{{ obj.id }}</span>
-        {% if obj.__str__() %} — {{ obj.__str__() }}{% endif %}
+        {% set _obj_label = obj.email | default(obj.username, true) %}
+        {% if _obj_label %} — {{ _obj_label }}{% endif %}
       </p>
     </div>
     <div class="page-header-right">

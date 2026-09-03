@@ -11,6 +11,7 @@ Contains:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +21,186 @@ from fastapi_admin_kit.inspection.types import ColumnMeta, RelationMeta
 
 if TYPE_CHECKING:
     from fastapi_admin_kit.admin.admin_database import AdminDatabase
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Custom auth_model adaptation state.
+#
+# ``SqlAlchemyDatabaseBackend.adapt_auth_model`` mutates *global* SQLAlchemy
+# state (the ``admin_user_roles`` FK, ``Role.users`` / ``User.roles`` mapper
+# properties, log-pattern ``user_id`` column types, and a shadow table in
+# ``AdminBase.metadata``). In production this runs once per process (a single
+# ``auth_model``), but the test-suite exercises several different
+# ``auth_model`` classes in one pytest session. Without a snapshot/restore
+# mechanism the first adaptation permanently rebinds the global ``Role``
+# mapper onto a per-test class, breaking every later test that creates a
+# built-in ``User`` (``AttributeError: 'NoneType' object has no attribute
+# 'get_all_pending'`` / ``NoForeignKeysError``).
+#
+# ``_ADAPT_SNAPSHOT`` holds the pristine objects captured on the first
+# adaptation so :meth:`SqlAlchemyDatabaseBackend.reset_auth_model_adaptation`
+# (and the module-level :func:`reset_builtin_auth_adaptation`) can restore
+# them. Objects — not target-name strings — are stored: re-creating
+# ``ForeignKey(target)`` from a string yields an orphan FK with no parent
+# column, which breaks mapper configuration.
+# ---------------------------------------------------------------------------
+
+_ADAPT_SNAPSHOT: dict[str, Any] | None = None
+_ADAPTED_AUTH_TABLE: str | None = None
+
+_LOG_TABLES_WITH_USER_ID: tuple[str, ...] = (
+    "admin_audit_log",
+    "admin_user_permissions",
+    "admin_refresh_tokens",
+    "admin_user_totp",
+    "admin_notifications",
+    "admin_notification_preferences",
+    "admin_notification_logs",
+    "admin_ai_usage_log",
+    "admin_ai_conversations",
+)
+
+
+def _snapshot_builtin_auth_state() -> dict[str, Any]:
+    """Capture the pristine global auth state before the first adaptation."""
+    from fastapi_admin_kit.migrations.models import Role
+    from fastapi_admin_kit.migrations.models import User as BuiltinUser
+
+    metadata = BuiltinUser.__table__.metadata
+    junction = metadata.tables.get("admin_user_roles")
+    snap: dict[str, Any] = {
+        "role_users_prop": Role.__mapper__._props.get("users"),
+        "user_roles_prop": BuiltinUser.__mapper__._props.get("roles"),
+        "log_col_types": {},
+        "junction_constraints": None,
+        "junction_fks": None,
+        "col_fks": None,
+        "col_type": None,
+    }
+    if junction is not None and "user_id" in junction.c:
+        col = junction.c["user_id"]
+        snap["junction_constraints"] = set(junction.constraints)
+        snap["junction_fks"] = set(junction.foreign_keys)
+        snap["col_fks"] = set(col.foreign_keys)
+        snap["col_type"] = col.type
+    for table_name in _LOG_TABLES_WITH_USER_ID:
+        table = metadata.tables.get(table_name)
+        if table is not None and "user_id" in table.c:
+            snap["log_col_types"][table_name] = table.c["user_id"].type
+    return snap
+
+
+def reset_builtin_auth_adaptation() -> None:
+    """Restore the pristine global auth state captured before adaptation.
+
+    No-op when no adaptation has happened. Safe to call multiple times.
+    Used by the test-suite to isolate custom-``auth_model`` tests from the
+    rest of the session.
+    """
+    global _ADAPT_SNAPSHOT, _ADAPTED_AUTH_TABLE
+    if _ADAPT_SNAPSHOT is None:
+        return
+    snap = _ADAPT_SNAPSHOT
+    try:
+        from sqlalchemy import ForeignKeyConstraint
+
+        from fastapi_admin_kit.migrations.models import Role
+        from fastapi_admin_kit.migrations.models import User as BuiltinUser
+
+        metadata = BuiltinUser.__table__.metadata
+        junction = metadata.tables.get("admin_user_roles")
+
+        # 1. Restore junction constraints / FK sets from saved *objects*.
+        if junction is not None and snap.get("junction_constraints") is not None:
+            col = junction.c["user_id"] if "user_id" in junction.c else None
+            for constraint in list(junction.constraints):
+                if constraint not in snap["junction_constraints"]:
+                    junction.constraints.remove(constraint)
+                    if isinstance(constraint, ForeignKeyConstraint) and col is not None:
+                        for fk in list(constraint.elements):
+                            junction.foreign_keys.discard(fk)
+                            if fk in col.foreign_keys:
+                                col.foreign_keys.discard(fk)
+            for constraint in snap["junction_constraints"]:
+                if constraint not in junction.constraints:
+                    junction.constraints.add(constraint)
+            if snap.get("junction_fks") is not None:
+                junction.foreign_keys.clear()
+                junction.foreign_keys.update(snap["junction_fks"])
+            if col is not None and snap.get("col_fks") is not None:
+                col.foreign_keys.clear()
+                col.foreign_keys.update(snap["col_fks"])
+            if col is not None and snap.get("col_type") is not None:
+                col.type = snap["col_type"]
+
+        # 2. Remove the shadow table created for the custom auth_model.
+        if _ADAPTED_AUTH_TABLE is not None and _ADAPTED_AUTH_TABLE in metadata.tables:
+            # Only remove it if it is the minimal shadow (single PK col).
+            # If the project put its real User table on AdminBase, the table
+            # predates adaptation and must be kept — but that case never
+            # creates a shadow (``auth_table_name in metadata.tables``).
+            # We track creation via the snapshot flag below.
+            if snap.get("shadow_created") == _ADAPTED_AUTH_TABLE:
+                try:
+                    metadata.remove(metadata.tables[_ADAPTED_AUTH_TABLE])
+                except Exception:
+                    pass
+
+        # 3. Restore log-pattern user_id column types.
+        for table_name, col_type in snap.get("log_col_types", {}).items():
+            table = metadata.tables.get(table_name)
+            if table is not None and "user_id" in table.c:
+                table.c["user_id"].type = col_type
+
+        # 4. Restore mapper properties by recreating *fresh* relationships.
+        #
+        # Re-adding the saved ``MapperProperty`` instances via
+        # ``add_property`` does NOT restore ``state.manager[key].impl``
+        # (it stays ``None``, surfacing later as ``AttributeError:
+        # 'NoneType' object has no attribute 'get_all_pending'`` on
+        # ``session.add(Role(...))``). Fresh ``relationship()`` objects
+        # instrument correctly. User.roles FIRST: Role.users declares
+        # ``back_populates="roles"`` and configures immediately, so the
+        # reverse side must exist or configuration raises
+        # ``Mapper ... has no property 'roles'``.
+        if snap.get("user_roles_prop") is not None or snap.get("role_users_prop") is not None:
+            try:
+                from sqlalchemy.orm import relationship as _relationship
+
+                junction_table = metadata.tables.get("admin_user_roles")
+                if junction_table is not None:
+                    try:
+                        BuiltinUser.__mapper__.add_property(
+                            "roles",
+                            _relationship(
+                                Role,
+                                secondary=junction_table,
+                                back_populates="users",
+                            ),
+                        )
+                    except Exception:
+                        pass
+                    try:
+                        Role.__mapper__.add_property(
+                            "users",
+                            _relationship(
+                                BuiltinUser,
+                                secondary=junction_table,
+                                back_populates="roles",
+                            ),
+                        )
+                    except Exception:
+                        pass
+            except Exception:
+                # Last-resort fallback: restore saved objects directly.
+                if snap.get("user_roles_prop") is not None:
+                    BuiltinUser.__mapper__._props["roles"] = snap["user_roles_prop"]
+                if snap.get("role_users_prop") is not None:
+                    Role.__mapper__._props["users"] = snap["role_users_prop"]
+    finally:
+        _ADAPT_SNAPSHOT = None
+        _ADAPTED_AUTH_TABLE = None
 
 
 def _is_async_session(session: Any) -> bool:
@@ -775,76 +956,323 @@ class SqlAlchemyDatabaseBackend:
         if is_async:
 
             async def _run_async() -> None:
-                existing = await session.all(sa_select(Role))
-                if existing and not overwrite:
-                    return
-                if overwrite:
-                    await session.execute(sa_delete(admin_role_permissions))
-                    await session.execute(sa_delete(Role))
-                for role_spec in seed_roles:
-                    role = Role(name=role_spec.name, description=role_spec.description)
-                    session.add(role)
-                    await session.flush()
-                    await session.refresh(role, ["permissions"])
-                    if role_spec.permissions:
-                        for table_name, perms in role_spec.permissions.items():
-                            existing_perm = await session.scalar_one_or_none(
-                                sa_select(Permission).filter_by(table_name=table_name)
-                            )
-                            if existing_perm is None:
-                                perm = Permission(
-                                    name=table_name,
-                                    table_name=table_name,
-                                    can_view=perms.get("view", False),
-                                    can_create=perms.get("create", False),
-                                    can_edit=perms.get("edit", False),
-                                    can_delete=perms.get("delete", False),
+                try:
+                    existing = await session.all(sa_select(Role))
+                    if existing and not overwrite:
+                        return
+                    if overwrite:
+                        await session.execute(sa_delete(admin_role_permissions))
+                        await session.execute(sa_delete(Role))
+                    for role_spec in seed_roles:
+                        role = Role(name=role_spec.name, description=role_spec.description)
+                        session.add(role)
+                        await session.flush()
+                        await session.refresh(role, ["permissions"])
+                        if role_spec.permissions:
+                            for table_name, perms in role_spec.permissions.items():
+                                existing_perm = await session.scalar_one_or_none(
+                                    sa_select(Permission).filter_by(table_name=table_name)
                                 )
-                                session.add(perm)
-                                await session.flush()
-                            else:
-                                perm = existing_perm
-                            role.permissions.append(perm)
-                await session.commit()
+                                if existing_perm is None:
+                                    perm = Permission(
+                                        name=table_name,
+                                        table_name=table_name,
+                                        can_view=perms.get("view", False),
+                                        can_create=perms.get("create", False),
+                                        can_edit=perms.get("edit", False),
+                                        can_delete=perms.get("delete", False),
+                                    )
+                                    session.add(perm)
+                                    await session.flush()
+                                else:
+                                    perm = existing_perm
+                                role.permissions.append(perm)
+                    await session.commit()
+                finally:
+                    # Always release the session: an unclosed session that
+                    # performed DB work is GC'd while still holding a pooled
+                    # connection ("non-checked-in connection" SAWarning). The
+                    # early-return path above is the usual trigger — it leaves
+                    # an open read transaction behind. close() rolls back any
+                    # open transaction and returns the connection to the pool.
+                    await session.close()
 
             return _run_async()
 
-        existing = session.all(sa_select(Role))
-        if existing and not overwrite:
-            return None
-        if overwrite:
-            session.execute(sa_delete(admin_role_permissions))
-            session.execute(sa_delete(Role))
-        for role_spec in seed_roles:
-            role = Role(name=role_spec.name, description=role_spec.description)
-            session.add(role)
-            session.flush()
-            if role_spec.permissions:
-                for table_name, perms in role_spec.permissions.items():
-                    existing_perm = session.scalar_one_or_none(
-                        sa_select(Permission).filter_by(table_name=table_name)
-                    )
-                    if existing_perm is None:
-                        perm = Permission(
-                            name=table_name,
-                            table_name=table_name,
-                            can_view=perms.get("view", False),
-                            can_create=perms.get("create", False),
-                            can_edit=perms.get("edit", False),
-                            can_delete=perms.get("delete", False),
+        try:
+            existing = session.all(sa_select(Role))
+            if existing and not overwrite:
+                return None
+            if overwrite:
+                session.execute(sa_delete(admin_role_permissions))
+                session.execute(sa_delete(Role))
+            for role_spec in seed_roles:
+                role = Role(name=role_spec.name, description=role_spec.description)
+                session.add(role)
+                session.flush()
+                if role_spec.permissions:
+                    for table_name, perms in role_spec.permissions.items():
+                        existing_perm = session.scalar_one_or_none(
+                            sa_select(Permission).filter_by(table_name=table_name)
                         )
-                        session.add(perm)
-                        session.flush()
-                    else:
-                        perm = existing_perm
-                    role.permissions.append(perm)
-        session.commit()
+                        if existing_perm is None:
+                            perm = Permission(
+                                name=table_name,
+                                table_name=table_name,
+                                can_view=perms.get("view", False),
+                                can_create=perms.get("create", False),
+                                can_edit=perms.get("edit", False),
+                                can_delete=perms.get("delete", False),
+                            )
+                            session.add(perm)
+                            session.flush()
+                        else:
+                            perm = existing_perm
+                        role.permissions.append(perm)
+            session.commit()
+        finally:
+            session.close()
         return None
 
     @property
     def session_adapter_class(self) -> type:
         """Class wrapping a raw connection into a :class:`SessionBackend`."""
         return SqlAlchemySessionAdapter
+
+    def adapt_auth_model(self, auth_model: type) -> None:
+        """Adapt built-in admin metadata for a custom ``auth_model``.
+
+        Called by ``Admin.create_tables()`` when a project supplies its own
+        user model. Performs the following ORM-specific adaptations so
+        the built-in ``admin_user_roles`` junction links roles to the
+        project's own user table (instead of the built-in ``admin_users``
+        which is being skipped):
+
+        1. Creates a minimal "shadow" table reference for the auth_model
+           inside ``AdminBase.metadata`` (same table name + PK column),
+           so the FK on ``admin_user_roles.user_id`` can resolve within
+           the same ``MetaData`` during ``create_all`` sort. The shadow
+           is NOT created in the database — the project's own metadata
+           owns the real table. The shadow's name is recorded on the
+           backend instance so ``AdminDatabase._create_tables`` can drop
+           it from the ``create_all`` table list.
+        2. Retargets the ``admin_user_roles.user_id`` foreign key from
+           ``admin_users.id`` to ``<auth_model.__tablename__>.<pk>`` and
+           mirrors the PK column type. Also drops the old
+           ``ForeignKeyConstraint`` from the junction table's
+           ``constraints`` collection (DDL is emitted from constraints,
+           not just ``col.foreign_keys``).
+        3. Rebinds the ``Role.users`` M2M relationship onto
+           *auth_model* so ORM joins route to the project user table.
+        4. Re-types the built-in log-pattern ``user_id`` columns on
+           log-style tables (``admin_audit_log``, notifications, etc.) to
+           match the custom auth_model's primary-key type.
+        """
+        from sqlalchemy import Column as SA_Column
+        from sqlalchemy import ForeignKeyConstraint
+        from sqlalchemy import Table as SA_Table
+        from sqlalchemy import inspect as sa_inspect
+        from sqlalchemy.orm import relationship
+
+        from fastapi_admin_kit.migrations.models import (
+            Role,
+        )
+        from fastapi_admin_kit.migrations.models import (
+            User as BuiltinUser,
+        )
+
+        if auth_model is BuiltinUser:
+            return
+
+        global _ADAPT_SNAPSHOT, _ADAPTED_AUTH_TABLE
+
+        metadata = BuiltinUser.__table__.metadata
+
+        pk_cols = sa_inspect(auth_model).primary_key
+        if not pk_cols:
+            return
+        pk_col = pk_cols[0]
+        new_type = pk_col.type
+        auth_table_name = auth_model.__tablename__
+
+        # Idempotency: adapting twice to the same table must not stack
+        # ``add_property("users", ...)`` calls (each one replaces the
+        # previous relationship and emits a deprecation warning while
+        # leaving the class manager in an increasingly inconsistent
+        # state). If a *different* auth_model was adapted before, reset
+        # to pristine state first so the new adaptation starts clean.
+        #
+        # NOTE: do NOT inspect ``Role.__mapper__._props["users"].mapper``
+        # here to decide: accessing ``.mapper`` triggers global mapper
+        # configuration while the junction is in its retargeted (custom)
+        # state, which poisons the later reset (User.roles impl stays
+        # ``None``). The table-name check alone is sufficient.
+        if _ADAPTED_AUTH_TABLE is not None:
+            if _ADAPTED_AUTH_TABLE == auth_table_name:
+                return
+            reset_builtin_auth_adaptation()
+
+        # Snapshot pristine global state once, before the first mutation.
+        if _ADAPT_SNAPSHOT is None:
+            _ADAPT_SNAPSHOT = _snapshot_builtin_auth_state()
+            _ADAPT_SNAPSHOT["shadow_created"] = None
+
+        # 1. Ensure the auth_model's table is resolvable within
+        #    AdminBase.metadata (needed for sort_tables_and_constraints
+        #    to order admin_user_roles after its FK target). If the table
+        #    is already in admin metadata (e.g. the project puts its User
+        #    model on AdminBase), reuse it. Otherwise create a minimal
+        #    shadow table with the same name + PK column.
+        if auth_table_name not in metadata.tables:
+            SA_Table(
+                auth_table_name,
+                metadata,
+                SA_Column(pk_col.name, new_type, primary_key=True),
+            )
+            # Remember that *we* created this table so reset can remove it.
+            # (If it already existed, it belongs to the project and must be kept.)
+            if _ADAPT_SNAPSHOT is not None:
+                _ADAPT_SNAPSHOT["shadow_created"] = auth_table_name
+        # Record so AdminDatabase._create_tables can drop the shadow from
+        # the create_all table list (it must not be emitted as DDL).
+        # Store on the AdminDatabase instance if available so the
+        # filtering works regardless of backend instance.
+        db_inst = getattr(self, "_admin_database", None)
+        if db_inst is not None:
+            existing = getattr(db_inst, "_cloned_auth_tables", None)
+            if existing is None:
+                existing = set()
+                db_inst._cloned_auth_tables = existing
+            existing.add(auth_table_name)
+        if not hasattr(self, "_cloned_auth_tables"):
+            self._cloned_auth_tables = set()
+        self._cloned_auth_tables.add(auth_table_name)
+
+        # 2. Retarget the FK on admin_user_roles.user_id
+        junction = metadata.tables.get("admin_user_roles")
+        if junction is not None and "user_id" in junction.c:
+            col = junction.c["user_id"]
+
+            # Drop the old auto-generated ForeignKeyConstraint from the
+            # table's constraints collection (DDL is emitted from
+            # constraints, not from col.foreign_keys). Also remove the
+            # FK objects from the column's foreign_keys set AND from the
+            # table's foreign_keys set — ``Table.foreign_keys`` is a
+            # plain ``set`` that aggregates from columns + constraints,
+            # and stale entries there confuse the M2M relationship
+            # configuration in step 3.
+            old_constraints = [
+                c
+                for c in list(junction.constraints)
+                if isinstance(c, ForeignKeyConstraint)
+                and any(fk.target_fullname.startswith("admin_users") for fk in c.elements)
+            ]
+            for constraint in old_constraints:
+                junction.constraints.remove(constraint)
+                for fk in list(constraint.elements):
+                    junction.foreign_keys.discard(fk)
+                    if fk in col.foreign_keys:
+                        col.foreign_keys.discard(fk)
+            # Belt-and-braces: clear any stale admin_users FK from the
+            # table-level set.
+            for fk in list(junction.foreign_keys):
+                if fk.target_fullname.startswith("admin_users"):
+                    junction.foreign_keys.discard(fk)
+
+            # Add a single ForeignKeyConstraint — its element FK will be
+            # auto-registered on the column's foreign_keys set, so we do
+            # NOT add it manually (that would produce duplicates).
+            new_constraint = ForeignKeyConstraint(
+                ["user_id"],
+                [f"{auth_table_name}.{pk_col.name}"],
+                ondelete="CASCADE",
+            )
+            new_constraint.parent = junction
+            junction.append_constraint(new_constraint)
+            col.type = new_type
+            logger.debug(
+                "adapt_auth_model: admin_user_roles.user_id -> %s.%s (%r)",
+                auth_table_name,
+                pk_col.name,
+                new_type,
+            )
+
+        # 3. Rebind Role.users M2M to the custom auth_model
+        if hasattr(Role, "users"):
+            junction_table = metadata.tables.get("admin_user_roles")
+            auth_has_roles = hasattr(auth_model, "roles")
+            # Provide explicit primaryjoin/secondaryjoin so SQLAlchemy
+            # does not have to auto-detect the join across the
+            # secondary table — the FK on ``admin_user_roles.user_id``
+            # now points to a shadow table in admin metadata, which
+            # makes the auto-detection unreliable.
+            Role.__mapper__.add_property(
+                "users",
+                relationship(
+                    auth_model,
+                    secondary=junction_table,
+                    primaryjoin=Role.id == junction_table.c.role_id,
+                    secondaryjoin=auth_model.__table__.c[pk_col.name] == junction_table.c.user_id,
+                    back_populates="roles" if auth_has_roles else None,
+                ),
+            )
+            if auth_has_roles:
+                try:
+                    auth_model.__mapper__.add_property(
+                        "roles",
+                        relationship(
+                            Role,
+                            secondary=junction_table,
+                            primaryjoin=auth_model.__table__.c[pk_col.name]
+                            == junction_table.c.user_id,
+                            secondaryjoin=Role.id == junction_table.c.role_id,
+                            back_populates="users",
+                        ),
+                    )
+                except Exception as exc:  # pragma: no cover
+                    logger.debug(
+                        "adapt_auth_model: could not add auth_model.roles back-pop: %s",
+                        exc,
+                    )
+            logger.debug("adapt_auth_model: Role.users rebound to %s", auth_model)
+
+        # 3b. The built-in User model still has a ``roles`` M2M
+        # referencing ``admin_user_roles``. Since ``admin_users`` is
+        # being skipped and the junction's FK now points to the custom
+        # auth_model, that relationship can no longer auto-resolve.
+        # Drop it from the mapper so SQLAlchemy does not blow up at
+        # mapper configuration time. The built-in User is not used in
+        # the DB when a custom auth_model is configured.
+        if "roles" in BuiltinUser.__mapper__._props:
+            BuiltinUser.__mapper__._props.pop("roles", None)
+
+        # 4. Re-type log-pattern user_id columns
+        for table_name in _LOG_TABLES_WITH_USER_ID:
+            table = metadata.tables.get(table_name)
+            if table is None or "user_id" not in table.c:
+                continue
+            table.c["user_id"].type = new_type
+
+        _ADAPTED_AUTH_TABLE = auth_table_name
+
+    def reset_auth_model_adaptation(self) -> None:
+        """Restore pristine global auth state (see :func:`reset_builtin_auth_adaptation`).
+
+        Also clears this instance's (and its ``AdminDatabase``'s, when
+        available) ``_cloned_auth_tables`` registry so later
+        ``create_all`` calls stop excluding the stale shadow table.
+        """
+        reset_builtin_auth_adaptation()
+        try:
+            self._cloned_auth_tables = set()
+        except Exception:
+            pass
+        try:
+            db_inst = getattr(self, "_admin_database", None)
+            if db_inst is not None and hasattr(db_inst, "_cloned_auth_tables"):
+                db_inst._cloned_auth_tables = set()
+        except Exception:
+            pass
 
     def materialize(
         self,
@@ -989,7 +1417,9 @@ class SqlAlchemyDatabaseBackend:
                     table = md[target]
                 if table is None:
                     if schemas is None:
-                        from fastapi_admin_kit.schemas.builtin import BUILTIN_SCHEMAS
+                        from fastapi_admin_kit.schemas.builtin import (
+                            BUILTIN_SCHEMAS,
+                        )
                     reg = schemas if schemas is not None else BUILTIN_SCHEMAS
                     if reg and target in reg:
                         pk = reg[target].get_pk_field()
@@ -1096,7 +1526,12 @@ class SqlAlchemyDatabaseBackend:
 
                 # Use string-based FK to allow target table to not exist yet
                 columns.append(
-                    Column(f.name, sa_type, ForeignKey(f"{fk_target}.id", use_alter=True), **kwargs)
+                    Column(
+                        f.name,
+                        sa_type,
+                        ForeignKey(f"{fk_target}.id", use_alter=True),
+                        **kwargs,
+                    )
                 )
             else:
                 columns.append(Column(f.name, sa_type, **kwargs))
@@ -1257,7 +1692,12 @@ class SqlAlchemyDatabaseBackend:
                     table_name, action = parts
 
                 attr = f"can_{action}"
-                if attr not in ("can_view", "can_create", "can_edit", "can_delete"):
+                if attr not in (
+                    "can_view",
+                    "can_create",
+                    "can_edit",
+                    "can_delete",
+                ):
                     return False
 
                 role_ids = self.role_ids
@@ -1279,7 +1719,10 @@ class SqlAlchemyDatabaseBackend:
 
                 result = await session.execute(
                     select(Permission)
-                    .join(UserPermission, UserPermission.permission_id == Permission.id)
+                    .join(
+                        UserPermission,
+                        UserPermission.permission_id == Permission.id,
+                    )
                     .where(UserPermission.user_id == self.id)
                 )
                 for perm in result.scalars():

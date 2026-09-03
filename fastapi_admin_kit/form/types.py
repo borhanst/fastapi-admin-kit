@@ -117,6 +117,7 @@ class FormContext:
     permissions: PermissionSet = field(default_factory=PermissionSet)
     readonly: bool = False
     inline_formsets: list[InlineFormsetData] = field(default_factory=list)
+    has_file_field: bool = False
 
 
 @dataclass

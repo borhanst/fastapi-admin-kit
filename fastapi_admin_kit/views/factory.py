@@ -28,6 +28,7 @@ from fastapi_admin_kit.flash import add_flash
 from fastapi_admin_kit.registry import RegisteredModel
 from fastapi_admin_kit.validation import FormValidator
 from fastapi_admin_kit.views.context import ViewContextBuilder
+from fastapi_admin_kit.views.file_handler import _safe_directory_name
 from fastapi_admin_kit.widgets.inputs import FileUploadWidget, ImageUploadWidget
 
 _FILE_WIDGET_TYPES = (FileUploadWidget, ImageUploadWidget)
@@ -215,7 +216,7 @@ async def _handle_file_field(
             return
 
         try:
-            path = await storage.save(raw, directory=field_meta.name)
+            path = await storage.save(raw, directory=_safe_directory_name(field_meta.name))
         except ValueError as exc:
             errors[field_name] = [str(exc)]
             return
@@ -280,7 +281,7 @@ class ViewFactory:
             widget = registered.get_widget(field_meta.name)
 
             if isinstance(widget, _FILE_WIDGET_TYPES):
-                action = form_data.get(f"_action_{field_meta.name}", "keep") if obj else None
+                action = form_data.get(f"{field_meta.name}_action", "keep") if obj else None
                 await _handle_file_field(
                     request,
                     widget,

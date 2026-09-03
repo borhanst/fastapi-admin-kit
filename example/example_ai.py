@@ -835,7 +835,7 @@ async def seed_admin(session: AsyncSession) -> None:
     hashed = bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode()
     admin_user = User(
         email="admin@example.com",
-        hashed_password=hashed,
+        password=hashed,
         full_name="Admin",
         is_superuser=True,
         is_active=True,

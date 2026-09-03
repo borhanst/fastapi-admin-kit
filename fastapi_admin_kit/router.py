@@ -616,6 +616,7 @@ def build_model_router(
                 "admin_path": request.app.state.admin_config["admin_path"],
                 "display_columns": form_ctx.fieldsets[0].fields,
                 "inline_fields": form_ctx.fieldsets[0].fields,
+                "has_file_field": form_ctx.has_file_field,
                 "view": edit_v,
             },
         )
@@ -709,6 +710,7 @@ def build_model_router(
                     "display_columns": form_ctx.fieldsets[0].fields,
                     "inline_fields": form_ctx.fieldsets[0].fields,
                     "errors": errors,
+                    "has_file_field": form_ctx.has_file_field,
                     "view": edit_v,
                 },
                 status_code=422,

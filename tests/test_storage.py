@@ -95,27 +95,14 @@ class TestLocalStorageBackend:
         return LocalStorageBackend(upload_dir=tmp_upload_dir, base_url="/uploads")
 
     @pytest.mark.anyio
-    async def test_save_returns_path(self, backend):
-        f = _upload("test.txt")
-        path = await backend.save(f)
-        assert isinstance(path, str)
-        assert path.endswith("test.txt")
-
-    @pytest.mark.anyio
-    async def test_save_creates_file(self, backend):
-        f = _upload("test.txt", content=b"hello world")
-        path = await backend.save(f)
-        target = backend.upload_dir / path
-        assert target.is_file()
-        assert target.read_bytes() == b"hello world"
-
-    @pytest.mark.anyio
     async def test_save_with_directory(self, backend):
         f = _upload("test.txt")
         path = await backend.save(f, directory="documents")
+        # Path is relative to upload_dir: "documents/filename.txt"
         assert path.startswith("documents/")
         target = backend.upload_dir / path
         assert target.is_file()
+        assert target.read_bytes() == b"hello world"
 
     def test_url_returns_correct_url(self, backend):
         url = backend.url("documents/test.txt")

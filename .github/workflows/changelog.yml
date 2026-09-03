@@ -11,12 +11,18 @@ permissions:
 jobs:
   changelog:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      # Checkout the actual branch instead of leaving the repository
+      # in a detached HEAD state.
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.head_ref || github.ref_name }}
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -24,7 +30,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: python scripts/generate_changelog.py --output CHANGELOG.md
+        run: |
+          python scripts/generate_changelog.py --output CHANGELOG.md
 
       - name: Commit and push changes
         run: |
@@ -32,8 +39,12 @@ jobs:
             echo "No changelog changes to commit."
             exit 0
           fi
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
           git add CHANGELOG.md
+
           git commit -m "docs: sync CHANGELOG.md from GitHub releases"
-          git push
+
+          git push origin HEAD:${{ github.ref_name }}

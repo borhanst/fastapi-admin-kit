@@ -499,13 +499,13 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set val = field_ctx.widget_context.value | default('') %}
 {{ _field_wrapper_open(field_ctx) }}
   {{ _label(field_ctx) }}
-  <div x-data='imageUpload({{ val | tojson }})'>
+  <div x-data='imageUpload({{ val | file_url | tojson }})'>
     <input type="hidden" name="{{ name }}_action" :value="action">
     <input type="file" id="{{ name }}" name="{{ name }}" accept="image/*"
            @change="onFileSelect($event)" class="sr-only" x-ref="fileInput">
     {% if val %}
     <div style="margin-bottom: 8px;">
-      <img :src="existingUrl || {{ val | tojson }}" style="width: 128px; height: 128px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--surface-border);">
+      <img :src="existingUrl" style="width: 128px; height: 128px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--surface-border);">
     </div>
     {% endif %}
     <div x-show="previewUrl" style="margin-bottom: 8px;">
@@ -533,13 +533,13 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set val = field_ctx.widget_context.value | default('') %}
 {{ _field_wrapper_open(field_ctx) }}
   {{ _label(field_ctx) }}
-  <div x-data='fileUpload({{ val | tojson }})'>
+  <div x-data='fileUpload({{ val | file_url | tojson }})'>
     <input type="hidden" name="{{ name }}_action" :value="action">
     <input type="file" id="{{ name }}" name="{{ name }}"
            @change="onFileSelect($event)" class="sr-only" x-ref="fileInput">
     {% if val %}
     <div style="margin-bottom: 8px; font-size: var(--text-sm); color: var(--text-secondary);">
-      Current: <a href="{{ val }}" style="color: var(--primary-500);" target="_blank">{{ val }}</a>
+      Current: <a href="{{ val | file_url }}" style="color: var(--primary-500);" target="_blank">{{ val }}</a>
     </div>
     {% endif %}
     <div class="flex items-center gap-2">

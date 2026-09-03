@@ -229,7 +229,7 @@ async def _list_users(args: argparse.Namespace) -> None:
         for user in users:
             name_val = getattr(user, name_col, "") if name_col else ""
             print(
-                f"{user.id:<6} {user.email:<30} {str(name_val):<{name_width}} "
+                f"{str(user.id)[:6]:<6} {user.email:<30} {str(name_val):<{name_width}} "
                 f"{_flag(superuser_col):<10} {_flag(active_col):<8}"
             )
 

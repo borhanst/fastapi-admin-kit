@@ -137,8 +137,6 @@ class BuiltinAuthBackend(AuthBackend):
         session = self._resolve_session(session)
         model = self._get_model()
         field = getattr(model, login_field, None)
-        print("model: ", model)
-        print("field: ", field)
         if field is None:
             field = getattr(model, "email", None)
         if field is None:
