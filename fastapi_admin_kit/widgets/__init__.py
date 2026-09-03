@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi_admin_kit.widgets.base import Widget
 from fastapi_admin_kit.widgets.inputs import (
+    ArrayWidget,
     DatePickerWidget,
     DateTimePickerWidget,
     FileUploadWidget,
@@ -17,9 +18,13 @@ from fastapi_admin_kit.widgets.inputs import (
     TextareaWidget,
     TextInputWidget,
     ToggleWidget,
+    WysiwygWidget,
 )
 from fastapi_admin_kit.widgets.registry import WidgetRegistry
-from fastapi_admin_kit.widgets.relation import MultiRelationWidget, RelationPickerWidget
+from fastapi_admin_kit.widgets.relation import (
+    MultiRelationWidget,
+    RelationPickerWidget,
+)
 from fastapi_admin_kit.widgets.resolver import WidgetResolver
 
 __all__ = [
@@ -41,4 +46,6 @@ __all__ = [
     "ImageUploadWidget",
     "RelationPickerWidget",
     "MultiRelationWidget",
+    "WysiwygWidget",
+    "ArrayWidget",
 ]
