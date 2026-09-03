@@ -956,70 +956,82 @@ class SqlAlchemyDatabaseBackend:
         if is_async:
 
             async def _run_async() -> None:
-                existing = await session.all(sa_select(Role))
-                if existing and not overwrite:
-                    return
-                if overwrite:
-                    await session.execute(sa_delete(admin_role_permissions))
-                    await session.execute(sa_delete(Role))
-                for role_spec in seed_roles:
-                    role = Role(name=role_spec.name, description=role_spec.description)
-                    session.add(role)
-                    await session.flush()
-                    await session.refresh(role, ["permissions"])
-                    if role_spec.permissions:
-                        for table_name, perms in role_spec.permissions.items():
-                            existing_perm = await session.scalar_one_or_none(
-                                sa_select(Permission).filter_by(table_name=table_name)
-                            )
-                            if existing_perm is None:
-                                perm = Permission(
-                                    name=table_name,
-                                    table_name=table_name,
-                                    can_view=perms.get("view", False),
-                                    can_create=perms.get("create", False),
-                                    can_edit=perms.get("edit", False),
-                                    can_delete=perms.get("delete", False),
+                try:
+                    existing = await session.all(sa_select(Role))
+                    if existing and not overwrite:
+                        return
+                    if overwrite:
+                        await session.execute(sa_delete(admin_role_permissions))
+                        await session.execute(sa_delete(Role))
+                    for role_spec in seed_roles:
+                        role = Role(name=role_spec.name, description=role_spec.description)
+                        session.add(role)
+                        await session.flush()
+                        await session.refresh(role, ["permissions"])
+                        if role_spec.permissions:
+                            for table_name, perms in role_spec.permissions.items():
+                                existing_perm = await session.scalar_one_or_none(
+                                    sa_select(Permission).filter_by(table_name=table_name)
                                 )
-                                session.add(perm)
-                                await session.flush()
-                            else:
-                                perm = existing_perm
-                            role.permissions.append(perm)
-                await session.commit()
+                                if existing_perm is None:
+                                    perm = Permission(
+                                        name=table_name,
+                                        table_name=table_name,
+                                        can_view=perms.get("view", False),
+                                        can_create=perms.get("create", False),
+                                        can_edit=perms.get("edit", False),
+                                        can_delete=perms.get("delete", False),
+                                    )
+                                    session.add(perm)
+                                    await session.flush()
+                                else:
+                                    perm = existing_perm
+                                role.permissions.append(perm)
+                    await session.commit()
+                finally:
+                    # Always release the session: an unclosed session that
+                    # performed DB work is GC'd while still holding a pooled
+                    # connection ("non-checked-in connection" SAWarning). The
+                    # early-return path above is the usual trigger — it leaves
+                    # an open read transaction behind. close() rolls back any
+                    # open transaction and returns the connection to the pool.
+                    await session.close()
 
             return _run_async()
 
-        existing = session.all(sa_select(Role))
-        if existing and not overwrite:
-            return None
-        if overwrite:
-            session.execute(sa_delete(admin_role_permissions))
-            session.execute(sa_delete(Role))
-        for role_spec in seed_roles:
-            role = Role(name=role_spec.name, description=role_spec.description)
-            session.add(role)
-            session.flush()
-            if role_spec.permissions:
-                for table_name, perms in role_spec.permissions.items():
-                    existing_perm = session.scalar_one_or_none(
-                        sa_select(Permission).filter_by(table_name=table_name)
-                    )
-                    if existing_perm is None:
-                        perm = Permission(
-                            name=table_name,
-                            table_name=table_name,
-                            can_view=perms.get("view", False),
-                            can_create=perms.get("create", False),
-                            can_edit=perms.get("edit", False),
-                            can_delete=perms.get("delete", False),
+        try:
+            existing = session.all(sa_select(Role))
+            if existing and not overwrite:
+                return None
+            if overwrite:
+                session.execute(sa_delete(admin_role_permissions))
+                session.execute(sa_delete(Role))
+            for role_spec in seed_roles:
+                role = Role(name=role_spec.name, description=role_spec.description)
+                session.add(role)
+                session.flush()
+                if role_spec.permissions:
+                    for table_name, perms in role_spec.permissions.items():
+                        existing_perm = session.scalar_one_or_none(
+                            sa_select(Permission).filter_by(table_name=table_name)
                         )
-                        session.add(perm)
-                        session.flush()
-                    else:
-                        perm = existing_perm
-                    role.permissions.append(perm)
-        session.commit()
+                        if existing_perm is None:
+                            perm = Permission(
+                                name=table_name,
+                                table_name=table_name,
+                                can_view=perms.get("view", False),
+                                can_create=perms.get("create", False),
+                                can_edit=perms.get("edit", False),
+                                can_delete=perms.get("delete", False),
+                            )
+                            session.add(perm)
+                            session.flush()
+                        else:
+                            perm = existing_perm
+                        role.permissions.append(perm)
+            session.commit()
+        finally:
+            session.close()
         return None
 
     @property
