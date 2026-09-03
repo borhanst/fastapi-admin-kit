@@ -1,67 +1,65 @@
-{# partials/list_table.html — table wrapper fragment for HTMX requests #}
-<div id="table-wrapper" class="table-container">
+{# partials/list_table.html — table fragment for HTMX swaps (Tailwind-first, no legacy classes) #}
+<div id="table-wrapper" class="card overflow-hidden">
   <input type="hidden" name="action" value="delete_selected">
   <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
   <div class="overflow-x-auto">
     {% set _ui = ui_config | default({}) %}
-    <table class="data-table data-table--{{ _ui.table_style | default('default') }}{% if _ui.table_row_height | default('normal') == 'compact' %} data-table--compact{% endif %}{% if _ui.table_row_height | default('normal') == 'relaxed' %} data-table--relaxed{% endif %}">
+    {% set _density = _ui.table_row_height | default('normal') %}
+    {% set _style = _ui.table_style | default('default') %}
+    <table class="table-wrapper{% if _density == 'compact' %} table-wrapper--compact{% endif %}{% if _density == 'relaxed' %} table-wrapper--relaxed{% endif %}{% if _style == 'striped' %} table-wrapper--striped{% endif %}{% if _style == 'bordered' %} table-wrapper--bordered{% endif %}">
       <thead>
         <tr>
           {% if permissions.can_delete %}
-          <th class="col-checkbox">
-            <input type="checkbox" id="select-all"
-                   onchange="document.querySelectorAll('input[name=&quot;ids[]&quot;]').forEach(c => c.checked = this.checked); this.dispatchEvent(new Event('change', {bubbles: true}));">
+          <th class="w-12 text-center">
+            <input type="checkbox" id="select-all" class="table-checkbox"
+                   onchange="document.querySelectorAll('input[name=\'ids[]\']').forEach(c => c.checked = this.checked); this.dispatchEvent(new Event('change', {bubbles: true}));">
           </th>
           {% endif %}
           {% for col in display_columns %}
-          <th class="col-header">
+          <th>
             {% if col.is_relation %}
-            <span class="col-header-label">{{ col.label }}</span>
+            <span>{{ col.label }}</span>
             {% else %}
             <a href="?ordering={% if ordering == col.name %}-{% endif %}{{ col.name }}"
-               class="col-header-link{% if ordering == col.name or ordering == '-' ~ col.name %} active{% endif %}">
+               class="sort-link{% if ordering == col.name or ordering == '-' ~ col.name %} sort-link--active{% endif %}">
               {{ col.label }}
               {% if ordering == col.name %}
-              {{ icon("chevron-up", size="16px", css_class="sort-icon sort-icon--asc") }}
+              {{ icon("chevron-up", size="14px") }}
               {% elif ordering == '-' ~ col.name %}
-              {{ icon("chevron-down", size="16px", css_class="sort-icon sort-icon--desc") }}
+              {{ icon("chevron-down", size="14px") }}
               {% endif %}
             </a>
             {% endif %}
           </th>
           {% endfor %}
-          <th class="col-actions">Actions</th>
+          <th class="text-right">Actions</th>
         </tr>
       </thead>
       <tbody>
         {% if items %}
         {% for obj in items %}
-        <tr class="data-row" id="row-{{ obj.id }}">
+        <tr id="row-{{ obj.id }}">
           {% if permissions.can_delete %}
-          <td class="col-checkbox">
-            <input type="checkbox" name="ids[]" value="{{ obj.id }}" class="row-checkbox">
+          <td class="text-center">
+            <input type="checkbox" name="ids[]" value="{{ obj.id }}" class="table-checkbox row-checkbox">
           </td>
           {% endif %}
           {% set _detail_url = admin_path | default('/admin') ~ '/' ~ registered.table_name ~ '/' ~ obj.id %}
           {% set _first_col = true %}
           {% for col in display_columns %}
-            <td class="col-cell{% if col.css_class %} {{ col.css_class }}{% endif %}">
+            <td{% if col.css_class %} data-col="{{ col.css_class }}"{% endif %}>
               {% set val = col.value(obj) %}
               {% if _first_col %}
                 {% set _first_col = false %}
-                <a href="{{ _detail_url }}" class="text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)] transition-colors">
+                <a href="{{ _detail_url }}" class="font-medium text-slate-900 transition-colors hover:underline dark:text-white">
                 {% if val is none %}
                   -
-                {% elif col.boolean and val is sameas true %}
-                  <span class="toggle-switch toggle-switch--on" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
-                {% elif col.boolean and val is sameas false %}
-                  <span class="toggle-switch" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
                 {% elif val is sameas true %}
-                  <span class="toggle-switch toggle-switch--on" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
+                  <span class="badge bg-slate-900 text-white dark:bg-white dark:text-slate-900">Yes</span>
                 {% elif val is sameas false %}
-                  <span class="toggle-switch" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
+                  <span class="badge badge-neutral">No</span>
                 {% elif val is string or val is number %}
-                  {% if col.icon %}<span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">{{ col.icon }}</span>{% endif %}{{ val }}
+                  {% if col.icon %}<span class="material-symbols-outlined mr-1 align-middle text-base leading-none">{{ col.icon }}</span>{% endif %}{{ val }}
                 {% elif val is iterable and val is not string %}
                   {% set _ns = namespace(parts=[]) %}
                   {% for _item in val %}
@@ -74,17 +72,13 @@
                 </a>
               {% else %}
                 {% if val is none %}
-                  <span class="text-muted">-</span>
-                {% elif col.boolean and val is sameas true %}
-                  <span class="toggle-switch toggle-switch--on" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
-                {% elif col.boolean and val is sameas false %}
-                  <span class="toggle-switch" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
+                  <span class="text-slate-400 dark:text-slate-500">-</span>
                 {% elif val is sameas true %}
-                  <span class="toggle-switch toggle-switch--on" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
+                  <span class="badge bg-slate-900 text-white dark:bg-white dark:text-slate-900">Yes</span>
                 {% elif val is sameas false %}
-                  <span class="toggle-switch" style="cursor: default;"><span class="toggle-switch__thumb"></span></span>
+                  <span class="badge badge-neutral">No</span>
                 {% elif val is string or val is number %}
-                  {% if col.icon %}<span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">{{ col.icon }}</span>{% endif %}{{ val }}
+                  {% if col.icon %}<span class="material-symbols-outlined mr-1 align-middle text-base leading-none">{{ col.icon }}</span>{% endif %}{{ val }}
                 {% elif val is iterable and val is not string %}
                   {% set _ns = namespace(parts=[]) %}
                   {% for _item in val %}
@@ -97,10 +91,10 @@
               {% endif %}
             </td>
           {% endfor %}
-          <td class="col-actions">
-            <div class="actions-dropdown" x-data="{ open: false, menuStyle: '' }"
+          <td class="text-right">
+            <div class="inline-flex" x-data="{ open: false, menuStyle: '' }"
                  @actions-close.window="open = false">
-              <button type="button" class="actions-trigger" @click.stop="
+              <button type="button" class="actions-trigger-btn" @click.stop="
                 open = !open;
                 if (open) {
                   $dispatch('actions-close');
@@ -120,19 +114,19 @@
                     menuStyle = 'position:fixed;top:' + top + 'px;left:' + left + 'px;z-index:9999;';
                   });
                 }
-              " title="Actions">
+              " title="Actions" aria-label="Row actions" aria-haspopup="menu">
                 {{ icon("ellipsis-vertical", size="16px") }}
               </button>
-              <div class="actions-menu" x-show="open" x-cloak
+              <div class="actions-menu-panel" x-show="open" x-cloak
                    :style="menuStyle"
                    @click.outside="open = false"
-                   x-transition>
+                   x-transition role="menu">
                    {% if registered.admin.inline_edit and permissions.can_edit %}
-                <button type="button" class="actions-menu-item"
+                <button type="button" class="actions-menu-btn"
                         hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/{{ obj.id }}/inline-edit/"
                         hx-target="#row-{{ obj.id }}"
                         hx-swap="afterend"
-                        @click="open = false">
+                        @click="open = false" role="menuitem">
                   {{ icon("pencil", size="16px") }}
                   Edit
                 </button>
@@ -140,12 +134,12 @@
 
                 {% if row_actions %}
                 {% for action in row_actions %}
-                <button type="button" class="actions-menu-item"
+                <button type="button" class="actions-menu-btn"
                         hx-post="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/action/{{ action.name }}/{{ obj.id }}"
                         hx-headers='{"X-CSRF-Token": "{{ get_csrf_token(request) }}"}'
                         hx-swap="none"
                         hx-on::after-request="window.location.reload();"
-                        @click="open = false">
+                        @click="open = false" role="menuitem">
                   {% if action.icon %}
                   {{ icon(action.icon, size="16px") }}
                   {% endif %}
@@ -154,8 +148,8 @@
                 {% endfor %}
                 {% endif %}
                 {% if permissions.can_delete %}
-                <button type="button" class="actions-menu-item actions-menu-item--danger"
-                        @click='open = false; confirmAction("Delete", {{ ("Are you sure you want to delete this " ~ registered.verbose_name | lower ~ "?") | tojson }}, () => { var form = document.createElement("form"); form.method = "POST"; form.action = {{ (admin_path | default("/admin") ~ "/" ~ registered.table_name ~ "/" ~ obj.id ~ "/delete") | tojson }}; var csrf = document.createElement("input"); csrf.type = "hidden"; csrf.name = "csrf_token"; csrf.value = {{ get_csrf_token(request) | tojson }}; form.appendChild(csrf); document.body.appendChild(form); form.submit(); })'>
+                <button type="button" class="actions-menu-btn actions-menu-btn--danger"
+                        @click='open = false; confirmAction("Delete", {{ ("Are you sure you want to delete this " ~ registered.verbose_name | lower ~ "?") | tojson }}, () => { var form = document.createElement("form"); form.method = "POST"; form.action = {{ (admin_path | default("/admin") ~ "/" ~ registered.table_name ~ "/" ~ obj.id ~ "/delete") | tojson }}; var csrf = document.createElement("input"); csrf.type = "hidden"; csrf.name = "csrf_token"; csrf.value = {{ get_csrf_token(request) | tojson }}; form.appendChild(csrf); document.body.appendChild(form); form.submit(); })' role="menuitem">
                   {{ icon("trash", size="16px") }}
                   Delete
                 </button>
@@ -167,13 +161,16 @@
         {% endfor %}
         {% else %}
         <tr>
-          <td colspan="{{ display_columns | length + 2 }}" class="empty-cell">
-            <div class="empty-state">
-              {{ icon("document-text", size="48px", css_class="empty-state-icon") }}
-              <p class="empty-state-text">No {{ registered.verbose_name_plural | lower }} found</p>
+          <td colspan="{{ display_columns | length + 2 }}" class="px-6 py-16 text-center">
+            <div class="flex flex-col items-center justify-center text-center">
+              <div class="mb-4 flex size-16 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+                {{ icon("document-text", size="32px") }}
+              </div>
+              <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">No {{ registered.verbose_name_plural | lower }} found</p>
+              <p class="mt-1 text-xs text-slate-400 dark:text-slate-500">Try adjusting your search or filters</p>
               {% if permissions.can_create %}
               <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/create"
-                 class="btn btn-primary btn-sm">
+                 class="btn btn-primary btn-sm mt-4">
                 + Create your first {{ registered.verbose_name | lower }}
               </a>
               {% endif %}
@@ -186,7 +183,7 @@
   </div>
 
   {# Pagination #}
-  <div class="table-footer">
+  <div class="border-t border-slate-200 bg-slate-50/60 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
     {% from "partials/pagination.html" import render_pagination %}
     {{ render_pagination(page, total_pages, total, registered.admin.per_page, next_cursor|default(null), has_next|default(false), pagination_mode|default("offset")) }}
   </div>

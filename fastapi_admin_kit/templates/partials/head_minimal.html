@@ -4,9 +4,9 @@
     <title>{% block title %}Admin{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/tokens.css">
-    <link rel="stylesheet" href="/static/css/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    {# Tailwind v4 compiled bundle (incl. legacy bridge) — source: static/css/style.css #}
+    <link rel="stylesheet" href="/static/css/dist/tailwind.css?v={{ static_version | default('dev') }}">
     <script>
       (function() {
         var theme = localStorage.getItem('admin_dark_mode');

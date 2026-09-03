@@ -28,7 +28,7 @@
           <span class="sidebar-section-label">{{ group.label }}</span>
           {{ icon("chevron-right", size="14px") }}
         </button>
-        <ul class="sidebar-section-items" x-show="open" x-collapse x-cloak>
+        <ul class="sidebar-section-items" x-show="open || sidebarCollapsed" x-collapse x-cloak>
           {% for item in group.items %}
           <li class="sidebar-nav-item">
             <a href="{{ item.url }}"

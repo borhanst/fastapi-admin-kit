@@ -1305,9 +1305,8 @@ class Admin:
         _static_dir = _Path(__file__).parent.parent / "static"
         _hash_data = b""
         for _f in (
-            "css/tokens.css",
-            "css/presets.css",
-            "css/admin.css",
+            "css/style.css",
+            "css/dist/tailwind.css",
             "js/admin.js",
         ):
             _fp = _static_dir / _f

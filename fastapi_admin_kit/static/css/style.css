@@ -1,0 +1,560 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   FastAPI Admin Kit — Tailwind v4 source (SINGLE FILE)
+   Edit this file, then run:  npm run build:css
+   Output: fastapi_admin_kit/static/css/dist/tailwind.css  (committed, shipped in wheel)
+   Do NOT hand-edit dist/tailwind.css.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Layer order FIRST (valid: @layer statements may precede @imports):
+   theme < preflight(base) < legacy-bridge < components < utilities.
+   Legacy bridge sits ABOVE preflight so the legacy standalone stylesheet
+   behaves exactly as originally authored (preflight's universal
+   margin/padding/border reset must not defeat it), but BELOW components
+   and utilities so ported modern styles + template utilities always win. */
+@layer theme, base, legacy-bridge, components, utilities;
+
+@import "tailwindcss";
+@import "./admin.css" layer(legacy-bridge);
+
+/* Dark mode follows the existing admin toggle (<html data-theme="dark">),
+   not prefers-color-scheme, so the localStorage/Alpine toggle keeps working. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Explicit content sources (v4 auto-detects, but be safe for packaged layout). */
+@source "../../templates/**/*.html";
+@source "../js/**/*.js";
+
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Fira Code", monospace;
+
+  /* ── Primary — emerald (brand continuity from legacy tokens.css) ── */
+  --color-primary-50: #ecfdf5;
+  --color-primary-100: #d1fae5;
+  --color-primary-200: #a7f3d0;
+  --color-primary-300: #6ee7b7;
+  --color-primary-400: #34d399;
+  --color-primary-500: #10b981;
+  --color-primary-600: #059669;
+  --color-primary-700: #047857;
+  --color-primary-800: #065f46;
+  --color-primary-900: #064e3b;
+
+  /* ── Surfaces (maps legacy --surface-*) ── */
+  --color-surface-base: #f8fafc;
+  --color-surface-raised: #ffffff;
+  --color-surface-overlay: #ffffff;
+  --color-surface-border: #e2e8f0;
+  --color-surface-inset: #f1f5f9;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+}
+
+/* ── Runtime dims (overridable by ThemeConfig via theme_css) ── */
+:root {
+  --topbar-height: 64px;
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 64px;
+  --sidebar-collapsed: 64px;
+  --admin-sidebar-width: 260px;
+  --content-max-width: 1400px;
+  --content-padding: 32px;
+  --form-max-width: 860px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Legacy variable bridge (DEPRECATED — delete with admin.css import above)
+   Maps every var(--*) still referenced by admin.css / templates to the new
+   theme. Light aliases reference @theme vars (single source of truth).
+   Also defines ~20 vars templates used but which were NEVER defined
+   (previously silently broken declarations).
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* Surfaces / text */
+  --surface-base: var(--color-surface-base);
+  --surface-raised: var(--color-surface-raised);
+  --surface-overlay: var(--color-surface-overlay);
+  --surface-border: var(--color-surface-border);
+  --surface-inset: var(--color-surface-inset);
+  --surface-hover: var(--color-surface-inset);
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-tertiary: #94a3b8;
+  --text-disabled: #94a3b8;
+  --text-inverse: #ffffff;
+  --mono-accent: #059669;
+
+  /* Primary ramp (+ previously-missing 25) */
+  --primary-25: #f0fdf9;
+  --primary-50: var(--color-primary-50);
+  --primary-100: var(--color-primary-100);
+  --primary-200: var(--color-primary-200);
+  --primary-300: var(--color-primary-300);
+  --primary-400: var(--color-primary-400);
+  --primary-500: var(--color-primary-500);
+  --primary-600: var(--color-primary-600);
+  --primary-700: var(--color-primary-700);
+  --primary-800: var(--color-primary-800);
+
+  /* Semantic ramps */
+  --success-50: #f0fdf4;  --success-100: #dcfce7;
+  --success-500: #22c55e; --success-700: #15803d;
+  --warning-50: #fffbeb;  --warning-100: #fef3c7;
+  --warning-500: #f59e0b; --warning-700: #b45309;
+  --danger-50: #fef2f2;   --danger-100: #fee2e2;
+  --danger-500: #ef4444;  --danger-700: #b91c1c;
+  --error-50: #fef2f2;    --error-100: #fee2e2;  --error-200: #fecaca; --error-500: #ef4444;
+  --info-50: #f0f9ff;     --info-100: #dbeafe;
+  --info-500: #3b82f6;    --info-700: #1d4ed8;
+
+  /* Legacy variables.css names (indigo/gray scale) */
+  --color-primary-50: #eef2ff;  --color-primary-500: #6366f1;
+  --color-primary-600: #4f46e5; --color-primary-700: #4338ca;
+  --color-gray-50: #f9fafb;  --color-gray-100: #f3f4f6; --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db; --color-gray-400: #9ca3af; --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563; --color-gray-700: #374151; --color-gray-900: #111827;
+  --color-success: #059669; --color-warning: #d97706;
+  --color-danger: #dc2626;  --color-info: #2563eb;
+  --color-danger-50: #fef2f2;  --color-danger-100: #fee2e2;
+  --color-danger-600: #dc2626; --color-danger-700: #b91c1c;
+
+  /* Typography (literal stacks — must NOT self-reference @theme names) */
+  --font-display: "Inter", system-ui, -apple-system, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Fira Code", monospace;
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-normal: 400; --font-medium: 500; --font-semibold: 600; --font-bold: 700;
+  --text-2xs: 0.6875rem; --text-xs: 0.75rem; --text-sm: 0.8125rem;
+  --text-base: 0.9375rem; --text-md: 1.0625rem; --text-lg: 1.25rem;
+  --text-xl: 1.5rem; --text-2xl: 1.875rem; --text-3xl: 2.25rem;
+
+  /* Spacing (4px base) */
+  --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem;
+  --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem;
+  --space-10: 2.5rem; --space-12: 3rem; --space-16: 4rem;
+
+  /* Radius / shadow / motion */
+  --radius-xs: 4px;
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.04);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-card-hover: 0 4px 12px rgb(0 0 0 / 0.1);
+  --shadow-focus: 0 0 0 3px rgb(16 185 129 / 0.2);
+  --shadow-focus-error: 0 0 0 3px rgb(239 68 68 / 0.2);
+  --duration-fast: 150ms; --duration-base: 200ms; --duration-slow: 300ms;
+  --easing-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --easing-in: cubic-bezier(0.4, 0, 1, 1);
+  --easing-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Legacy admin knobs: grain + accent line default OFF (clean modern look) */
+  --admin-grain-opacity: 0;
+  --admin-accent-line-opacity: 0;
+}
+
+[data-theme="dark"] {
+  --surface-base: #0f172a; --surface-raised: #1e293b; --surface-overlay: #1e293b;
+  --surface-border: #334155; --surface-inset: #1e293b; --surface-hover: #334155;
+  --text-primary: #f1f5f9; --text-secondary: #94a3b8;
+  --text-tertiary: #64748b; --text-disabled: #64748b; --text-inverse: #0f172a;
+  --mono-accent: #34d399;
+  --primary-50: #022c22; --primary-100: #064e3b; --primary-200: #065f46;
+  --primary-300: #047857; --primary-400: #059669; --primary-500: #10b981;
+  --primary-600: #34d399; --primary-700: #6ee7b7; --primary-800: #a7f3d0;
+  --success-50: #052e16; --warning-50: #451a03;
+  --danger-50: #450a0a; --error-50: #450a0a; --info-50: #172554;
+  --color-gray-50: #111827; --color-gray-100: #1f2937; --color-gray-200: #374151;
+  --color-gray-300: #4b5563; --color-gray-400: #6b7280; --color-gray-500: #9ca3af;
+  --color-gray-600: #d1d5db; --color-gray-700: #e5e7eb; --color-gray-900: #f9fafb;
+  --shadow-focus: 0 0 0 3px rgb(16 185 129 / 0.3);
+  --shadow-focus-error: 0 0 0 3px rgb(248 113 113 / 0.3);
+}
+
+[data-preset="midnight"] {
+  --surface-base: #0b0f19; --surface-raised: #151b2b; --surface-overlay: #1e2538;
+  --surface-border: #2a3248; --surface-inset: #111726; --surface-hover: #1e2538;
+  --text-primary: #e2e8f0; --text-secondary: #94a3b8;
+  --text-tertiary: #64748b; --text-disabled: #475569; --text-inverse: #0b0f19;
+}
+[data-preset="minimal"] {
+  --radius-xs: 0px; --surface-border: #e5e5e5; --surface-inset: #f5f5f5;
+  --text-primary: #171717; --text-secondary: #737373; --text-disabled: #a3a3a3;
+}
+
+/* ── Curated presets (clean break: only midnight + minimal survive alongside default) ── */
+[data-preset="midnight"] {
+  --color-surface-base: #0b0f19;
+  --color-surface-raised: #151b2b;
+  --color-surface-overlay: #1e2538;
+  --color-surface-border: #2a3248;
+  --color-surface-inset: #111726;
+}
+[data-preset="minimal"] {
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Base layer — Alpine/htmx necessities + upgraded defaults
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer base {
+  [x-cloak] {
+    display: none !important;
+  }
+
+  body {
+    @apply bg-surface-base font-sans text-slate-900 antialiased;
+  }
+  [data-theme="dark"] body {
+    @apply bg-slate-950 text-slate-100;
+  }
+
+  ::selection {
+    @apply bg-primary-200 text-slate-900;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-slate-300 dark:bg-slate-700;
+  }
+
+  /* htmx loading bar hook (markup lives in base.html) */
+  #loading-bar.htmx-request {
+    @apply fixed inset-x-0 top-0 z-[200] h-0.5 bg-primary-500;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Components — only heavily-reused building blocks.
+   Everything else = utilities directly in templates.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+  /* ── Shell ── */
+  .admin-shell {
+    @apply flex h-screen flex-col overflow-hidden;
+  }
+  .admin-body {
+    @apply flex min-h-0 flex-1 overflow-hidden;
+  }
+  .admin-content {
+    @apply min-w-0 flex-1 overflow-x-hidden overflow-y-auto;
+  }
+  .admin-content__inner {
+    @apply mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8;
+  }
+
+  /* ── Buttons ── */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium whitespace-nowrap transition focus-visible:ring-2 focus-visible:ring-primary-500/40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply bg-primary-500 text-white hover:bg-primary-600 active:bg-primary-700;
+  }
+  .btn-secondary {
+    @apply bg-white text-slate-900 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700;
+  }
+  .btn-danger {
+    @apply bg-white text-red-600 ring-1 ring-slate-200 hover:bg-red-600 hover:text-white hover:ring-red-600 dark:bg-slate-800 dark:ring-slate-700;
+  }
+  .btn-ghost {
+    @apply text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100;
+  }
+  .btn-sm {
+    @apply px-2.5 py-1.5 text-xs;
+  }
+  .btn-lg {
+    @apply px-5 py-2.5 text-base;
+  }
+
+  /* ── Inputs ── */
+  .form-input,
+  .form-select,
+  .form-textarea,
+  .input {
+    @apply h-10 w-full rounded-lg bg-white px-3 text-sm text-slate-900 ring-1 ring-slate-200 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700 dark:placeholder:text-slate-500;
+  }
+  .form-textarea {
+    @apply h-auto min-h-20 py-2.5 leading-relaxed;
+  }
+  .field-label {
+    @apply flex items-center gap-1 text-sm font-medium text-slate-900 dark:text-slate-100;
+  }
+  .field-help {
+    @apply text-xs leading-relaxed text-slate-500 dark:text-slate-400;
+  }
+
+  /* ── Cards / badges ── */
+  .card {
+    @apply rounded-xl bg-white shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium;
+  }
+  .badge-success {
+    @apply bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300;
+  }
+  .badge-warning {
+    @apply bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300;
+  }
+  .badge-danger {
+    @apply bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300;
+  }
+  .badge-info {
+    @apply bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300;
+  }
+  .badge-primary {
+    @apply bg-primary-50 text-primary-700 dark:bg-emerald-950 dark:text-emerald-300;
+  }
+  .badge-neutral {
+    @apply bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300;
+  }
+
+  /* ── Nav (sidebar keeps .nav-link hook for tests/overrides) ── */
+  .nav-link {
+    @apply flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white;
+  }
+  .nav-link.active {
+    @apply bg-slate-200 font-semibold text-slate-900 dark:bg-slate-700 dark:text-white;
+  }
+  /* Neutralize legacy bridge greens (higher-specificity selectors live there) */
+  .nav-link.active .material-symbols-outlined,
+  .nav-link.active svg {
+    @apply text-current opacity-100;
+  }
+  .nav-link.active::before {
+    @apply bg-slate-400 dark:bg-slate-500;
+  }
+  .nav-link--child {
+    @apply py-1.5 text-xs font-normal text-slate-500 dark:text-slate-400;
+  }
+  .nav-link--child:hover {
+    @apply bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white;
+  }
+  .nav-link--child.active {
+    @apply bg-slate-200 font-medium text-slate-900 dark:bg-slate-700 dark:text-white;
+  }
+
+  /* ── Collapsed icon rail (desktop only; mobile drawer .open is excluded) ──
+     Rail shows icons only; the item name pops over on hover. Expanded mode
+     and the mobile drawer are untouched. */
+  @media (min-width: 1025px) {
+    .admin-sidebar.collapsed:not(.open) {
+      overflow: visible;
+    }
+    .admin-sidebar.collapsed:not(.open) .sidebar-nav {
+      overflow: visible;
+      padding: var(--space-3) var(--space-2);
+    }
+    .admin-sidebar.collapsed:not(.open) .sidebar-nav-item {
+      position: relative;
+    }
+    .admin-sidebar.collapsed:not(.open) .nav-link-label,
+    .admin-sidebar.collapsed:not(.open) .nav-link-badge,
+    .admin-sidebar.collapsed:not(.open) .sidebar-section-label,
+    .admin-sidebar.collapsed:not(.open) .sidebar-sub-items {
+      display: none;
+    }
+    .admin-sidebar.collapsed:not(.open) .nav-link {
+      justify-content: center;
+    }
+    /* Group headers hidden in rail mode — groups themselves stay expanded
+       via `x-show="open || sidebarCollapsed"` in sidebar.html, so no
+       minimize/expand control is needed while collapsed. */
+    .admin-sidebar.collapsed:not(.open) .sidebar-section {
+      padding: var(--space-1) 0;
+    }
+    .admin-sidebar.collapsed:not(.open) .sidebar-section-toggle {
+      display: none;
+    }
+    /* Hover popover — hidden until the icon is hovered */
+    .admin-sidebar.collapsed:not(.open) .nav-tooltip {
+      display: flex;
+      align-items: center;
+      position: absolute;
+      left: calc(100% + 14px);
+      top: 50%;
+      transform: translateY(-50%);
+      padding: var(--space-1) var(--space-3);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+      white-space: nowrap;
+      color: var(--text-primary);
+      background: var(--surface-raised);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-md);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--duration-fast) var(--easing-out);
+      z-index: 60;
+    }
+    .admin-sidebar.collapsed:not(.open) .sidebar-nav-item:hover > .nav-link > .nav-tooltip,
+    .admin-sidebar.collapsed:not(.open) .sidebar-bottom .sidebar-nav-item:hover > .nav-link > .nav-tooltip {
+      opacity: 1;
+    }
+    /* Right-positioned sidebar: pop over to the left */
+    .admin-sidebar.collapsed:not(.open).sidebar--right .nav-tooltip {
+      left: auto;
+      right: calc(100% + 14px);
+    }
+  }
+
+  /* ── Tables ── */
+  .table-container {
+    @apply overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800;
+  }
+  .table-wrapper {
+    @apply w-full border-collapse;
+  }
+  .table-wrapper thead {
+    @apply bg-slate-50 dark:bg-slate-800/60;
+  }
+  .table-wrapper th {
+    @apply px-4 py-3 text-left text-xs font-medium tracking-wider whitespace-nowrap text-slate-500 uppercase select-none dark:text-slate-400;
+  }
+  .table-wrapper tbody tr {
+    @apply border-t border-slate-200 transition first:border-t-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50;
+  }
+  .table-wrapper td {
+    @apply px-4 py-3 align-middle text-sm whitespace-nowrap text-slate-900 dark:text-slate-100;
+  }
+  .table-wrapper--compact th,
+  .table-wrapper--compact td {
+    @apply px-3 py-2 text-xs;
+  }
+  .table-wrapper--relaxed th,
+  .table-wrapper--relaxed td {
+    @apply px-5 py-4;
+  }
+  .table-wrapper--striped tbody tr:nth-child(even) {
+    @apply bg-slate-50 dark:bg-slate-800/40;
+  }
+  .table-wrapper--bordered th,
+  .table-wrapper--bordered td {
+    @apply border border-slate-200 dark:border-slate-800;
+  }
+
+  /* ── List helpers: sort links, checkboxes, row actions ── */
+  .sort-link {
+    @apply inline-flex items-center gap-1 transition hover:text-slate-900 dark:hover:text-white;
+  }
+  .sort-link--active {
+    @apply font-semibold text-slate-900 dark:text-white;
+  }
+  .table-checkbox {
+    @apply size-4 cursor-pointer rounded accent-emerald-600;
+  }
+  .actions-trigger-btn {
+    @apply inline-flex size-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200;
+  }
+  .actions-menu-panel {
+    @apply w-44 rounded-xl bg-white p-1 shadow-lg ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700;
+  }
+  .actions-menu-btn {
+    @apply flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800;
+  }
+  .actions-menu-btn--danger {
+    @apply text-red-600 dark:text-red-400;
+  }
+  .actions-menu-btn--danger:hover {
+    @apply bg-red-50 dark:bg-red-950/40;
+  }
+
+  /* ── Filter bar ── */
+  .filter-chip {
+    @apply inline-flex h-9 items-center gap-1.5 rounded-lg bg-white px-3 text-sm text-slate-500 ring-1 ring-slate-200 transition hover:text-slate-900 dark:bg-slate-900 dark:text-slate-400 dark:ring-slate-700 dark:hover:text-white;
+  }
+  .filter-chip--active {
+    @apply bg-slate-200 text-slate-900 ring-slate-300 dark:bg-slate-700 dark:text-white dark:ring-slate-600;
+  }
+  .filter-chip-count {
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900 px-1 font-mono text-[11px] font-semibold text-white dark:bg-white dark:text-slate-900;
+  }
+  .filter-chip-wrap {
+    @apply flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 ring-1 ring-slate-200 transition dark:bg-slate-800/60 dark:ring-slate-700;
+  }
+  .filter-chip-wrap--active {
+    @apply bg-slate-100 ring-slate-400 dark:bg-slate-800 dark:ring-slate-500;
+  }
+  .filter-chip-label {
+    @apply text-xs font-medium whitespace-nowrap text-slate-500 dark:text-slate-400;
+  }
+  .filter-chip-wrap--active .filter-chip-label {
+    @apply font-semibold text-slate-900 dark:text-white;
+  }
+  .filter-input {
+    @apply h-8 rounded-md bg-white px-2.5 text-sm text-slate-900 ring-1 ring-slate-200 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700;
+  }
+  .filter-clear-btn {
+    @apply rounded p-0.5 text-lg leading-none text-slate-400 transition hover:text-slate-700 dark:hover:text-slate-200;
+  }
+
+  /* ── Bulk bar select ── */
+  .bulk-bar-select {
+    @apply h-9 min-w-[180px] cursor-pointer rounded-lg bg-white pr-8 pl-3 text-sm text-slate-900 ring-1 ring-slate-200 outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700;
+  }
+
+  /* ── Pagination ── */
+  .pagination {
+    @apply flex items-center justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800;
+  }
+  .pagination__link {
+    @apply inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 font-mono text-xs text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white;
+  }
+  .pagination__link--active {
+    @apply bg-primary-500 font-medium text-white;
+  }
+
+  /* ── Modal / toast ── */
+  .modal-backdrop {
+    @apply fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm;
+  }
+  .modal {
+    @apply fixed top-1/2 left-1/2 z-[51] flex max-h-[85vh] w-[520px] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl bg-white shadow-xl ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700;
+  }
+  .modal--sm {
+    @apply w-[420px];
+  }
+  .modal--lg {
+    @apply w-[720px];
+  }
+  .modal__header {
+    @apply flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800;
+  }
+  .modal__body {
+    @apply flex-1 overflow-y-auto px-6 py-5 text-sm leading-relaxed;
+  }
+  .modal__footer {
+    @apply flex justify-end gap-2 border-t border-slate-200 px-6 py-4 dark:border-slate-800;
+  }
+  .toast {
+    @apply pointer-events-auto flex w-full max-w-[380px] items-start gap-3 rounded-xl bg-white p-4 shadow-lg ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700;
+  }
+
+  /* ── Misc (fieldset, empty state, stat cards) ── */
+  .fieldset {
+    @apply rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800;
+  }
+  .fieldset__title {
+    @apply text-xs font-medium tracking-wider text-slate-500 uppercase dark:text-slate-400;
+  }
+  .empty-state {
+    @apply flex flex-col items-center justify-center px-4 py-16 text-center;
+  }
+  .stat-card {
+    @apply block rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200 transition hover:shadow-md dark:bg-slate-900 dark:ring-slate-800;
+  }
+}

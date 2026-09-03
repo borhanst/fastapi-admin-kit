@@ -1,4 +1,4 @@
-{# admin/base_list.html — block-based base for model list views.
+{# admin/base_list.html — block-based base for model list views (Tailwind-first, no legacy classes).
    Extend this to customize individual sections of the list view.
 
    Available blocks:
@@ -17,37 +17,37 @@
 {% block title %}{{ registered.verbose_name_plural }} — {{ title | default("Admin") }}{% endblock %}
 
 {% block content %}
-<div class="space-y-6">
+<div class="flex flex-col gap-6">
   {% block list_breadcrumb %}
-  <nav class="breadcrumb">
-    <a href="{{ admin_path | default('/admin') }}/" class="breadcrumb-segment">
+  <nav class="flex items-center gap-2 text-sm" aria-label="Breadcrumb">
+    <a href="{{ admin_path | default('/admin') }}/" class="flex items-center gap-1.5 text-slate-500 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-white">
       {{ icon("home", size="16px") }}
       Dashboard
     </a>
-    <span class="breadcrumb-separator">/</span>
-    <span class="breadcrumb-current">{{ registered.verbose_name_plural }}</span>
+    <span class="text-slate-300 dark:text-slate-600">/</span>
+    <span class="font-medium text-slate-900 dark:text-slate-100">{{ registered.verbose_name_plural }}</span>
   </nav>
   {% endblock %}
 
   {% block list_header %}
-  <div class="page-header">
-    <div class="page-header-left">
-      <h1 class="page-header-title">{{ registered.verbose_name_plural }}</h1>
-      <p class="page-header-subtitle">Manage your {{ registered.verbose_name_plural | lower }} and inventory</p>
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div class="min-w-0">
+      <h1 class="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{{ registered.verbose_name_plural }}</h1>
+      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Manage your {{ registered.verbose_name_plural | lower }} and inventory</p>
     </div>
-    <div class="page-header-right" style="display: flex; gap: 0.5rem; align-items: center;">
+    <div class="flex shrink-0 flex-wrap items-center gap-2">
       {% if permissions.can_export %}
       <div x-data="{ exportOpen: false }" class="relative">
-        <button type="button" class="btn btn-secondary btn-sm" @click="exportOpen = !exportOpen">
+        <button type="button" class="btn btn-secondary btn-sm" @click="exportOpen = !exportOpen" aria-haspopup="menu" :aria-expanded="exportOpen">
           {{ icon("arrow-down-tray", size="16px") }} Export
         </button>
-        <div x-show="exportOpen" @click.outside="exportOpen = false" x-transition
-             class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
+        <div x-show="exportOpen" @click.outside="exportOpen = false" x-transition x-cloak
+             class="card absolute right-0 z-50 mt-2 w-48 p-1" role="menu">
           {% set export_formats = registered.admin.get_export_formats() %}
           {% for fmt in export_formats %}
           <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/export/?format={{ fmt }}"
-             class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-             @click="exportOpen = false">
+             class="block rounded-md px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+             @click="exportOpen = false" role="menuitem">
             {{ fmt | upper }}
           </a>
           {% endfor %}
@@ -56,26 +56,26 @@
       {% endif %}
       {% if permissions.can_import %}
       <div x-data="{ importOpen: false, importFormat: 'csv' }" class="relative">
-        <button type="button" class="btn btn-secondary btn-sm" @click="importOpen = !importOpen">
+        <button type="button" class="btn btn-secondary btn-sm" @click="importOpen = !importOpen" aria-haspopup="dialog" :aria-expanded="importOpen">
           {{ icon("arrow-up-tray", size="16px") }} Import
         </button>
         <div x-show="importOpen" @click.outside="importOpen = false" x-transition x-cloak
-             class="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 p-4"
-             x-data="{ dragOver: false, fileName: '' }">
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Import Data</h3>
-            <button type="button" @click="importOpen = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+             class="card absolute right-0 z-50 mt-2 w-80 p-4"
+             x-data="{ dragOver: false, fileName: '' }" role="dialog" aria-label="Import data">
+          <div class="mb-3 flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Import Data</h3>
+            <button type="button" @click="importOpen = false" class="rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300" aria-label="Close import dialog">
               {{ icon("x-mark", size="16px") }}
             </button>
           </div>
           {% set import_formats = registered.admin.get_import_formats() %}
           <div class="mb-3">
-            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Format</label>
+            <label class="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Format</label>
             <div class="flex gap-2">
               {% for fmt in import_formats %}
               <button type="button"
-                      class="px-3 py-1 text-xs rounded-md border transition-colors"
-                      :class="importFormat === '{{ fmt }}' ? 'bg-primary-500 text-white border-primary-500' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-primary-400'"
+                      class="rounded-md border px-3 py-1 text-xs transition-colors"
+                      :class="importFormat === '{{ fmt }}' ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900' : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300'"
                       @click="importFormat = '{{ fmt }}'">
                 {{ fmt | upper }}
               </button>
@@ -87,32 +87,32 @@
                 hx-encoding="multipart/form-data"
                 hx-target="#table-wrapper"
                 hx-swap="outerHTML"
-                hx-on::before-request="document.getElementById('import-progress').style.display='flex';"
-                hx-on::after-request="document.getElementById('import-progress').style.display='none'; importOpen = false;">
+                hx-on::before-request="document.getElementById('import-progress').classList.remove('hidden'); document.getElementById('import-progress').classList.add('flex');"
+                hx-on::after-request="document.getElementById('import-progress').classList.add('hidden'); document.getElementById('import-progress').classList.remove('flex'); importOpen = false;">
             <input type="hidden" name="csrf_token" value="{{ get_csrf_token(request) }}">
             <label for="import-file-input"
-                   class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer transition-colors"
-                   :class="dragOver ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/10'"
+                   class="flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed transition-colors"
+                   :class="dragOver ? 'border-slate-500 bg-slate-100 dark:border-slate-400 dark:bg-slate-800' : 'border-slate-300 bg-slate-50 hover:border-slate-400 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-700/50 dark:hover:border-slate-400 dark:hover:bg-slate-800/60'"
                    @dragover.prevent="dragOver = true"
                    @dragleave.prevent="dragOver = false"
                    @drop.prevent="dragOver = false; $refs.fileInput.click();">
-              <div class="flex flex-col items-center justify-center pt-3 pb-2">
-                {{ icon("arrow-up-tray", size="24px", css_class="mb-2 text-gray-400 dark:text-gray-500") }}
-                <p class="text-sm text-gray-600 dark:text-gray-400" x-text="fileName || 'Drop file here or click to browse'"></p>
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">CSV or Excel files</p>
+              <div class="flex flex-col items-center justify-center px-4 pt-3 pb-2 text-center">
+                {{ icon("arrow-up-tray", size="24px", css_class="mb-2 text-slate-400 dark:text-slate-500") }}
+                <p class="text-sm text-slate-600 dark:text-slate-400" x-text="fileName || 'Drop file here or click to browse'"></p>
+                <p class="mt-1 text-xs text-slate-400 dark:text-slate-500">CSV or Excel files</p>
               </div>
               <input id="import-file-input" type="file" name="file" accept=".csv,.xlsx,.xls" required x-ref="fileInput"
                      class="hidden"
                      @change="fileName = $event.target.files[0]?.name || ''">
             </label>
-            <div id="import-progress" style="display:none;" class="flex items-center justify-center gap-2 mt-3 text-sm text-primary-600 dark:text-primary-400">
-              <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <div id="import-progress" class="hidden items-center justify-center gap-2 mt-3 text-sm text-slate-500 dark:text-slate-400">
+              <svg class="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
               Importing...
             </div>
-            <button type="submit" class="mt-3 w-full btn btn-primary btn-sm">
+            <button type="submit" class="btn btn-primary btn-sm mt-3 w-full">
               {{ icon("arrow-up-tray", size="16px") }} Upload & Import
             </button>
           </form>
@@ -120,7 +120,7 @@
       </div>
       {% endif %}
       {% if permissions.can_create %}
-      <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/create" class="btn btn-primary">
+      <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/create" class="btn btn-primary btn-sm">
         + New {{ registered.verbose_name }}
       </a>
       {% endif %}
@@ -129,191 +129,196 @@
   {% endblock %}
 
   {% block list_filters %}
-  <div class="filter-bar" x-data="filterBar()">
-    <div class="filter-bar-search">
-      {{ icon("magnifying-glass", class="filter-bar-search-icon", size="20px") }}
-      <input type="text" name="q" value="{{ search_query | default('') }}"
-             placeholder="Search {{ registered.verbose_name_plural | lower }}..."
-             hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
-             hx-trigger="keyup changed delay:300ms"
-             hx-target="#table-wrapper"
-             hx-swap="outerHTML"
-             hx-include="[name='q']"
-             class="filter-bar-search-input"
-             x-ref="searchInput"
-             @input="hasSearch = $refs.searchInput.value.length > 0">
-      <button type="button" class="filter-bar-clear"
-              x-show="hasSearch" x-transition
-              @click="$refs.searchInput.value = ''; hasSearch = false; $refs.searchInput.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true}))">
-        {{ icon("x-mark", size="16px") }}
-      </button>
-    </div>
-
-    {% if filter_fields %}
-    <div class="filter-bar-chips">
-      {% for field_name, field_info in filter_fields.items() %}
-      <div class="relative" x-data="{ open: false }">
-
-        {% if field_info.field_type == "date" %}
-        <div class="filter-chip-wrap {% if active_filters.get(field_name) %}filter-chip--active{% endif %}">
-          <label class="filter-chip-label">{{ field_name | replace('_', ' ') | title }}</label>
-          <input type="date" name="filter_{{ field_name }}"
-                 value="{{ active_filters.get(field_name, '') }}"
-                 hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
-                 hx-trigger="change"
-                 hx-target="#table-wrapper"
-                 hx-swap="outerHTML"
-                 hx-include="[name='q'], [name^='filter_']"
-                 class="filter-input-date">
-          {% if active_filters.get(field_name) %}
-          <button type="button" class="filter-clear-btn" title="Clear"
-                  hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
-                  hx-target="#table-wrapper"
-                  hx-swap="outerHTML"
-                   hx-include="[name='q']">&times;</button>
-          {% endif %}
-        </div>
-
-        {% elif field_info.field_type == "datetime" %}
-        <div class="filter-chip-wrap {% if active_filters.get(field_name) %}filter-chip--active{% endif %}">
-          <label class="filter-chip-label">{{ field_name | replace('_', ' ') | title }}</label>
-          <input type="datetime-local" name="filter_{{ field_name }}"
-                 value="{{ active_filters.get(field_name, '') }}"
-                 hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
-                 hx-trigger="change"
-                 hx-target="#table-wrapper"
-                 hx-swap="outerHTML"
-                 hx-include="[name='q'], [name^='filter_']"
-                 class="filter-input-datetime">
-          {% if active_filters.get(field_name) %}
-          <button type="button" class="filter-clear-btn" title="Clear"
-                  hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
-                  hx-target="#table-wrapper"
-                  hx-swap="outerHTML"
-                   hx-include="[name='q']">&times;</button>
-          {% endif %}
-        </div>
-
-        {% elif field_info.field_type == "time" %}
-        <div class="filter-chip-wrap {% if active_filters.get(field_name) %}filter-chip--active{% endif %}">
-          <label class="filter-chip-label">{{ field_name | replace('_', ' ') | title }}</label>
-          <input type="time" name="filter_{{ field_name }}"
-                 value="{{ active_filters.get(field_name, '') }}"
-                 hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
-                 hx-trigger="change"
-                 hx-target="#table-wrapper"
-                 hx-swap="outerHTML"
-                 hx-include="[name='q'], [name^='filter_']"
-                 class="filter-input-time">
-          {% if active_filters.get(field_name) %}
-          <button type="button" class="filter-clear-btn" title="Clear"
-                  hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
-                  hx-target="#table-wrapper"
-                  hx-swap="outerHTML"
-                   hx-include="[name='q']">&times;</button>
-          {% endif %}
-        </div>
-
-        {% elif field_info.field_type == "text" %}
-        <div class="filter-chip-wrap {% if active_filters.get(field_name) or active_filters.get(field_name + '__icontains') %}filter-chip--active{% endif %}">
-          <label class="filter-chip-label">{{ field_name | replace('_', ' ') | title }}</label>
-          <input type="text" name="filter_{{ field_name }}__icontains"
-                 value="{{ active_filters.get(field_name + '__icontains', active_filters.get(field_name, '')) }}"
-                 placeholder="Contains..."
-                 hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
-                 hx-trigger="keyup changed delay:300ms"
-                 hx-target="#table-wrapper"
-                 hx-swap="outerHTML"
-                 hx-include="[name='q'], [name^='filter_']"
-                 class="filter-input-text">
-          {% if active_filters.get(field_name) or active_filters.get(field_name + '__icontains') %}
-          <button type="button" class="filter-clear-btn" title="Clear"
-                  hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
-                  hx-target="#table-wrapper"
-                  hx-swap="outerHTML"
-                   hx-include="[name='q']">&times;</button>
-          {% endif %}
-        </div>
-
-        {% elif field_info.field_type in ("numeric", "integer") %}
-        <div class="filter-chip-wrap {% if active_filters.get(field_name + '__gte') or active_filters.get(field_name + '__lte') %}filter-chip--active{% endif %}">
-          <label class="filter-chip-label">{{ field_name | replace('_', ' ') | title }}</label>
-          <input type="number" name="filter_{{ field_name }}__gte"
-                 value="{{ active_filters.get(field_name + '__gte', '') }}"
-                 placeholder="Min"
-                 hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
-                 hx-trigger="change"
-                 hx-target="#table-wrapper"
-                 hx-swap="outerHTML"
-                 hx-include="[name='q'], [name^='filter_']"
-                 class="filter-input-number">
-          <input type="number" name="filter_{{ field_name }}__lte"
-                 value="{{ active_filters.get(field_name + '__lte', '') }}"
-                 placeholder="Max"
-                 hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
-                 hx-trigger="change"
-                 hx-target="#table-wrapper"
-                 hx-swap="outerHTML"
-                 hx-include="[name='q'], [name^='filter_']"
-                 class="filter-input-number">
-          {% if active_filters.get(field_name + '__gte') or active_filters.get(field_name + '__lte') %}
-          <button type="button" class="filter-clear-btn" title="Clear"
-                  hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
-                  hx-target="#table-wrapper"
-                  hx-swap="outerHTML"
-                   hx-include="[name='q']">&times;</button>
-          {% endif %}
-        </div>
-
-        {% else %}
-        {# boolean, enum, relation — render as dropdown #}
-        <button type="button" class="filter-chip"
-                :class="{ 'active': activeFilters[{{ field_name | tojson }}] }"
-                @click="open = !open">
-          {{ field_name | replace('_', ' ') | title }}
-          <template x-if="activeFilters[{{ field_name | tojson }}]">
-            <span class="filter-chip-count" x-text="activeFilters[{{ field_name | tojson }}]"></span>
-          </template>
-          {{ icon("chevron-right", size="16px") }}
+  <div class="card flex flex-col gap-3 p-4" x-data="filterBar()">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-center">
+      <div class="relative min-w-52 flex-1">
+        <span class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-slate-400 dark:text-slate-500">
+          {{ icon("magnifying-glass", size="20px") }}
+        </span>
+        <input type="text" name="q" value="{{ search_query | default('') }}"
+               placeholder="Search {{ registered.verbose_name_plural | lower }}..."
+               hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+               hx-trigger="keyup changed delay:300ms"
+               hx-target="#table-wrapper"
+               hx-swap="outerHTML"
+               hx-include="[name='q']"
+               class="input pr-9 pl-10"
+               x-ref="searchInput"
+               @input="hasSearch = $refs.searchInput.value.length > 0">
+        <button type="button" class="absolute top-1/2 right-2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                x-show="hasSearch" x-transition x-cloak aria-label="Clear search"
+                @click="$refs.searchInput.value = ''; hasSearch = false; $refs.searchInput.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true}))">
+          {{ icon("x-mark", size="16px") }}
         </button>
-        <div class="filter-dropdown" x-show="open" @click.outside="open = false" x-transition>
-          <div class="filter-dropdown-header">
-            <span>{{ field_name | replace('_', ' ') | title }}</span>
-            <button type="button" class="filter-dropdown-clear"
-                    @click="clearFilter({{ field_name | tojson }}); open = false">Clear</button>
-          </div>
-          {% for value, label in field_info.choices %}
-          <div class="filter-dropdown-item">
-            <input type="radio" name="filter_{{ field_name }}" value="{{ value }}"
-                   :checked="activeFilters[{{ field_name | tojson }}] === {{ value | tojson }}"
-                   @change="setFilter({{ field_name | tojson }}, {{ value | tojson }}); open = false"
-                   id="filter_{{ field_name }}_{{ value }}">
-            <label for="filter_{{ field_name }}_{{ value }}">{{ label }}</label>
-          </div>
-          {% endfor %}
-        </div>
-        {% endif %}
-
       </div>
-      {% endfor %}
-    </div>
-    {% endif %}
 
-    <div class="filter-bar-right">
       {% if filter_fields %}
-      <button type="button" class="filter-bar-clear-all"
-              x-show="Object.keys(activeFilters).length > 0"
-              x-transition
-              @click="clearAllFilters()">
-        Clear all filters
-      </button>
-      <div class="filter-bar-divider" x-show="Object.keys(activeFilters).length > 0"></div>
+      <div class="flex flex-wrap items-center gap-2">
+        {% for field_name, field_info in filter_fields.items() %}
+        <div class="relative" x-data="{ open: false }">
+
+          {% if field_info.field_type == "date" %}
+          <div class="filter-chip-wrap {% if active_filters.get(field_name) %}filter-chip-wrap--active{% endif %}">
+            <label class="filter-chip-label">{{ field_name | replace('_', ' ') | title }}</label>
+            <input type="date" name="filter_{{ field_name }}"
+                   value="{{ active_filters.get(field_name, '') }}"
+                   hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                   hx-trigger="change"
+                   hx-target="#table-wrapper"
+                   hx-swap="outerHTML"
+                   hx-include="[name='q'], [name^='filter_']"
+                   class="filter-input w-36">
+            {% if active_filters.get(field_name) %}
+            <button type="button" class="filter-clear-btn" title="Clear" aria-label="Clear {{ field_name }} filter"
+                    hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                    hx-target="#table-wrapper"
+                    hx-swap="outerHTML"
+                     hx-include="[name='q']">&times;</button>
+            {% endif %}
+          </div>
+
+          {% elif field_info.field_type == "datetime" %}
+          <div class="filter-chip-wrap {% if active_filters.get(field_name) %}filter-chip-wrap--active{% endif %}">
+            <label class="filter-chip-label">{{ field_name | replace('_', ' ') | title }}</label>
+            <input type="datetime-local" name="filter_{{ field_name }}"
+                   value="{{ active_filters.get(field_name, '') }}"
+                   hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                   hx-trigger="change"
+                   hx-target="#table-wrapper"
+                   hx-swap="outerHTML"
+                   hx-include="[name='q'], [name^='filter_']"
+                   class="filter-input w-48">
+            {% if active_filters.get(field_name) %}
+            <button type="button" class="filter-clear-btn" title="Clear" aria-label="Clear {{ field_name }} filter"
+                    hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                    hx-target="#table-wrapper"
+                    hx-swap="outerHTML"
+                     hx-include="[name='q']">&times;</button>
+            {% endif %}
+          </div>
+
+          {% elif field_info.field_type == "time" %}
+          <div class="filter-chip-wrap {% if active_filters.get(field_name) %}filter-chip-wrap--active{% endif %}">
+            <label class="filter-chip-label">{{ field_name | replace('_', ' ') | title }}</label>
+            <input type="time" name="filter_{{ field_name }}"
+                   value="{{ active_filters.get(field_name, '') }}"
+                   hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                   hx-trigger="change"
+                   hx-target="#table-wrapper"
+                   hx-swap="outerHTML"
+                   hx-include="[name='q'], [name^='filter_']"
+                   class="filter-input w-28">
+            {% if active_filters.get(field_name) %}
+            <button type="button" class="filter-clear-btn" title="Clear" aria-label="Clear {{ field_name }} filter"
+                    hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                    hx-target="#table-wrapper"
+                    hx-swap="outerHTML"
+                     hx-include="[name='q']">&times;</button>
+            {% endif %}
+          </div>
+
+          {% elif field_info.field_type == "text" %}
+          <div class="filter-chip-wrap {% if active_filters.get(field_name) or active_filters.get(field_name + '__icontains') %}filter-chip-wrap--active{% endif %}">
+            <label class="filter-chip-label">{{ field_name | replace('_', ' ') | title }}</label>
+            <input type="text" name="filter_{{ field_name }}__icontains"
+                   value="{{ active_filters.get(field_name + '__icontains', active_filters.get(field_name, '')) }}"
+                   placeholder="Contains..."
+                   hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                   hx-trigger="keyup changed delay:300ms"
+                   hx-target="#table-wrapper"
+                   hx-swap="outerHTML"
+                   hx-include="[name='q'], [name^='filter_']"
+                   class="filter-input w-36">
+            {% if active_filters.get(field_name) or active_filters.get(field_name + '__icontains') %}
+            <button type="button" class="filter-clear-btn" title="Clear" aria-label="Clear {{ field_name }} filter"
+                    hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                    hx-target="#table-wrapper"
+                    hx-swap="outerHTML"
+                     hx-include="[name='q']">&times;</button>
+            {% endif %}
+          </div>
+
+          {% elif field_info.field_type in ("numeric", "integer") %}
+          <div class="filter-chip-wrap {% if active_filters.get(field_name + '__gte') or active_filters.get(field_name + '__lte') %}filter-chip-wrap--active{% endif %}">
+            <label class="filter-chip-label">{{ field_name | replace('_', ' ') | title }}</label>
+            <input type="number" name="filter_{{ field_name }}__gte"
+                   value="{{ active_filters.get(field_name + '__gte', '') }}"
+                   placeholder="Min"
+                   hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                   hx-trigger="change"
+                   hx-target="#table-wrapper"
+                   hx-swap="outerHTML"
+                   hx-include="[name='q'], [name^='filter_']"
+                   class="filter-input w-20">
+            <input type="number" name="filter_{{ field_name }}__lte"
+                   value="{{ active_filters.get(field_name + '__lte', '') }}"
+                   placeholder="Max"
+                   hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                   hx-trigger="change"
+                   hx-target="#table-wrapper"
+                   hx-swap="outerHTML"
+                   hx-include="[name='q'], [name^='filter_']"
+                   class="filter-input w-20">
+            {% if active_filters.get(field_name + '__gte') or active_filters.get(field_name + '__lte') %}
+            <button type="button" class="filter-clear-btn" title="Clear" aria-label="Clear {{ field_name }} filter"
+                    hx-get="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/"
+                    hx-target="#table-wrapper"
+                    hx-swap="outerHTML"
+                     hx-include="[name='q']">&times;</button>
+            {% endif %}
+          </div>
+
+          {% else %}
+          {# boolean, enum, relation — render as dropdown #}
+          <button type="button" class="filter-chip"
+                  :class="activeFilters[{{ field_name | tojson }}] ? 'filter-chip--active' : ''"
+                  @click="open = !open" :aria-expanded="open">
+            {{ field_name | replace('_', ' ') | title }}
+            <template x-if="activeFilters[{{ field_name | tojson }}]">
+              <span class="filter-chip-count" x-text="activeFilters[{{ field_name | tojson }}]"></span>
+            </template>
+            {{ icon("chevron-right", size="16px") }}
+          </button>
+          <div class="card absolute left-0 z-40 mt-2 w-56 p-1" x-show="open" @click.outside="open = false" x-transition x-cloak role="menu">
+            <div class="flex items-center justify-between px-3 py-2">
+              <span class="text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">{{ field_name | replace('_', ' ') | title }}</span>
+              <button type="button" class="text-xs font-medium text-slate-500 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                      @click="clearFilter({{ field_name | tojson }}); open = false">Clear</button>
+            </div>
+            {% for value, label in field_info.choices %}
+            <div class="flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800">
+              <input type="radio" name="filter_{{ field_name }}" value="{{ value }}"
+                     :checked="activeFilters[{{ field_name | tojson }}] === {{ value | tojson }}"
+                     @change="setFilter({{ field_name | tojson }}, {{ value | tojson }}); open = false"
+                     id="filter_{{ field_name }}_{{ value }}"
+                     class="table-checkbox">
+              <label for="filter_{{ field_name }}_{{ value }}" class="flex-1 cursor-pointer text-sm text-slate-700 dark:text-slate-300">{{ label }}</label>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+        </div>
+        {% endfor %}
+      </div>
       {% endif %}
 
-      <button type="button" class="filter-bar-action" title="Toggle column visibility"
-              @click="showColumnPicker = !showColumnPicker">
-        {{ icon("eye", size="20px") }}
-      </button>
+      <div class="flex items-center gap-2 lg:ml-auto">
+        {% if filter_fields %}
+        <button type="button" class="text-xs font-medium whitespace-nowrap text-slate-500 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                x-show="Object.keys(activeFilters).length > 0"
+                x-transition x-cloak
+                @click="clearAllFilters()">
+          Clear all filters
+        </button>
+        <div class="h-5 w-px bg-slate-200 dark:bg-slate-700" x-show="Object.keys(activeFilters).length > 0" x-cloak></div>
+        {% endif %}
+
+        <button type="button" class="inline-flex size-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200" title="Toggle column visibility" aria-label="Toggle column visibility"
+                @click="showColumnPicker = !showColumnPicker">
+          {{ icon("eye", size="20px") }}
+        </button>
+      </div>
     </div>
   </div>
   {% endblock %}
@@ -321,9 +326,9 @@
   {% block list_bulk_actions %}
   {# Bulk Actions Bar — Django-style: always visible above table #}
   {% if permissions.can_delete or list_actions %}
-  <div class="bulk-bar">
-    <div class="bulk-bar-left">
-      <label class="bulk-bar-label" for="bulk-action-select">Action:</label>
+  <div class="flex min-h-12 flex-col gap-3 rounded-xl bg-slate-100 px-4 py-3 ring-1 ring-slate-200 sm:flex-row sm:items-center dark:bg-slate-800/60 dark:ring-slate-700">
+    <div class="flex flex-wrap items-center gap-2">
+      <label class="text-sm font-medium text-slate-900 dark:text-slate-100" for="bulk-action-select">Action:</label>
       <select id="bulk-action-select" name="bulk_action" class="bulk-bar-select">
         <option value="">---------</option>
         {% if list_actions %}
@@ -335,8 +340,6 @@
         <option value="delete_selected">Delete selected</option>
         {% endif %}
       </select>
-    </div>
-    <div class="bulk-bar-right">
       <button type="button" class="btn btn-primary btn-sm" onclick="executeBulkAction()">Go</button>
     </div>
   </div>

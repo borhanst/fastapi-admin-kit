@@ -142,8 +142,8 @@ def test_topbar_zones(client):
     # Check logo
     assert 'class="topbar-logo"' in response.text
 
-    # Check search trigger
-    assert 'class="topbar-search"' in response.text
+    # Check search trigger (utility classes may augment the hook class)
+    assert "topbar-search" in response.text
 
     # Check theme toggle
     assert "$store.theme.toggle()" in response.text
