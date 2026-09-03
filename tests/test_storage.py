@@ -98,8 +98,8 @@ class TestLocalStorageBackend:
     async def test_save_with_directory(self, backend):
         f = _upload("test.txt")
         path = await backend.save(f, directory="documents")
-        # Path now includes upload_dir prefix: "uploads/documents/filename.txt"
-        assert "/uploads/documents/" in path
+        # Path is relative to upload_dir: "documents/filename.txt"
+        assert path.startswith("documents/")
         target = backend.upload_dir / path
         assert target.is_file()
         assert target.read_bytes() == b"hello world"

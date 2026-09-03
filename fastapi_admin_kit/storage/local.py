@@ -94,12 +94,13 @@ class LocalStorageBackend(StorageBackend):
         with open(target_path, "wb") as f:
             f.write(content)
 
-        # Return path with leading / for database storage
-        # e.g., "/uploads/filename.jpg" or "/uploads/directory/filename.jpg"
-        # The leading / ensures the path is stored with a slash prefix
+        # Return path relative to upload_dir, using forward slashes
+        # e.g., "filename.jpg" or "directory/filename.jpg".
+        # Callers build public URLs via ``url()`` and filesystem targets
+        # via ``upload_dir / path`` — both expect a relative path.
         if directory:
-            return f"/{self.upload_dir}/{directory}/{filename}"
-        return f"/{self.upload_dir}/{filename}"
+            return f"{directory}/{filename}"
+        return filename
 
     async def delete(self, path: str) -> None:
         """Delete a file at the given relative path.
@@ -122,12 +123,21 @@ class LocalStorageBackend(StorageBackend):
             Use ``strip_prefix=True`` when you want the path without
             leading slash for ``src`` attributes in templates.
         """
-        # Strip upload_dir prefix if present, to avoid double-prefix in URL
+        # Accept legacy values stored with a leading "/" or with the
+        # upload_dir prefix (e.g. "/documents/f.txt" or
+        # "/tmp/.../uploads/documents/f.txt" from the regressed save()).
+        # Normal stored values are relative ("documents/f.txt").
         upload_dir_str = str(self.upload_dir)
-        if path.startswith(upload_dir_str + "/"):
+        if upload_dir_str and path.startswith(upload_dir_str + "/"):
             path = path[len(upload_dir_str) + 1 :]
-        elif path.startswith(upload_dir_str):
-            path = path[len(upload_dir_str) :]
+        elif upload_dir_str and path == upload_dir_str:
+            path = ""
+        else:
+            # Strip a single cosmetic leading slash ("/documents/f.txt"
+            # -> "documents/f.txt"); "//" is left for the jail check
+            # to reject downstream.
+            if path.startswith("/") and not path.startswith("//"):
+                path = path[1:]
 
         url = f"{self.base_url}/{path}"
 

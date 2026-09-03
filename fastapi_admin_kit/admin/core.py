@@ -1162,6 +1162,32 @@ class Admin:
             return getattr(obj, name, "")
 
         self._jinja_env.env.filters["slugify"] = slugify
+
+        def file_url(path: Any) -> str:
+            """Map a stored file path to its public URL for ``src``/``href``.
+
+            Storage keeps relative paths (``"documents/uuid.jpg"``) so that
+            ``upload_dir / path`` and ``delete(path)`` work. Browsers need
+            an absolute public URL (``"/uploads/documents/uuid.jpg"``), so
+            templates must pipe stored values through this filter instead
+            of rendering them raw.
+            """
+            if not path:
+                return ""
+            s = str(path)
+            if s.startswith(("http://", "https://", "data:", "blob:")):
+                return s
+            storage = getattr(getattr(self.config, "storage", None), "storage", None)
+            if storage is not None and hasattr(storage, "url"):
+                try:
+                    return storage.url(s)
+                except Exception:
+                    pass
+            storage_cfg = getattr(self.config, "storage", None)
+            base = (getattr(storage_cfg, "uploads_url", None) or "/uploads").rstrip("/")
+            return f"{base}/{s.lstrip('/')}"
+
+        self._jinja_env.env.filters["file_url"] = file_url
         self._jinja_env.env.globals["attr"] = _attr
         from fastapi_admin_kit.inspection import model_display_name
 

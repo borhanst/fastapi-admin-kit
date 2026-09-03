@@ -30,9 +30,9 @@
       {% endfor %}
       {% if not found and val %}{{ val }}{% endif %}
     {% elif field.widget_macro == 'image_upload' and val %}
-      <img src="{{ val }}" style="max-width: 200px; max-height: 200px; border-radius: var(--radius-md); border: 1px solid var(--surface-border);">
+      <img src="{{ val | file_url }}" style="max-width: 200px; max-height: 200px; border-radius: var(--radius-md); border: 1px solid var(--surface-border);">
     {% elif field.widget_macro == 'file_upload' and val %}
-      <a href="{{ val }}" target="_blank" style="color: var(--primary-500);">{{ val }}</a>
+      <a href="{{ val | file_url }}" target="_blank" style="color: var(--primary-500);">{{ val }}</a>
     {% elif field.widget_macro == 'json_editor' %}
       <pre class="bg-[var(--color-gray-50)] rounded-lg p-4 overflow-auto text-sm text-[var(--color-gray-900)]" style="max-height: 300px;">{{ val }}</pre>
     {% elif field.widget_macro == 'color_picker' %}
