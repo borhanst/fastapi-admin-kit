@@ -8,6 +8,7 @@ Thank you for your interest in contributing to FastAPI Admin Kit!
 
 - Python 3.11 or higher
 - uv (recommended) or pip
+- Node.js 20+ and npm (only needed if you touch templates or CSS)
 
 ### Clone and Install
 
@@ -50,6 +51,20 @@ uv run mkdocs serve
 ```
 
 Open `http://localhost:8000` in your browser.
+
+### Tailwind CSS Development
+
+The project uses Tailwind CSS v4 with a single-source config in `fastapi_admin_kit/static/css/style.css`.
+
+**To develop on the CSS:**
+
+```bash
+npm install    # install devDependencies (Tailwind, Prettier, etc.)
+npm run build:css   # compile once
+npm run dev:css     # watch mode (recompile on changes)
+```
+
+**The build output `fastapi_admin_kit/static/css/dist/tailwind.css` is committed** (per `.gitignore:81-83`) so pip consumers don't need to run Tailwind. If you change `style.css` or any template, re-run `npm run build:css` and commit the updated `dist/tailwind.css`.
 
 ## Project Structure
 
