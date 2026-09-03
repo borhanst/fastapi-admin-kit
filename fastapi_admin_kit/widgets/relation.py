@@ -34,6 +34,13 @@ class RelationPickerWidget(Widget):
             return raw
 
     def render_context(self, field: FieldMeta, value: Any) -> dict:
+        # Coerce UUID (or any non-JSON-serializable FK value) to str so that
+        # the Jinja2 `tojson` filter in the relation_picker macro doesn't raise
+        # TypeError: Object of type UUID is not JSON serializable.
+        import uuid as _uuid
+
+        if isinstance(value, _uuid.UUID):
+            value = str(value)
         ctx = super().render_context(field, value)
         ctx["related_table"] = self.related_table
         ctx["related_verbose"] = self.related_verbose

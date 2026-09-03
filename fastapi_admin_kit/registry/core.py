@@ -49,8 +49,9 @@ class RegisteredModel:
     @property
     def list_fields(self) -> list[str]:
         if self.admin.list_display:
-            valid = {c.name for c in self.columns}
-            return [f for f in self.admin.list_display if f in valid]
+            # Registration-time validation (validate_admin_fields) already
+            # verified every name exists on the model, so return as-is.
+            return list(self.admin.list_display)
         return [c.name for c in self.columns if not c.primary_key]
 
     def get_widget(self, field_name: str, resolver: WidgetResolver | None = None) -> Widget:
@@ -132,6 +133,11 @@ def build_registered_model(
 
     # Inspect using the injected inspector
     columns, relationships = registry._inspector.inspect_model(model)
+
+    # Validate admin field references against actual model fields.
+    # This catches typos in list_display / exclude / readonly_fields /
+    # formfield_overrides at startup rather than silently ignoring them.
+    registry._validator.validate_admin_fields(model, admin_class, columns, relationships)
 
     if admin is None:
         admin = _ModelAdmin()

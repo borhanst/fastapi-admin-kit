@@ -57,6 +57,12 @@ class DisplayColumn:
                 return ", ".join(parts) if parts else "-"
             return model_display_name(val)
 
+        # Unwrap Python Enum instances so the list view shows the enum's value
+        # (e.g. "love it") rather than the raw repr (e.g. <FeedbackStatus.LOVE_IT: 'love it'>).
+        from enum import Enum as _Enum
+
+        if isinstance(val, _Enum):
+            return val.value
         return val
 
 
