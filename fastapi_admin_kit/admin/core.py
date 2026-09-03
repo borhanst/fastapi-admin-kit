@@ -1538,8 +1538,14 @@ class Admin:
         # relations (admin_user_roles FK, Role.users M2M, etc.) at the
         # custom auth_model. Each backend implements this against its own
         # ORM primitives; non-SQLA backends may no-op.
-        backend = self.backend
-        database_backend = getattr(backend, "database", None) if backend is not None else None
+        #
+        # Use ``self.database._backend`` (the backend that actually performs
+        # DDL in ``_create_tables`` below) rather than the composite
+        # ``self.backend.database`` so tests that swap
+        # ``admin.database._backend`` with a fake do not mutate the global
+        # SQLAlchemy mapper state. A backend without ``adapt_auth_model``
+        # (e.g. a test fake or memory backend) is treated as no-op.
+        database_backend = getattr(self.database, "_backend", None)
         adapt = getattr(database_backend, "adapt_auth_model", None)
         if adapt is not None and self.config.auth.auth_model is not None:
             try:
