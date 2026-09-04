@@ -120,7 +120,7 @@
       </div>
       {% endif %}
       {% if permissions.can_create %}
-      <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/create" class="btn btn-primary btn-sm">
+      <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/create" class="btn btn-secondary btn-sm">
         + New {{ registered.verbose_name }}
       </a>
       {% endif %}
@@ -271,11 +271,11 @@
           {% else %}
           {# boolean, enum, relation — render as dropdown #}
           <button type="button" class="filter-chip"
-                  :class="activeFilters[{{ field_name | tojson }}] ? 'filter-chip--active' : ''"
+                  :class='activeFilters[{{ field_name | tojson }}] ? "filter-chip--active" : ""'
                   @click="open = !open" :aria-expanded="open">
             {{ field_name | replace('_', ' ') | title }}
-            <template x-if="activeFilters[{{ field_name | tojson }}]">
-              <span class="filter-chip-count" x-text="activeFilters[{{ field_name | tojson }}]"></span>
+            <template x-if='activeFilters[{{ field_name | tojson }}]'>
+              <span class="filter-chip-count" x-text='activeFilters[{{ field_name | tojson }}]'></span>
             </template>
             {{ icon("chevron-right", size="16px") }}
           </button>
@@ -283,13 +283,13 @@
             <div class="flex items-center justify-between px-3 py-2">
               <span class="text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">{{ field_name | replace('_', ' ') | title }}</span>
               <button type="button" class="text-xs font-medium text-slate-500 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
-                      @click="clearFilter({{ field_name | tojson }}); open = false">Clear</button>
+                      @click='clearFilter({{ field_name | tojson }}); open = false'>Clear</button>
             </div>
             {% for value, label in field_info.choices %}
             <div class="flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800">
               <input type="radio" name="filter_{{ field_name }}" value="{{ value }}"
-                     :checked="activeFilters[{{ field_name | tojson }}] === {{ value | tojson }}"
-                     @change="setFilter({{ field_name | tojson }}, {{ value | tojson }}); open = false"
+                     :checked='activeFilters[{{ field_name | tojson }}] === {{ value | tojson | replace("'", "&#39;") }}'
+                     @change='setFilter({{ field_name | tojson }}, {{ value | tojson | replace("'", "&#39;") }}); open = false'
                      id="filter_{{ field_name }}_{{ value }}"
                      class="table-checkbox">
               <label for="filter_{{ field_name }}_{{ value }}" class="flex-1 cursor-pointer text-sm text-slate-700 dark:text-slate-300">{{ label }}</label>
@@ -340,7 +340,7 @@
         <option value="delete_selected">Delete selected</option>
         {% endif %}
       </select>
-      <button type="button" class="btn btn-primary btn-sm" onclick="executeBulkAction()">Go</button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="executeBulkAction()">Go</button>
     </div>
   </div>
   {% endif %}

@@ -77,6 +77,8 @@
            class="nav-link {% if request.url.path.startswith(link.url) %}active{% endif %}">
           {% if link.icon %}
           {{ icon(link.icon, size="18px") }}
+          {% else %}
+          {{ icon("link", size="18px") }}
           {% endif %}
           <span class="nav-link-label">{{ link.label }}</span>
           <span class="nav-tooltip" x-show="sidebarCollapsed">{{ link.label }}</span>
