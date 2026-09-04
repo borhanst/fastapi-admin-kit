@@ -28,7 +28,7 @@
           <span class="sidebar-section-label">{{ group.label }}</span>
           {{ icon("chevron-right", size="14px") }}
         </button>
-        <ul class="sidebar-section-items" x-show="open" x-collapse x-cloak>
+        <ul class="sidebar-section-items" x-show="open || sidebarCollapsed" x-collapse x-cloak>
           {% for item in group.items %}
           <li class="sidebar-nav-item">
             <a href="{{ item.url }}"
@@ -77,6 +77,8 @@
            class="nav-link {% if request.url.path.startswith(link.url) %}active{% endif %}">
           {% if link.icon %}
           {{ icon(link.icon, size="18px") }}
+          {% else %}
+          {{ icon("link", size="18px") }}
           {% endif %}
           <span class="nav-link-label">{{ link.label }}</span>
           <span class="nav-tooltip" x-show="sidebarCollapsed">{{ link.label }}</span>

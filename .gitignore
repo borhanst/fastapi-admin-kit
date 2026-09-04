@@ -73,3 +73,11 @@ site/
 .DS_Store
 Thumbs.db
 *.log
+
+# Node (Tailwind build, dev-only — compiled CSS is committed)
+node_modules/
+.npm/
+
+# Compiled Tailwind bundle IS tracked (exception to dist/ above)
+!fastapi_admin_kit/static/css/dist/
+!fastapi_admin_kit/static/css/dist/**

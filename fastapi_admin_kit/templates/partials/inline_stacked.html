@@ -43,12 +43,13 @@
       </div>
       {% endif %}
 
-      <div class="form--two-column form--normal" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      <div class="form--normal" style="display: flex; flex-direction: column; gap: var(--space-4);">
         {% for field_meta in formset.field_metas %}
         <div class="field-wrapper">
           <label class="field-label">
             {{ field_meta.label }}{% if field_meta.required %}<span class="required-star">*</span>{% endif %}
           </label>
+          <div class="field-wrapper__body">
 
           {% if field_meta.readonly or not formset.can_change %}
           {# Read-only field #}
@@ -166,6 +167,8 @@
                  placeholder="{{ field_meta.placeholder }}"
                  class="form-input">
           {% endif %}
+        </div>
+          </div>
         </div>
         {% endfor %}
       </div>

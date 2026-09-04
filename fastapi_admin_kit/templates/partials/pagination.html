@@ -1,9 +1,9 @@
-{# partials/pagination.html — reusable pagination component #}
+{# partials/pagination.html — reusable pagination component (Tailwind-first, no legacy classes) #}
 {% macro render_pagination(page, total_pages, total_items, per_page, next_cursor=None, has_next=false, pagination_mode="offset") %}
 {% if pagination_mode and "cursor" in pagination_mode %}
 {# Cursor-based pagination #}
-<div class="pagination">
-  <div class="pagination-info">
+<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  <div class="text-sm text-slate-500 dark:text-slate-400">
     {% if has_next or total_items > per_page %}
     {% if page is defined and page > 1 %}
     Showing cursor-based results (page {{ page }})
@@ -14,32 +14,32 @@
     Showing all {{ total_items | int }} results
     {% endif %}
   </div>
-  <div class="pagination-links">
+  <div class="flex items-center gap-1">
     {% if has_next %}
-    <a href="?after={{ next_cursor }}" class="pagination-link" title="Next page">
-      {{ icon("chevron-right") }}
+    <a href="?after={{ next_cursor }}" class="pagination__link" title="Next page" aria-label="Next page">
+      {{ icon("chevron-right", size="16px") }}
     </a>
     {% else %}
-    <span class="pagination-link pagination-link--disabled">
-      {{ icon("chevron-right") }}
+    <span class="pagination__link pointer-events-none opacity-40" aria-disabled="true">
+      {{ icon("chevron-right", size="16px") }}
     </span>
     {% endif %}
   </div>
 </div>
 {% else %}
 {# Offset-based pagination (default) #}
-<div class="pagination">
-  <div class="pagination-info">
+<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  <div class="text-sm text-slate-500 dark:text-slate-400">
     Showing {{ ((page - 1) * per_page + 1) | int }} to {{ (page * per_page) if page < total_pages else total_items | int }} of {{ total_items | int }} results
   </div>
-  <div class="pagination-links">
+  <nav class="flex items-center gap-1" aria-label="Pagination">
     {% if page > 1 %}
-    <a href="?page={{ page - 1 }}" class="pagination-link" title="Previous page">
-      {{ icon("chevron-left") }}
+    <a href="?page={{ page - 1 }}" class="pagination__link" title="Previous page" aria-label="Previous page">
+      {{ icon("chevron-left", size="16px") }}
     </a>
     {% else %}
-    <span class="pagination-link pagination-link--disabled">
-      {{ icon("chevron-left") }}
+    <span class="pagination__link pointer-events-none opacity-40" aria-disabled="true" aria-label="Previous page">
+      {{ icon("chevron-left", size="16px") }}
     </span>
     {% endif %}
 
@@ -47,36 +47,37 @@
     {% set end_page = [total_pages, page + 2] | min %}
 
     {% if start_page > 1 %}
-    <a href="?page=1" class="pagination-link">1</a>
+    <a href="?page=1" class="pagination__link">1</a>
     {% if start_page > 2 %}
-    <span class="pagination-ellipsis">...</span>
+    <span class="px-1 text-sm text-slate-400 dark:text-slate-500">…</span>
     {% endif %}
     {% endif %}
 
     {% for p in range(start_page, end_page + 1) %}
     <a href="?page={{ p }}"
-       class="pagination-link {% if p == page %}pagination-link--active{% endif %}">
+       class="pagination__link {% if p == page %}pagination__link--active{% endif %}"
+       {% if p == page %}aria-current="page"{% endif %}>
       {{ p }}
     </a>
     {% endfor %}
 
     {% if end_page < total_pages %}
     {% if end_page < total_pages - 1 %}
-    <span class="pagination-ellipsis">...</span>
+    <span class="px-1 text-sm text-slate-400 dark:text-slate-500">…</span>
     {% endif %}
-    <a href="?page={{ total_pages }}" class="pagination-link">{{ total_pages }}</a>
+    <a href="?page={{ total_pages }}" class="pagination__link">{{ total_pages }}</a>
     {% endif %}
 
     {% if page < total_pages %}
-    <a href="?page={{ page + 1 }}" class="pagination-link" title="Next page">
-      {{ icon("chevron-right") }}
+    <a href="?page={{ page + 1 }}" class="pagination__link" title="Next page" aria-label="Next page">
+      {{ icon("chevron-right", size="16px") }}
     </a>
     {% else %}
-    <span class="pagination-link pagination-link--disabled">
-      {{ icon("chevron-right") }}
+    <span class="pagination__link pointer-events-none opacity-40" aria-disabled="true" aria-label="Next page">
+      {{ icon("chevron-right", size="16px") }}
     </span>
     {% endif %}
-  </div>
+  </nav>
 </div>
 {% endif %}
 {% endmacro %}

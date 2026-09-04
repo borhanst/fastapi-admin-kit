@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from fastapi_admin_kit.registry.core import AdminRegistry
@@ -40,6 +40,87 @@ class ModelValidator:
         """
         self._validate_is_sqlalchemy_model(model)
         self._check_table_name_conflicts(model)
+
+    def validate_admin_fields(
+        self,
+        model: type,
+        admin_class: type | None,
+        columns: list[Any],
+        relationships: list[Any],
+    ) -> None:
+        """Validate that all field names referenced in the admin class actually
+        exist on the model.
+
+        Checked attributes: ``list_display``, ``exclude``, ``readonly_fields``,
+        and ``formfield_overrides``.
+
+        Args:
+            model: The registered model class.
+            admin_class: The ModelAdmin subclass (or ``None`` for the default).
+            columns: Inspected column descriptors (each has a ``.name``).
+            relationships: Inspected relationship descriptors (each has a ``.name``).
+
+        Raises:
+            ValueError: With a descriptive message listing every unknown field.
+        """
+        if admin_class is None:
+            return  # default ModelAdmin has no user-supplied field lists
+
+        # Build the set of all valid field names for this model
+        valid_fields: set[str] = {c.name for c in columns} | {r.name for r in relationships}
+
+        model_name = getattr(model, "__name__", str(model))
+        admin_name = admin_class.__name__
+
+        # Also allow the admin class's own methods / @column-decorated attributes
+        # as valid "fields" so that display-only computed columns don't raise.
+        admin_methods: set[str] = {
+            name
+            for name in dir(admin_class)
+            if not name.startswith("_") and callable(getattr(admin_class, name, None))
+        }
+
+        def _check(field_list: list[str] | None, attr_name: str) -> list[str]:
+            if not field_list:
+                return []
+            return [f for f in field_list if f not in valid_fields and f not in admin_methods]
+
+        errors: list[str] = []
+
+        bad = _check(getattr(admin_class, "list_display", None), "list_display")
+        if bad:
+            errors.append(
+                f"  list_display: unknown field(s) {bad!r}\n"
+                f"    Valid fields: {sorted(valid_fields)!r}"
+            )
+
+        bad = _check(getattr(admin_class, "exclude", None), "exclude")
+        if bad:
+            errors.append(
+                f"  exclude: unknown field(s) {bad!r}\n    Valid fields: {sorted(valid_fields)!r}"
+            )
+
+        bad = _check(getattr(admin_class, "readonly_fields", None), "readonly_fields")
+        if bad:
+            errors.append(
+                f"  readonly_fields: unknown field(s) {bad!r}\n"
+                f"    Valid fields: {sorted(valid_fields)!r}"
+            )
+
+        fo = getattr(admin_class, "formfield_overrides", None)
+        if fo:
+            bad_fo = [f for f in fo if f not in valid_fields]
+            if bad_fo:
+                errors.append(
+                    f"  formfield_overrides: unknown field(s) {bad_fo!r}\n"
+                    f"    Valid fields: {sorted(valid_fields)!r}"
+                )
+
+        if errors:
+            raise ValueError(
+                f"{admin_name} for model '{model_name}' references field(s) that "
+                f"do not exist on the model:\n" + "\n".join(errors)
+            )
 
     def _validate_is_sqlalchemy_model(self, model: type) -> None:
         """Validate that the model is a SQLAlchemy or SQLModel model.

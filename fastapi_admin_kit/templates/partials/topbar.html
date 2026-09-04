@@ -1,6 +1,6 @@
 {# partials/topbar.html — top navigation bar matching reference #}
 {% set _ui = ui_config | default({}) %}
-<header class="admin-topbar topbar--{{ _ui.topbar_style | default('default') }}">
+<header class="admin-topbar topbar--{{ _ui.topbar_style | default('default') }} sticky top-0 border-slate-200/80 bg-white/85 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/85">
   {# Left zone: collapse toggle, logo #}
   <div class="topbar-left">
     <button class="collapse-toggle"
@@ -21,9 +21,9 @@
     </a>
   </div>
 
-  {# Center zone: search bar #}
+  {# Center zone: search bar (hidden on small screens) #}
   <div class="topbar-center">
-    <div class="topbar-search" @click="$dispatch('open-command-palette')">
+    <div class="topbar-search hidden w-full max-w-md md:flex" @click="$dispatch('open-command-palette')">
       {{ icon("magnifying-glass", size="16px") }}
       <span class="topbar-search-placeholder">Search anything...</span>
       <span class="topbar-search-shortcut">
@@ -110,7 +110,7 @@
         <div class="user-avatar">
           {{ current_user.full_name[0] | upper if current_user is defined and current_user and current_user.full_name else "A" }}
         </div>
-        <div class="topbar-user-info">
+        <div class="topbar-user-info hidden lg:flex">
           <span class="topbar-user-name">{{ current_user.full_name if current_user is defined and current_user else "Admin" }}</span>
           <span class="topbar-user-role">{{ "Superuser" if current_user is defined and current_user and current_user.is_superuser else "Admin" }}</span>
         </div>

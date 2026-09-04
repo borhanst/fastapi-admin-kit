@@ -1,63 +1,63 @@
-{# pages/dashboard.html — premium dashboard #}
+{# pages/dashboard.html — Tailwind-first dashboard (no legacy classes, no inline styles) #}
 {% extends "base.html" %}
 
 {% block title %}{{ title | default("Admin") }} — Dashboard{% endblock %}
 
 {% block content %}
-{% set _colors = {
-  'Categories': 'teal',
-  'Products': 'purple',
-  'Users': 'blue',
-  'Orders': 'orange',
-  'Order Items': 'green',
-  'Admin Field Permissions': 'yellow',
-  'Admin Permissions': 'red',
-  'Admin Users': 'indigo',
-  'Admin Audit Logs': 'cyan',
-  'Admin Roles': 'pink'
+{% set _tile = {
+  'Categories': 'bg-teal-500/10 text-teal-500',
+  'Products': 'bg-violet-500/10 text-violet-500',
+  'Users': 'bg-blue-500/10 text-blue-500',
+  'Orders': 'bg-orange-500/10 text-orange-500',
+  'Order Items': 'bg-emerald-500/10 text-emerald-500',
+  'Admin Field Permissions': 'bg-yellow-500/10 text-yellow-500',
+  'Admin Permissions': 'bg-red-500/10 text-red-500',
+  'Admin Users': 'bg-indigo-500/10 text-indigo-500',
+  'Admin Audit Logs': 'bg-cyan-500/10 text-cyan-500',
+  'Admin Roles': 'bg-pink-500/10 text-pink-500'
 } %}
 
-<div class="dashboard-wrapper" style="display: flex; flex-direction: column; gap: 28px;">
+<div class="flex flex-col gap-7">
   {# ─── Page Header ─── #}
-  <div class="page-header">
-    <div class="page-header-left">
-      <h1 class="page-header-title">Dashboard</h1>
-      <p class="page-header-subtitle" style="color: var(--text-tertiary); font-size: var(--text-sm);">
+  <div class="mb-6 flex items-start justify-between border-b-2 border-slate-900 pb-5 dark:border-slate-100">
+    <div class="min-w-0 flex-1">
+      <h1 class="font-display text-2xl tracking-tight text-slate-900 dark:text-white">Dashboard</h1>
+      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
         Welcome back, Admin! Here's what's happening with your store today.
       </p>
     </div>
-    <div class="page-header-right">
-      <span class="badge badge-info" style="font-size: var(--text-2xs);">
-        <span style="width: 6px; height: 6px; background: var(--info-500); border-radius: 50%; display: inline-block; margin-right: 6px; animation: pulse 2s infinite;"></span>
+    <div class="flex shrink-0 items-center">
+      <span class="badge badge-info">
+        <span class="mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-sky-500"></span>
         System Online
       </span>
     </div>
   </div>
 
   {# ─── Stat Cards ─── #}
-  <div class="stat-cards" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px;">
+  <div class="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
     {% for card in stat_cards %}
-    {% set _color = _colors[card.title] | default('teal') %}
-    <a href="{{ card.url }}" class="dashboard-stat-card">
-      <div class="stat-header">
-        <div class="stat-icon stat-icon--{{ _color }}">
+    {% set _color = _tile[card.title] | default('bg-teal-500/10 text-teal-500') %}
+    <a href="{{ card.url }}" class="group relative flex flex-col gap-3.5 overflow-hidden rounded-xl border border-slate-200 bg-white p-5 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-teal-500/30 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-teal-400/20">
+      <div class="flex items-center gap-2.5">
+        <div class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg {{ _color }}">
           {{ icon(card.icon, size="20px") }}
         </div>
-        <span class="stat-label">{{ card.title }}</span>
+        <span class="text-xs font-semibold text-slate-400 dark:text-slate-500">{{ card.title }}</span>
       </div>
-      <div class="stat-count">{{ card.count }}</div>
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span class="stat-subtitle">Total {{ card.title | lower }}</span>
+      <div class="font-display text-3xl font-bold leading-none tracking-[-0.03em] text-slate-900 dark:text-white">{{ card.count }}</div>
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-slate-400 dark:text-slate-500">Total {{ card.title | lower }}</span>
         {% if card.has_trend %}
-        <span class="stat-trend {{ card.trend_direction }}">
+        <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold {% if card.trend_direction == 'up' %}bg-emerald-500/10 text-emerald-600 dark:text-emerald-400{% else %}bg-red-500/10 text-red-600 dark:text-red-400{% endif %}">
           {% if card.trend_direction == 'up' %}{{ icon('arrow-up', size="10px") }}{% else %}{{ icon('arrow-down', size="10px") }}{% endif %}
           {{ card.trend_pct }}%
         </span>
-        <span class="stat-trend-period">vs last 30 days</span>
+        <span class="ml-1 text-[11px] text-slate-400 dark:text-slate-500">vs last 30 days</span>
         {% endif %}
       </div>
       {# Wave decoration #}
-      <svg class="stat-wave" viewBox="0 0 80 30" fill="none">
+      <svg class="absolute right-0 bottom-0 h-[30px] w-20 opacity-15" viewBox="0 0 80 30" fill="none">
         <path d="M0 20 Q20 5 40 15 T80 10 V30 H0Z" fill="currentColor" opacity="0.3"/>
         <path d="M0 25 Q25 12 50 20 T80 15 V30 H0Z" fill="currentColor" opacity="0.5"/>
       </svg>
@@ -66,22 +66,21 @@
   </div>
 
   {# ─── Bottom Grid: Activity + Quick Actions ─── #}
-  <div style="display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start;">
+  <div class="grid items-start gap-6 lg:grid-cols-[1fr_340px]">
     {# Recent Activity #}
-    <div style="background: var(--surface-raised); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); overflow: hidden;">
-      <div style="padding: 20px 24px; border-bottom: 1px solid var(--surface-border); display: flex; align-items: center; justify-content: space-between;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <div style="width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--primary-50); display: flex; align-items: center; justify-content: center;">
+    <div class="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      <div class="flex items-center justify-between border-b border-slate-200 px-6 py-5 dark:border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <div class="flex size-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
             {{ icon('clock', size="18px") }}
           </div>
           <div>
-            <h2 style="font-family: var(--font-display); font-size: var(--text-md); font-weight: 700; color: var(--text-primary);">Recent Activity</h2>
-            <p style="font-size: var(--text-xs); color: var(--text-tertiary);">Latest system activities will appear here</p>
+            <h2 class="font-display text-base font-bold text-slate-900 dark:text-white">Recent Activity</h2>
+            <p class="text-xs text-slate-400 dark:text-slate-500">Latest system activities will appear here</p>
           </div>
         </div>
         {% if recent_audit %}
-        <a href="{{ admin_path | default('/admin') }}/audit-log/" style="display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--text-primary); text-decoration: none; padding: 6px 12px; border-radius: var(--radius-md); border: 1px solid var(--surface-border); transition: all 0.15s;"
-           onmouseenter="this.style.borderColor='var(--primary-500)'" onmouseleave="this.style.borderColor='var(--surface-border)'">
+        <a href="{{ admin_path | default('/admin') }}/audit-log/" class="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-900 no-underline transition hover:border-emerald-500 dark:border-slate-700 dark:text-slate-100">
           View all
           {{ icon('chevron-right', size="14px") }}
         </a>
@@ -89,90 +88,89 @@
       </div>
 
       {% if recent_audit %}
-      <div>
+      <div class="divide-y divide-slate-200 dark:divide-slate-800">
         {% for entry in recent_audit %}
-        <div style="padding: 16px 24px; display: flex; align-items: flex-start; gap: 14px; border-bottom: 1px solid var(--surface-border); transition: background 0.15s;"
-             onmouseenter="this.style.background='var(--primary-50)'" onmouseleave="this.style.background=''">
-          <div style="flex-shrink: 0; margin-top: 2px;">
+        <div class="flex items-start gap-3.5 px-6 py-4 transition hover:bg-emerald-500/5">
+          <div class="mt-0.5 shrink-0">
             {% if entry.action == 'CREATE' %}
-            <div style="width: 32px; height: 32px; border-radius: var(--radius-full); background: rgba(34, 197, 94, 0.1); display: flex; align-items: center; justify-content: center;">
+            <div class="flex size-8 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
               {{ icon('plus', size="16px") }}
             </div>
             {% elif entry.action == 'UPDATE' %}
-            <div style="width: 32px; height: 32px; border-radius: var(--radius-full); background: rgba(245, 158, 11, 0.1); display: flex; align-items: center; justify-content: center;">
+            <div class="flex size-8 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
               {{ icon('pencil', size="16px") }}
             </div>
             {% elif entry.action == 'DELETE' %}
-            <div style="width: 32px; height: 32px; border-radius: var(--radius-full); background: rgba(239, 68, 68, 0.1); display: flex; align-items: center; justify-content: center;">
+            <div class="flex size-8 items-center justify-center rounded-full bg-red-500/10 text-red-600 dark:text-red-400">
               {{ icon('trash', size="16px") }}
             </div>
             {% endif %}
           </div>
-          <div style="flex: 1; min-width: 0;">
-            <div style="font-size: var(--text-sm); color: var(--text-primary); line-height: 1.5;">
-              <span style="font-weight: var(--font-semibold);">{{ entry.user_email | default("System") }}</span>
-              <span style="color: var(--text-tertiary);"> {{ entry.action | lower }}d </span>
-              <span style="font-weight: var(--font-semibold);">{{ entry.model_name }}</span>
-              <span style="font-family: var(--font-mono); color: var(--text-tertiary); font-size: var(--text-xs);"> #{{ entry.object_id }}</span>
+          <div class="min-w-0 flex-1">
+            <div class="text-sm leading-relaxed text-slate-900 dark:text-slate-100">
+              <span class="font-semibold">{{ entry.user_email | default("System") }}</span>
+              <span class="text-slate-400 dark:text-slate-500"> {{ entry.action | lower }}d </span>
+              <span class="font-semibold">{{ entry.model_name }}</span>
+              <span class="font-mono text-xs text-slate-400 dark:text-slate-500"> #{{ entry.object_id }}</span>
             </div>
-            <div style="font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 4px; font-family: var(--font-mono);">{{ entry.timestamp }}</div>
+            <div class="mt-1 font-mono text-xs text-slate-400 dark:text-slate-500">{{ entry.timestamp }}</div>
           </div>
         </div>
         {% endfor %}
       </div>
       {% else %}
-      <div style="padding: 48px 24px; text-align: center;">
-        <div style="width: 64px; height: 64px; border-radius: var(--radius-full); background: var(--surface-overlay); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+      <div class="px-6 py-12 text-center">
+        <div class="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
           {{ icon('clock', size="32px") }}
         </div>
-        <p style="font-size: var(--text-sm); color: var(--text-primary); font-weight: var(--font-semibold);">No recent Activity</p>
-        <p style="font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 4px;">System activities will appear here</p>
+        <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">No recent Activity</p>
+        <p class="mt-1 text-xs text-slate-400 dark:text-slate-500">System activities will appear here</p>
       </div>
       {% endif %}
     </div>
 
     {# Quick Actions #}
-    <div style="background: var(--surface-raised); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); overflow: hidden;">
-      <div style="padding: 20px 24px; border-bottom: 1px solid var(--surface-border); display: flex; align-items: center; gap: 10px;">
-        <div style="width: 36px; height: 36px; border-radius: var(--radius-md); background: rgba(234, 179, 8, 0.12); display: flex; align-items: center; justify-content: center;">
+    <div class="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      <div class="flex items-center gap-2.5 border-b border-slate-200 px-6 py-5 dark:border-slate-800">
+        <div class="flex size-9 items-center justify-center rounded-lg bg-yellow-500/10 text-yellow-500">
           {{ icon('bolt', size="18px") }}
         </div>
         <div>
-          <h2 style="font-family: var(--font-display); font-size: var(--text-md); font-weight: 700; color: var(--text-primary);">Quick Actions</h2>
-          <p style="font-size: var(--text-xs); color: var(--text-tertiary);">Common actions at your fingertips</p>
+          <h2 class="font-display text-base font-bold text-slate-900 dark:text-white">Quick Actions</h2>
+          <p class="text-xs text-slate-400 dark:text-slate-500">Common actions at your fingertips</p>
         </div>
       </div>
-      <div class="quick-actions-grid">
+      <div class="flex flex-col gap-1 p-2">
         {% set _action_colors = {
-          'Categories': {'bg': 'rgba(20, 184, 166, 0.12)', 'fg': '#14b8a6'},
-          'Products': {'bg': 'rgba(139, 92, 246, 0.12)', 'fg': '#8b5cf6'},
-          'Users': {'bg': 'rgba(59, 130, 246, 0.12)', 'fg': '#3b82f6'},
-          'Orders': {'bg': 'rgba(249, 115, 22, 0.12)', 'fg': '#f97316'},
-          'Order Items': {'bg': 'rgba(34, 197, 94, 0.12)', 'fg': '#22c55e'},
-          'Admin Audit Logs': {'bg': 'rgba(6, 182, 212, 0.12)', 'fg': '#06b6d4'},
-          'Audit Logs': {'bg': 'rgba(6, 182, 212, 0.12)', 'fg': '#06b6d4'},
-          'Admin Roles': {'bg': 'rgba(236, 72, 153, 0.12)', 'fg': '#ec4899'},
-          'Roles': {'bg': 'rgba(236, 72, 153, 0.12)', 'fg': '#ec4899'},
-          'Admin Users': {'bg': 'rgba(99, 102, 241, 0.12)', 'fg': '#6366f1'},
-          'Admin Permissions': {'bg': 'rgba(239, 68, 68, 0.12)', 'fg': '#ef4444'},
-          'Permissions': {'bg': 'rgba(239, 68, 68, 0.12)', 'fg': '#ef4444'},
-          'Admin Field Permissions': {'bg': 'rgba(234, 179, 8, 0.12)', 'fg': '#eab308'},
-          'Refresh Tokens': {'bg': 'rgba(168, 85, 247, 0.12)', 'fg': '#a855f7'},
-          '2FA Tokens': {'bg': 'rgba(20, 184, 166, 0.12)', 'fg': '#14b8a6'},
-          'Login Attempts': {'bg': 'rgba(249, 115, 22, 0.12)', 'fg': '#f97316'}
+          'Categories': 'bg-teal-500/10 text-teal-500',
+          'Products': 'bg-violet-500/10 text-violet-500',
+          'Users': 'bg-blue-500/10 text-blue-500',
+          'Orders': 'bg-orange-500/10 text-orange-500',
+          'Order Items': 'bg-emerald-500/10 text-emerald-500',
+          'Admin Audit Logs': 'bg-cyan-500/10 text-cyan-500',
+          'Audit Logs': 'bg-cyan-500/10 text-cyan-500',
+          'Admin Roles': 'bg-pink-500/10 text-pink-500',
+          'Roles': 'bg-pink-500/10 text-pink-500',
+          'Admin Users': 'bg-indigo-500/10 text-indigo-500',
+          'Admin Permissions': 'bg-red-500/10 text-red-500',
+          'Permissions': 'bg-red-500/10 text-red-500',
+          'Admin Field Permissions': 'bg-yellow-500/10 text-yellow-500',
+          'Refresh Tokens': 'bg-purple-500/10 text-purple-500',
+          '2FA Tokens': 'bg-teal-500/10 text-teal-500',
+          'Login Attempts': 'bg-orange-500/10 text-orange-500'
         } %}
         {% if recent_activity_models %}
         {% for registered in recent_activity_models %}
-        {% set _ac = _action_colors[registered.verbose_name_plural] | default({'bg': 'var(--primary-50)', 'fg': 'var(--primary-600)'}) %}
-        <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/" class="quick-action-item">
-          <div class="action-icon" style="background: {{ _ac.bg }};">
+        {% set _ac = _action_colors[registered.verbose_name_plural] | default('bg-emerald-500/10 text-emerald-600') %}
+        <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/" class="flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 no-underline transition hover:border-emerald-200 hover:bg-emerald-50 dark:hover:border-emerald-500/20 dark:hover:bg-emerald-500/5">
+          <div class="flex size-[34px] shrink-0 items-center justify-center overflow-hidden rounded-lg {{ _ac }}">
             {{ icon(registered.admin.icon | default('cube'), size="18px") }}
           </div>
-          <div class="action-text">
-            <div class="action-title">{{ registered.verbose_name_plural }}</div>
-            <div class="action-desc">Manage {{ registered.verbose_name | lower }}</div>
+          <div class="min-w-0 flex-1">
+            <div class="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{{ registered.verbose_name_plural }}</div>
+            <div class="mt-px truncate text-xs text-slate-400 dark:text-slate-500">Manage {{ registered.verbose_name | lower }}</div>
           </div>
-          {{ icon('chevron-right', size="18px", class="action-chevron") }}
+          {{ icon('chevron-right', size="18px", class="shrink-0 text-slate-400 dark:text-slate-500") }}
         </a>
         {% endfor %}
         {% else %}
@@ -181,30 +179,30 @@
         {% for registered in registered_models %}
         {% if ns.count < 5 and registered.admin.tag | default('') == 'admin' %}
         {% set ns.count = ns.count + 1 %}
-        {% set _ac = _action_colors[registered.verbose_name_plural] | default({'bg': 'var(--primary-50)', 'fg': 'var(--primary-600)'}) %}
-        <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/" class="quick-action-item">
-          <div class="action-icon" style="background: {{ _ac.bg }};">
+        {% set _ac = _action_colors[registered.verbose_name_plural] | default('bg-emerald-500/10 text-emerald-600') %}
+        <a href="{{ admin_path | default('/admin') }}/{{ registered.table_name }}/" class="flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 no-underline transition hover:border-emerald-200 hover:bg-emerald-50 dark:hover:border-emerald-500/20 dark:hover:bg-emerald-500/5">
+          <div class="flex size-[34px] shrink-0 items-center justify-center overflow-hidden rounded-lg {{ _ac }}">
             {{ icon(registered.admin.icon | default('cube'), size="18px") }}
           </div>
-          <div class="action-text">
-            <div class="action-title">{{ registered.verbose_name_plural }}</div>
-            <div class="action-desc">Manage {{ registered.verbose_name | lower }}</div>
+          <div class="min-w-0 flex-1">
+            <div class="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{{ registered.verbose_name_plural }}</div>
+            <div class="mt-px truncate text-xs text-slate-400 dark:text-slate-500">Manage {{ registered.verbose_name | lower }}</div>
           </div>
-          {{ icon('chevron-right', size="18px", class="action-chevron") }}
+          {{ icon('chevron-right', size="18px", class="shrink-0 text-slate-400 dark:text-slate-500") }}
         </a>
         {% endif %}
         {% endfor %}
         {% endif %}
         {# Extra: System Logs link #}
-        <a href="{{ admin_path | default('/admin') }}/audit-log/" class="quick-action-item">
-          <div class="action-icon" style="background: rgba(6, 182, 212, 0.12);">
+        <a href="{{ admin_path | default('/admin') }}/audit-log/" class="flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 no-underline transition hover:border-emerald-200 hover:bg-emerald-50 dark:hover:border-emerald-500/20 dark:hover:bg-emerald-500/5">
+          <div class="flex size-[34px] shrink-0 items-center justify-center overflow-hidden rounded-lg bg-cyan-500/10 text-cyan-500">
             {{ icon('document-text', size="18px") }}
           </div>
-          <div class="action-text">
-            <div class="action-title">System Logs</div>
-            <div class="action-desc">View system audit logs</div>
+          <div class="min-w-0 flex-1">
+            <div class="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">System Logs</div>
+            <div class="mt-px truncate text-xs text-slate-400 dark:text-slate-500">View system audit logs</div>
           </div>
-          {{ icon('chevron-right', size="18px", class="action-chevron") }}
+          {{ icon('chevron-right', size="18px", class="shrink-0 text-slate-400 dark:text-slate-500") }}
         </a>
       </div>
     </div>
@@ -212,33 +210,33 @@
 
   {# ─── Charts ─── #}
   {% if overview_data and show_charts %}
-  <h2 style="font-family: var(--font-display); font-size: var(--text-md); font-weight: 700; color: var(--text-primary); margin: 0;">Charts</h2>
-  <div class="system-overview-card">
-    <div class="overview-header">
-      <div class="overview-header-icon">
+  <h2 class="font-display text-base font-bold text-slate-900 dark:text-white">Charts</h2>
+  <div class="flex flex-col gap-5 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+    <div class="flex items-center gap-2.5">
+      <div class="flex size-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
         {{ icon('chart-bar') }}
       </div>
-      <span class="overview-title">System Overview</span>
+      <span class="font-display text-base font-bold text-slate-900 dark:text-white">System Overview</span>
     </div>
-    <div class="overview-body">
-      <div class="overview-chart">
+    <div class="flex flex-col gap-7 sm:flex-row sm:items-center">
+      <div class="h-40 w-40 shrink-0">
         <canvas id="overviewDonut"></canvas>
       </div>
-      <div class="overview-legend">
+      <div class="flex flex-1 flex-col gap-2.5">
         {% for item in overview_data %}
         {% if item.value > 0 %}
-        <div class="overview-legend-item">
-          <span class="overview-legend-label">
-            <span class="overview-legend-dot" style="background: {{ item.color }};"></span>
+        <div class="flex items-center justify-between gap-2.5">
+          <span class="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+            <span class="size-2.5 shrink-0 rounded-full" style="background: {{ item.color }};"></span>
             {{ item.label }}
           </span>
-          <span class="overview-legend-value">{{ item.value }}</span>
+          <span class="font-mono text-sm font-semibold text-slate-900 dark:text-white">{{ item.value }}</span>
         </div>
         {% endif %}
         {% endfor %}
-        <div class="overview-total">
+        <div class="flex items-center justify-between border-t border-slate-200 pt-2.5 text-sm font-semibold text-slate-900 dark:border-slate-800 dark:text-white">
           <span>Total</span>
-          <span class="overview-legend-value">{{ overview_total }}</span>
+          <span class="font-mono">{{ overview_total }}</span>
         </div>
       </div>
     </div>
@@ -282,36 +280,11 @@ document.addEventListener('DOMContentLoaded', function() {
           borderWidth: 1,
           cornerRadius: 8,
           padding: 10,
-          bodyFont: { family: "'DM Sans', sans-serif" }
+          bodyFont: { family: "'Inter', sans-serif" }
         }
       }
     }
   });
 });
 </script>
-
-<style>
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
-
-  @media (max-width: 1280px) {
-    .stat-cards {
-      grid-template-columns: repeat(3, 1fr) !important;
-    }
-  }
-
-  @media (max-width: 1024px) {
-    .stat-cards {
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)) !important;
-    }
-  }
-
-  @media (max-width: 768px) {
-    .stat-cards {
-      grid-template-columns: repeat(2, 1fr) !important;
-    }
-  }
-</style>
 {% endblock %}

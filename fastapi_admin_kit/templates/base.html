@@ -16,13 +16,12 @@
   {% if theme_font_import_url | default('') %}
   <link href="{{ theme_font_import_url }}" rel="stylesheet">
   {% else %}
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   {% endif %}
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&display=block" rel="stylesheet">
 
-  <link rel="stylesheet" href="/static/css/tokens.css?v={{ static_version }}">
-  <link rel="stylesheet" href="/static/css/presets.css?v={{ static_version }}">
-  <link rel="stylesheet" href="/static/css/admin.css?v={{ static_version }}">
+  {# Tailwind v4 compiled bundle — source: fastapi_admin_kit/static/css/style.css, build: npm run build:css #}
+  <link rel="stylesheet" href="/static/css/dist/tailwind.css?v={{ static_version }}">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
 

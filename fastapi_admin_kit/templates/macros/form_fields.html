@@ -38,6 +38,8 @@
   {% elif m == "tag_input"       %}{{ _tag_input(field_ctx) }}
   {% elif m == "relation_picker" %}{{ _relation_picker(field_ctx) }}
   {% elif m == "multi_relation"  %}{{ _multi_relation(field_ctx) }}
+  {% elif m == "wysiwyg"         %}{{ _wysiwyg(field_ctx) }}
+  {% elif m == "array_input"     %}{{ _array_input(field_ctx) }}
   {% else %}                        {{ _text_input(field_ctx, model_name) }}
   {% endif %}
 {% endmacro %}
@@ -50,9 +52,12 @@
 {% set full_width = field_ctx.meta.extra.get('full_width', false) %}
 <div class="field-wrapper{% if full_width %} field-wrapper--full{% endif %}{% if has_error %} has-error{% endif %}"
      id="field-wrapper-{{ name }}">
+  {{ _label(field_ctx) }}
+  <div class="field-wrapper__body">
 {% endmacro %}
 
 {% macro _field_wrapper_close() %}
+  </div>
 </div>
 {% endmacro %}
 
@@ -99,7 +104,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set suggestions = field_ctx.widget_context.suggestions | default([]) %}
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <div x-data='autocompleteField({{ suggestions | tojson }}, {{ val | tojson }})'
        @click.outside="open = false" style="position: relative;">
     <div style="position: relative; display: flex; align-items: center;">
@@ -147,7 +151,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set val = field_ctx.widget_context.value | default('') %}
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <input type="text" id="{{ name }}" name="{{ name }}"
          value="{{ val }}"
          {% if field_ctx.meta.required %}required{% endif %}
@@ -169,7 +172,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set rows = field_ctx.widget_context.rows | default(5) %}
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <textarea id="{{ name }}" name="{{ name }}" rows="{{ rows }}"
             {% if field_ctx.meta.required %}required{% endif %}
             {% if field_ctx.meta.readonly %}readonly{% endif %}
@@ -191,7 +193,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set max = field_ctx.widget_context.max %}
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <input type="number" id="{{ name }}" name="{{ name }}"
          value="{{ val }}"
          step="{{ step }}"
@@ -213,7 +214,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set name = field_ctx.meta.name %}
 {% set val = field_ctx.widget_context.value %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <div x-data="{ on: {{ 'true' if val else 'false' }} }"
        class="toggle-switch cursor-pointer"
        :class="on ? 'active' : ''"
@@ -238,7 +238,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set choices = field_ctx.widget_context.choices | default([]) %}
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <select id="{{ name }}" name="{{ name }}"
           {% if field_ctx.meta.required %}required{% endif %}
           {% if field_ctx.meta.readonly %}disabled{% endif %}
@@ -261,7 +260,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set val = field_ctx.widget_context.value | default('') %}
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <input type="date" id="{{ name }}" name="{{ name }}"
          value="{{ val }}"
          {% if field_ctx.meta.required %}required{% endif %}
@@ -280,7 +278,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set val = field_ctx.widget_context.value | default('') %}
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <input type="datetime-local" id="{{ name }}" name="{{ name }}"
          value="{{ val }}"
          {% if field_ctx.meta.required %}required{% endif %}
@@ -299,7 +296,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set val = field_ctx.widget_context.value | default('') %}
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <input type="time" id="{{ name }}" name="{{ name }}"
          value="{{ val }}"
          {% if field_ctx.meta.required %}required{% endif %}
@@ -318,7 +314,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set val = field_ctx.widget_context.value | default('') %}
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <div id="json-editor-{{ name }}" x-data="jsonEditor('field-{{ name }}')" class="json-editor-wrapper">
     <div x-ref="editorContainer" style="min-height: 200px;"></div>
     <textarea id="field-{{ name }}" name="{{ name }}" class="sr-only">{{ val }}</textarea>
@@ -336,7 +331,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set obj_id = field_ctx.widget_context.obj_id | default('') %}
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   {% if is_create %}
   <input type="password" id="{{ name }}" name="{{ name }}" value=""
          {% if field_ctx.meta.required %}required{% endif %}
@@ -365,7 +359,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set val = field_ctx.widget_context.value | default('') %}
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <input type="email" id="{{ name }}" name="{{ name }}"
          value="{{ val }}"
          {% if field_ctx.meta.required %}required{% endif %}
@@ -385,7 +378,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set val = field_ctx.widget_context.value | default('') %}
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <input type="url" id="{{ name }}" name="{{ name }}"
          value="{{ val }}"
          {% if field_ctx.meta.required %}required{% endif %}
@@ -405,7 +397,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set val = field_ctx.widget_context.value | default('') %}
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <input type="tel" id="{{ name }}" name="{{ name }}"
          value="{{ val }}"
          {% if field_ctx.meta.required %}required{% endif %}
@@ -424,7 +415,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set name = field_ctx.meta.name %}
 {% set val = field_ctx.widget_context.value | default('#000000') %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <div class="flex items-center gap-3">
     <input type="color" id="{{ name }}" name="{{ name }}"
            value="{{ val }}"
@@ -449,7 +439,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set source = field_ctx.widget_context.source_field | default('title') %}
 {% set has_error = field_ctx.errors | length > 0 %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <div class="flex items-center gap-2" x-data='slugWidget({{ source | tojson }}, {{ name | tojson }})'>
     <input type="text" id="{{ name }}" name="{{ name }}"
            :value="slug"
@@ -476,7 +465,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set name = field_ctx.meta.name %}
 {% set val = field_ctx.widget_context.value | default('-') %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <div class="form-input" style="cursor: default; background: var(--surface-inset);">
     {{ val }}
   </div>
@@ -498,7 +486,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set name = field_ctx.meta.name %}
 {% set val = field_ctx.widget_context.value | default('') %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <div x-data='imageUpload({{ val | file_url | tojson }})'>
     <input type="hidden" name="{{ name }}_action" :value="action">
     <input type="file" id="{{ name }}" name="{{ name }}" accept="image/*"
@@ -532,7 +519,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set name = field_ctx.meta.name %}
 {% set val = field_ctx.widget_context.value | default('') %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <div x-data='fileUpload({{ val | file_url | tojson }})'>
     <input type="hidden" name="{{ name }}_action" :value="action">
     <input type="file" id="{{ name }}" name="{{ name }}"
@@ -563,7 +549,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set name = field_ctx.meta.name %}
 {% set tags = field_ctx.widget_context.value | default('[]') %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <div x-data="tagInput({{ tags }})">
     <input type="hidden" name="{{ name }}" :value="JSON.stringify(tags)">
     <div class="flex flex-wrap gap-2" style="margin-bottom: 8px;">
@@ -592,7 +577,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set label_text = field_ctx.widget_context.label_text | default('') %}
 {% set related_table = field_ctx.widget_context.related_table | default('') %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <div x-data='relationPicker({{ val | tojson }}, {{ label_text | tojson }}, {{ (admin_path ~ "/" ~ related_table ~ "/search") | tojson }})'>
     <input type="hidden" name="{{ name }}" :value="selectedId">
     <div class="relation-picker">
@@ -627,7 +611,6 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
 {% set search_url = field_ctx.widget_context.search_url | default('') %}
 {% set url = search_url if search_url else (admin_path + '/' + related_table + '/search') %}
 {{ _field_wrapper_open(field_ctx) }}
-  {{ _label(field_ctx) }}
   <div x-data='multiRelation({{ val | tojson }}, {{ url | tojson }}, [])'>
     <input type="hidden" name="{{ name }}" x-effect="$el.value = JSON.stringify(selectedIds)">
     <div class="flex flex-wrap gap-2" style="margin-bottom: 8px;">
@@ -652,6 +635,95 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
         </template>
       </div>
     </div>
+  </div>
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── WYSIWYG Editor ───────────────────────────────────────────────────── #}
+
+{% macro _wysiwyg(field_ctx) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default('') %}
+{% set height = field_ctx.widget_context.height | default(200) %}
+{{ _field_wrapper_open(field_ctx) }}
+  <div class="relative w-full" style="margin-top: 4px;">
+    <textarea id="{{ name }}" name="{{ name }}"
+              {% if field_ctx.meta.required %}required{% endif %}
+              {% if field_ctx.meta.readonly %}readonly{% endif %}
+              class="sr-only" style="display: none;">{{ val }}</textarea>
+    <div id="quill-{{ name }}" style="min-height: {{ height }}px; background: var(--surface-base); border-radius: var(--radius-md); border-color: var(--surface-border);"></div>
+  </div>
+  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+  <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        if (typeof Quill === 'undefined') return;
+        var quill = new Quill('#quill-{{ name }}', {
+            theme: 'snow',
+            modules: {
+                toolbar: [
+                    [{ 'header': [1, 2, 3, false] }],
+                    ['bold', 'italic', 'underline', 'strike'],
+                    ['blockquote', 'code-block'],
+                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                    [{ 'script': 'sub'}, { 'script': 'super' }],
+                    [{ 'color': [] }, { 'background': [] }],
+                    ['link', 'image', 'video'],
+                    ['clean']
+                ]
+            }
+        });
+
+        var textarea = document.getElementById('{{ name }}');
+        if (textarea.value) {
+            quill.root.innerHTML = textarea.value;
+        }
+
+        quill.on('text-change', function() {
+            textarea.value = quill.root.innerHTML;
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            textarea.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    });
+  </script>
+  {{ _errors(field_ctx) }}
+  {{ _help_text(field_ctx) }}
+{{ _field_wrapper_close() }}
+{% endmacro %}
+
+{# ─── Array Input ──────────────────────────────────────────────────────── #}
+
+{% macro _array_input(field_ctx) %}
+{% set name = field_ctx.meta.name %}
+{% set val = field_ctx.widget_context.value | default([]) %}
+{% set min_items = field_ctx.widget_context.min_items | default(0) %}
+{% set max_items = field_ctx.widget_context.max_items %}
+{{ _field_wrapper_open(field_ctx) }}
+  <div x-data="{ items: {{ val | tojson }}, newItem: '' }">
+    <div class="flex flex-col gap-2" style="margin-bottom: 8px;">
+      <template x-for="(item, index) in items" :key="index">
+        <div class="flex items-center gap-2">
+          <input type="text" x-model="items[index]" class="form-input" style="flex: 1;"
+                 {% if field_ctx.meta.readonly %}readonly{% endif %}>
+          {% if not field_ctx.meta.readonly %}
+          <button type="button" @click="items.splice(index, 1)" class="btn btn-ghost btn-sm" style="color: var(--danger-500); padding: 0 8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+          {% endif %}
+        </div>
+      </template>
+    </div>
+    {% if not field_ctx.meta.readonly %}
+    <div class="flex items-center gap-2" x-show="!{{ max_items | default('null', true) }} || items.length < {{ max_items | default('null', true) }}">
+      <input type="text" x-model="newItem" @keydown.enter.prevent="if(newItem) { items.push(newItem); newItem=''; }" class="form-input" placeholder="Add item..." style="flex: 1;">
+      <button type="button" @click="if(newItem) { items.push(newItem); newItem=''; }" class="btn btn-secondary btn-sm">Add</button>
+    </div>
+    {% endif %}
+    <input type="hidden" name="{{ name }}" :value="JSON.stringify(items)">
   </div>
   {{ _errors(field_ctx) }}
   {{ _help_text(field_ctx) }}
