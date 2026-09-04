@@ -328,7 +328,6 @@ class ProductAdmin(ModelAdmin):
         "price",
         "stock",
         "is_active",
-        "tags",
     ]
     readonly_fields = ["created_at", "updated_at"]
     verbose_name = "Product"
@@ -357,11 +356,6 @@ class ProductAdmin(ModelAdmin):
     # Sortable
     ordering_field = "sort_order"
 
-    # Conditional fields — show tags only when is_active is true
-    conditional_fields = {
-        "tags": {"show_when": "is_active", "values": ["1", "on", "true"]},
-    }
-
     # Form UX
     warn_unsaved_form = True
     compressed_fields = True
@@ -385,7 +379,7 @@ class ProductAdmin(ModelAdmin):
     # Custom widgets
     formfield_overrides = {
         "description": WysiwygWidget(),
-        "tags": ArrayWidget(),
+        # "tags": ArrayWidget(),
     }
 
     @action(
