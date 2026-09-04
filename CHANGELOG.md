@@ -5,123 +5,79 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.1] - 2026-09-03
 
-### Added
-- Robust Django-style filtering system
-  ([#52](https://github.com/borhanst/fastapi-admin-kit/issues/52)):
-  - New lookup types for the JSON API and admin UI list views:
-    `icontains`, `startswith`, `endswith`, `gt`, `gte`, `lt`, `lte`,
-    `range`, and `in` — in addition to exact matches.
-  - New `ChoiceFilter` for relation/FK fields (auto-detected in
-    `FilterRegistry.auto_generate()`), plus `IntegerFilter` with full
-    numeric lookups.
-  - Admin UI now renders text-input filters (case-insensitive contains)
-    and min/max inputs for numeric fields.
-  - Filters are ORM-agnostic: `QueryBackend` gained an `and_` combinator
-    and the in-memory backend now handles `%`-anchored `ilike` patterns.
-- `Admin.setup()` now logs a non-blocking preflight warning naming any missing
-  `admin_ai_*` tables (with the command to fix them) when `ai_enabled=True`
-  but the schema is absent (Alembic / `SKIP_CREATE_TABLES=true` mode).
-- `fastapi_admin_kit.schemas.builtin.AI_TABLE_NAMES` and
-  `INTERNAL_TABLE_NAMES` constants for gating/identification.
-- `AdminRegistry.auto_discover(exclude_tables=...)` accepts a set of table
-  names to skip during discovery.
+- Fix/model register: improved session management and error handling in role seeding process ([#57](https://github.com/borhanst/fastapi-admin-kit/pull/57))
+- Enhanced file URL handling and storage path management for uploads
+- Implemented snapshot and restore mechanism for custom auth_model adaptations in SQLAlchemy backend
+- Updated file path handling in LocalStorageBackend to include leading slash and improve URL generation
+- Updated image source binding in file input preview
+- Implemented file handling improvements and added has_file_field support
+- Renamed 'hashed_password' to 'password' in user model for consistency
+- Added fixture to restore built-in mapper state for auth_model validation tests
+- Enhanced SelectWidget to support enum classes for better value handling
+- Enhanced user model resolution and query backend handling in notifications
+- Enhanced user representation in admin templates and CLI output
+- Implemented custom auth_model support and adapt built-in user relations
 
-### Changed
-- **AI is now gated behind `ai_enabled` (default `False`).** When AI is
-  disabled, the `admin_ai_*` tables are not created, and the AI models, nav
-  group, and routes are not registered in the admin UI or the JSON API.
-  Notifications, auth, roles, audit, and login-attempt models are unaffected.
-- Internal tables (`admin_refresh_tokens`, `admin_user_permissions`,
-  `admin_user_totp`, `admin_ai_attachments`) are no longer exposed over the
-  JSON API (previously a latent security hole). They remain hidden from the
-  sidebar.
+## [0.5.0] - 2026-09-01
+
+- feat: add per-model endpoint export control (export_endpoint) + standalone export routes ([#48](https://github.com/borhanst/fastapi-admin-kit/pull/48))
+- create security md file ([#51](https://github.com/borhanst/fastapi-admin-kit/pull/51))
+- feat: add @endpoint decorator for custom ModelAdmin FastAPI routes ([#53](https://github.com/borhanst/fastapi-admin-kit/pull/53))
+- feat: Django-style filtering system (#52) ([#54](https://github.com/borhanst/fastapi-admin-kit/pull/54))
+- Feat/security ([#56](https://github.com/borhanst/fastapi-admin-kit/pull/56))
+
+## [0.4.0] - 2026-08-17
+
+- fix: update model references to use new migration path and add migration ([#40](https://github.com/borhanst/fastapi-admin-kit/pull/40))
+- update readme file ([#41](https://github.com/borhanst/fastapi-admin-kit/pull/41))
+- Feat/ai agent ([#42](https://github.com/borhanst/fastapi-admin-kit/pull/42))
+- update release workflow ([#43](https://github.com/borhanst/fastapi-admin-kit/pull/43))
 
 ## [0.3.2] - 2026-07-31
 
-### Changed
-- Added Alembic database migrations so schema changes can be versioned and
-  applied incrementally instead of relying solely on auto-create
-  ([#39](https://github.com/borhanst/fastapi-admin-kit/pull/39)).
+- Alembic migration ([#39](https://github.com/borhanst/fastapi-admin-kit/pull/39))
 
 ## [0.3.1] - 2026-07-29
 
-### Added
-- CSV export and import support for models, enabling bulk data download and
-  upload from the admin UI
-  ([#38](https://github.com/borhanst/fastapi-admin-kit/pull/38)).
+- Feat/export import ([#38](https://github.com/borhanst/fastapi-admin-kit/pull/38))
 
 ## [0.3.0] - 2026-07-28
 
-### Added
-- Per-model permission updates and refinements to the RBAC model
-  ([#20](https://github.com/borhanst/fastapi-admin-kit/pull/20)).
-- Inline formset support for `ModelAdmin`, allowing related records to be
-  edited on the same page
-  ([#21](https://github.com/borhanst/fastapi-admin-kit/pull/21)).
-- Adapter registration wired directly into `Admin`
-  ([#35](https://github.com/borhanst/fastapi-admin-kit/pull/35)).
-- Schema-first + protocol hybrid approach for built-in admin models
-  ([#34](https://github.com/borhanst/fastapi-admin-kit/pull/34)).
-
-### Changed
-- Decoupled `DefaultQueryProvider`, `search_utils`, and the `Filter` classes
-  from SQLAlchemy, improving backend portability
-  ([#33](https://github.com/borhanst/fastapi-admin-kit/pull/33)).
-
-### Fixed
-- Assorted bug fixes and stability improvements
-  ([#36](https://github.com/borhanst/fastapi-admin-kit/pull/36)).
+- Feat/permission update ([#20](https://github.com/borhanst/fastapi-admin-kit/pull/20))
+- feat: add inline formset support to model admin ([#21](https://github.com/borhanst/fastapi-admin-kit/pull/21))
+- refactor: decouple DefaultQueryProvider, search_utils, and Filter classes from SQLAlchemy ([#33](https://github.com/borhanst/fastapi-admin-kit/pull/33))
+- feat: wire adapter registration into Admin (#31) ([#35](https://github.com/borhanst/fastapi-admin-kit/pull/35))
+- feat: schema-first + protocol hybrid approach for built-in admin models (#32) ([#34](https://github.com/borhanst/fastapi-admin-kit/pull/34))
+- Fix issues ([#36](https://github.com/borhanst/fastapi-admin-kit/pull/36))
+- chore: update version to 0.3.0 ([#37](https://github.com/borhanst/fastapi-admin-kit/pull/37))
 
 ## [0.2.1] - 2026-07-21
 
-### Fixed
-- Corrected a user-permission model bug and adjusted how permissions are
-  stored and evaluated
-  ([#19](https://github.com/borhanst/fastapi-admin-kit/pull/19)).
+- Fix bug and change user permission model ([#19](https://github.com/borhanst/fastapi-admin-kit/pull/19))
 
 ## [0.2.0] - 2026-07-13
 
-### Added
-- Authentication subsystem with session-based login, logout, and protected
-  routes ([#14](https://github.com/borhanst/fastapi-admin-kit/pull/14)).
-
-### Fixed
-- Resolved a documentation build failure
-  ([#15](https://github.com/borhanst/fastapi-admin-kit/pull/15)).
+- Feat/authentication ([#14](https://github.com/borhanst/fastapi-admin-kit/pull/14))
+- fix docs buil issue ([#15](https://github.com/borhanst/fastapi-admin-kit/pull/15))
 
 ## [0.1.2] - 2026-07-09
 
-### Added
-- CLI commands for project scaffolding and user management
-  ([#10](https://github.com/borhanst/fastapi-admin-kit/pull/10)).
-
-### Fixed
-- Added support for UUID primary keys on models
-  ([#12](https://github.com/borhanst/fastapi-admin-kit/pull/12)).
+- feat: implement CLI commands for project scaffolding and user management ([#10](https://github.com/borhanst/fastapi-admin-kit/pull/10))
+- fix: update version to 0.1.1 ([#11](https://github.com/borhanst/fastapi-admin-kit/pull/11))
+- Fix/UUID pk support ([#12](https://github.com/borhanst/fastapi-admin-kit/pull/12))
+- fix: update version to 0.1.2 ([#13](https://github.com/borhanst/fastapi-admin-kit/pull/13))
 
 ## [0.1.1] - 2026-07-09
 
-### Added
-- Database configuration and connection handling
-  ([#1](https://github.com/borhanst/fastapi-admin-kit/pull/1)).
-- Inline editing — edit records directly from the list view
-  ([#9](https://github.com/borhanst/fastapi-admin-kit/pull/9)).
-
-### Changed
-- Renamed the CLI from `fastapi-admin-kit` to `fak-admin`
-  ([#3](https://github.com/borhanst/fastapi-admin-kit/pull/3)).
-
-### Fixed
-- Use `StrEnum` for `DatabaseType` for safer, string-compatible enums
-  ([#4](https://github.com/borhanst/fastapi-admin-kit/pull/4)).
-- Updated emoji configuration in the markdown extensions
-  ([#5](https://github.com/borhanst/fastapi-admin-kit/pull/5)).
+- Db config ([#1](https://github.com/borhanst/fastapi-admin-kit/pull/1))
+- fix: use StrEnum for DatabaseType ([#4](https://github.com/borhanst/fastapi-admin-kit/pull/4))
+- feat: rename CLI from fastapi-admin-kit to fak-admin ([#3](https://github.com/borhanst/fastapi-admin-kit/pull/3))
+- fix: update emoji configuration in markdown extensions ([#5](https://github.com/borhanst/fastapi-admin-kit/pull/5))
+- Docs/update readme ([#8](https://github.com/borhanst/fastapi-admin-kit/pull/8))
+- feat: Inline Editing — Edit records directly from list view ([#9](https://github.com/borhanst/fastapi-admin-kit/pull/9))
 
 ## [0.1.0] - 2026-07-08
 
-### Added
-- Initial release of FastAPI Admin Kit: a drop-in admin panel for FastAPI +
-  SQLAlchemy + SQLModel applications with auto-discovery, RBAC, audit logging,
-  and a modern UI.
+_Generated from tag `v0.1.0` (no release notes)._
