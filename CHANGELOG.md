@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-09-03
+
+- feat: improve form rendering — WYSIWYG and array input widgets ([#59](https://github.com/borhanst/fastapi-admin-kit/pull/59))
+- refactor: integration of Tailwind CSS, restructured inline/list/dashboard templates
+- feat: enhanced CSRF validation and improved admin field checks for model registration
+- fix: search icon position, neutral list actions, Alpine filter quoting, collapsed sidebar scroll, bottom-link default icon
+- chore: update changelog for version 0.5.1 release ([#58](https://github.com/borhanst/fastapi-admin-kit/pull/58))
+
 ## [0.5.1] - 2026-09-03
 
 - Fix/model register: improved session management and error handling in role seeding process ([#57](https://github.com/borhanst/fastapi-admin-kit/pull/57))
