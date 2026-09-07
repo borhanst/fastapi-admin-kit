@@ -157,11 +157,6 @@
                 class="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900 px-1.5 font-mono text-[11px] font-semibold text-white dark:bg-white dark:text-slate-900"></span>
         </button>
         {% endif %}
-
-        <button type="button" class="inline-flex size-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200" title="Toggle column visibility" aria-label="Toggle column visibility"
-                @click="showColumnPicker = !showColumnPicker">
-          {{ icon("eye", size="20px") }}
-        </button>
       </div>
     </div>
 
@@ -364,7 +359,6 @@ function filterBar() {
     activeFilters: {{ active_filters | tojson }},
     draftFilters: {{ active_filters | tojson }},
     drawerOpen: false,
-    showColumnPicker: false,
     get activeCount() {
       return Object.keys(this.activeFilters).filter((k) => {
         const v = this.activeFilters[k];
