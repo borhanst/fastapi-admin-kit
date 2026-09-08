@@ -1267,6 +1267,8 @@ class Admin:
             "bolt": "bolt",
             "cog-": "settings",
             "cog-6-tooth": "settings",
+            "funnel": "filter_list",
+            "adjustments": "tune",
             "smart_toy": "smart_toy",
             "monitoring": "monitoring",
             "build": "build",
