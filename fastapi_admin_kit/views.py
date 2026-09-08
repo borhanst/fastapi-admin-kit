@@ -44,7 +44,9 @@ class ModelAdmin:
 
     def __str__(self, obj: Any) -> str:
         """How to display an object in dropdowns/links."""
-        return str(getattr(obj, "name", None) or getattr(obj, "title", None) or f"#{obj.id}")
+        from fastapi_admin_kit.inspection import get_display_label
+
+        return str(get_display_label(obj) or f"#{getattr(obj, 'id', '?')}")
 
 
 def create_list_view(registered: RegisteredModel) -> Any:

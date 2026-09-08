@@ -584,9 +584,10 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
              placeholder="Search {{ field_ctx.meta.label | lower }}..."
              class="form-input">
       <div x-show="open && results.length > 0" class="relation-picker-dropdown">
-        <template x-for="result in results" :key="result.id">
+        <template x-for="result in results" :key="result.value ?? result.id">
           <div @click="select(result)" class="relation-option">
-            <span x-text="result.label"></span>
+            <span x-text="result.label ?? result.name ?? result.value ?? result.id"></span>
+            <span style="font-size: var(--text-xs); color: var(--text-secondary); margin-left: 8px;" x-text="result.value ?? result.id"></span>
           </div>
         </template>
       </div>
@@ -614,9 +615,9 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
   <div x-data='multiRelation({{ val | tojson }}, {{ url | tojson }}, [])'>
     <input type="hidden" name="{{ name }}" x-effect="$el.value = JSON.stringify(selectedIds)">
     <div class="flex flex-wrap gap-2" style="margin-bottom: 8px;">
-      <template x-for="(item, index) in selectedItems" :key="item.id">
+      <template x-for="(item, index) in selectedItems" :key="item.value ?? item.id">
         <span class="tag-chip">
-          <span x-text="item.label"></span>
+          <span x-text="item.label ?? item.name ?? item.value ?? item.id"></span>
           <button type="button" @click="remove(index)" class="tag-chip__remove">
             {{ icon("x-mark", size="12px") }}
           </button>
@@ -625,12 +626,13 @@ hx-vals='{"field_name": "{{ field_ctx.meta.name }}"}'
     </div>
     <div class="relation-picker">
       <input type="text" x-model="searchQuery" @input="search()" @focus="open = true" @click.outside="open = false"
-             placeholder="Add {{ field_ctx.meta.label | lower }}..."
-             class="form-input">
+              placeholder="Add {{ field_ctx.meta.label | lower }}..."
+              class="form-input">
       <div x-show="open && results.length > 0" class="relation-picker-dropdown">
-        <template x-for="result in results" :key="result.id">
+        <template x-for="result in results" :key="result.value ?? result.id">
           <div @click="add(result)" class="relation-option">
-            <span x-text="result.label"></span>
+            <span x-text="result.label ?? result.name ?? result.value ?? result.id"></span>
+            <span style="font-size: var(--text-xs); color: var(--text-secondary); margin-left: 8px;" x-text="result.value ?? result.id"></span>
           </div>
         </template>
       </div>

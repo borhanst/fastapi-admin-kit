@@ -224,12 +224,15 @@ class ModelAdmin:
 
     # Object display
     def __str__(self, obj: Any) -> str:
-        """How to display an object in dropdowns/links."""
-        return str(
-            getattr(obj, "name", None)
-            or getattr(obj, "title", None)
-            or f"#{getattr(obj, 'id', '?')}"
-        )
+        """How to display an object in dropdowns/links.
+
+        Label resolution goes through the introspection backend
+        (custom ``__str__``, else ``name`` / ``title`` / ``email`` /
+        ``username``); falls back to ``#id``.
+        """
+        from fastapi_admin_kit.inspection import get_display_label
+
+        return str(get_display_label(obj) or f"#{getattr(obj, 'id', '?')}")
 
     def get_model(self) -> Any:
         return self.model

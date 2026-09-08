@@ -42,7 +42,7 @@ async def roles_search(
         result = select(Role).order_by(Role.name).limit(20)
 
     roles = await session.all(result)
-    return JSONResponse(content=[{"id": r.id, "label": r.name} for r in roles])
+    return JSONResponse(content=[{"id": r.id, "value": r.id, "label": r.name} for r in roles])
 
 
 # @router.get("/users", response_class=HTMLResponse)

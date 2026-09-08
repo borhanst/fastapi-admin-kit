@@ -34,7 +34,7 @@ async def tables_search(
     registry = request.app.state.admin_registry
     models = registry.all()
 
-    results = [{"id": m.table_name, "label": m.verbose_name} for m in models]
+    results = [{"id": m.table_name, "value": m.table_name, "label": m.verbose_name} for m in models]
 
     if q:
         q_lower = q.lower()
@@ -55,13 +55,21 @@ async def permissions_search(
     """Search existing permissions for the multi-select picker."""
     session = get_db_session(request)
 
+    def _perm_option(p: Permission) -> dict:
+        # Standard option shape: label/value (+ id/name/table_name for back-compat).
+        return {
+            "id": p.id,
+            "value": p.id,
+            "label": p.name,
+            "name": p.name,
+            "table_name": p.table_name,
+        }
+
     if ids:
         id_list = [int(i.strip()) for i in ids.split(",") if i.strip().isdigit()]
         if id_list:
             perms = await session.all(select(Permission).where(Permission.id.in_(id_list)))
-            return JSONResponse(
-                content=[{"id": p.id, "name": p.name, "table_name": p.table_name} for p in perms]
-            )
+            return JSONResponse(content=[_perm_option(p) for p in perms])
 
     query = select(Permission)
     if q:
@@ -70,9 +78,7 @@ async def permissions_search(
 
     perms = await session.all(query)
 
-    return JSONResponse(
-        content=[{"id": p.id, "name": p.name, "table_name": p.table_name} for p in perms]
-    )
+    return JSONResponse(content=[_perm_option(p) for p in perms])
 
 
 @router.get("/roles", response_class=HTMLResponse, include_in_schema=False)

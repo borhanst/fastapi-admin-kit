@@ -109,17 +109,47 @@ def is_required(col: ColumnMeta) -> bool:
     )
 
 
+def get_display_label(obj: Any, introspection: Any | None = None) -> str | None:
+    """Best-effort short label for *obj* via the introspection backend.
+
+    Delegates to ``IntrospectionBackend.get_display_label`` (SQLAlchemy by
+    default) so display logic lives behind the multi-ORM seam instead of
+    inline ``getattr`` chains. Returns None when no clean label exists —
+    callers apply their own final fallback (``#id``, ``ClassName:pk``).
+    """
+    adapter = introspection if introspection is not None else _inspector
+    try:
+        return adapter.get_display_label(obj)
+    except Exception:
+        return None
+
+
+def get_default_search_fields(model: type, introspection: Any | None = None) -> list[str]:
+    """Default ``search_fields`` for *model* via the introspection backend.
+
+    Falls back to ``["name", "title", "email"]`` when the backend cannot
+    determine fields (e.g. third-party backends predating this method),
+    preserving historical behaviour.
+    """
+    adapter = introspection if introspection is not None else _inspector
+    try:
+        fields = adapter.get_default_search_fields(model)
+    except Exception:
+        fields = []
+    return list(fields) if fields else ["name", "title", "email"]
+
+
 def model_display_name(obj: Any) -> str:
     """Return a human-readable label for an ORM object.
 
-    Uses the model's ``__str__`` if it has a custom implementation.
-    Falls back to ``name``, ``title``, or ``ClassName:pk``.
+    Resolved through the introspection backend (custom ``__str__``, else
+    ``name`` / ``title`` / ``email`` / ``username``), falling back to
+    ``ClassName:pk`` — so related objects always render as a short label,
+    never full row data.
     """
-    if type(obj).__str__ is not object.__str__:
-        return str(obj)
-    label = getattr(obj, "name", None) or getattr(obj, "title", None)
-    if label is not None:
-        return str(label)
+    label = get_display_label(obj)
+    if label:
+        return label
     pk = getattr(obj, "id", None)
     return f"{type(obj).__name__}:{pk}" if pk is not None else type(obj).__name__
 

@@ -16,10 +16,10 @@
           </tr>
         </thead>
         <tbody>
-          <template x-for="(perm, index) in selectedPerms" :key="perm.id">
+          <template x-for="(perm, index) in selectedPerms" :key="perm.value ?? perm.id">
             <tr style="border-bottom: 1px solid var(--surface-border);" onmouseover="this.style.background='var(--surface-inset)'" onmouseout="this.style.background=''">
               <td style="padding: 12px 16px;">
-                <span style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);" x-text="perm.name"></span>
+                <span style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);" x-text="perm.label ?? perm.name"></span>
               </td>
               <td style="padding: 12px 16px;">
                 <span style="font-size: 0.875rem; color: var(--text-secondary);" x-text="perm.table_name"></span>
@@ -52,11 +52,11 @@
            class="form-input" style="width: 100%;">
     <div x-show="open && results.length > 0" x-cloak
          style="position: absolute; z-index: 50; width: 100%; margin-top: 4px; background: var(--surface-raised); border: 1px solid var(--surface-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); max-height: 200px; overflow-y: auto;">
-      <template x-for="result in results" :key="result.id">
+      <template x-for="result in results" :key="result.value ?? result.id">
         <div @click="addPerm(result)"
              style="padding: 8px 12px; cursor: pointer; font-size: 0.875rem; color: var(--text-primary);"
              onmouseover="this.style.background='var(--surface-inset)'" onmouseout="this.style.background=''">
-          <span x-text="result.name"></span>
+          <span x-text="result.label ?? result.name"></span>
           <span style="font-size: 0.75rem; color: var(--text-secondary); margin-left: 8px;" x-text="result.table_name"></span>
         </div>
       </template>

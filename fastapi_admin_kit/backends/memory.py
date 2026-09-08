@@ -442,6 +442,46 @@ class MemoryIntrospectionAdapter:
         pk = _pk_field_name(model)
         return [pk] if pk else []
 
+    _DISPLAY_CANDIDATES: tuple[str, ...] = ("name", "title", "email", "username", "label")
+
+    def get_display_label(self, obj: Any) -> str | None:
+        """Short label for *obj* (custom ``__str__`` or display field)."""
+        if type(obj).__str__ is not object.__str__:
+            try:
+                text = str(obj)
+            except Exception:
+                text = ""
+            if text and "=" not in text:
+                return text
+        schema: Schema = getattr(type(obj), "__schema__", None)
+        available = {f.name for f in schema.fields} if schema is not None else None
+        for attr in self._DISPLAY_CANDIDATES:
+            if available is not None and attr not in available:
+                continue
+            try:
+                label = getattr(obj, attr, None)
+            except Exception:
+                label = None
+            if label is not None and str(label).strip():
+                return str(label)
+        return None
+
+    def get_default_search_fields(self, model: type) -> list[str]:
+        """Default ``search_fields`` for *model* (existing candidates first)."""
+        schema: Schema = getattr(model, "__schema__", None)
+        if schema is None:
+            return []
+        by_name = {f.name: f for f in schema.fields}
+        found = [a for a in self._DISPLAY_CANDIDATES if a in by_name]
+        if found:
+            return found
+        for f in schema.fields:
+            if any(
+                hint in str(f.type).lower() for hint in ("string", "str", "text", "char", "email")
+            ):
+                return [f.name]
+        return []
+
 
 # ---------------------------------------------------------------------------
 # Audit backend

@@ -228,9 +228,13 @@ def build_model_router(
         # Apply search/filter from query params
         q = request.query_params.get("q", "")
         if q:
+            from fastapi_admin_kit.inspection import get_default_search_fields
             from fastapi_admin_kit.search_utils import apply_search_filter
 
-            search_fields = getattr(admin, "search_fields", None) or ["name", "title"]
+            search_fields = getattr(admin, "search_fields", None) or get_default_search_fields(
+                registered.model,
+                getattr(request.app.state, "admin_introspection_adapter", None),
+            )
             base = apply_search_filter(base, registered.model, search_fields, q)
 
         # Execute query
@@ -857,11 +861,20 @@ def build_model_router(
         """Search-as-you-type endpoint for relation pickers."""
         from fastapi.responses import JSONResponse
 
+        from fastapi_admin_kit.inspection import (
+            get_default_search_fields,
+            model_display_name,
+        )
+
         session = get_db_session(request)
         model = registered.model
         results = []
 
-        search_fields = getattr(registered.admin, "search_fields", None) or ["name", "title"]
+        search_fields = getattr(
+            registered.admin, "search_fields", None
+        ) or get_default_search_fields(
+            model, getattr(request.app.state, "admin_introspection_adapter", None)
+        )
 
         from sqlalchemy import select
 
@@ -869,12 +882,10 @@ def build_model_router(
 
         query = apply_search_filter(request, select(model), model, search_fields, q).limit(20)
         for obj in await session.all(query):
-            label = str(
-                getattr(obj, "name", None)
-                or getattr(obj, "title", None)
-                or f"#{getattr(obj, 'id', '?')}"
-            )
-            results.append({"id": str(obj.id), "label": label})
+            # Label via the introspection backend — never full row data.
+            label = model_display_name(obj)
+            # Standard option shape: label/value (+ id for back-compat).
+            results.append({"id": str(obj.id), "value": str(obj.id), "label": label})
 
         return JSONResponse(content=results)
 

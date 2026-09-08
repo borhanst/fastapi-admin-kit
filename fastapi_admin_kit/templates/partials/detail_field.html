@@ -42,6 +42,23 @@
       </div>
     {% elif field.widget_macro == 'relation_picker' %}
       {{ field.widget_context.label_text | default(val) }}
+    {% elif field.widget_macro == 'multi_relation' %}
+      {% set _labels = field.widget_context.labels | default(none) %}
+      {% if _labels %}
+        {{ _labels | join(', ') }}
+      {% elif val is iterable and val is not string %}
+        <div class="flex flex-wrap gap-1">
+          {% for _v in val %}
+            {% if _v is mapping %}
+              <span class="tag-chip">{{ _v.label | default(_v.name | default(_v.value | default(_v.id))) }}</span>
+            {% else %}
+              <span class="tag-chip">{{ _v }}</span>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% else %}
+        {{ val }}
+      {% endif %}
     {% elif field.widget_macro == 'tag_input' %}
       {% set tags = val | default('[]') %}
       {% if tags is string %}

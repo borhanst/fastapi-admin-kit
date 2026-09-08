@@ -170,13 +170,11 @@ class ListContextBuilder:
                     else sa_inspect(target).primary_key[0]
                 )
                 q = select(target).order_by(order_col or pk).limit(100)
+            from fastapi_admin_kit.inspection import model_display_name
+
             for obj in await session.all(q):
-                label = str(
-                    getattr(obj, "name", None)
-                    or getattr(obj, "title", None)
-                    or f"#{getattr(obj, 'id', '?')}"
-                )
-                choices.append((str(obj.id), label))
+                # Label via the introspection backend.
+                choices.append((str(obj.id), model_display_name(obj)))
         except Exception:
             pass
         return choices

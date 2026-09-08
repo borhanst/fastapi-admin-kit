@@ -54,13 +54,13 @@
         </thead>
         <tbody>
           <template x-if="results.length > 0">
-            <template x-for="item in results" :key="item.id">
+            <template x-for="item in results" :key="item.value ?? item.id">
               <tr class="data-row">
-                <td class="col-cell" x-text="item.id"></td>
+                <td class="col-cell" x-text="item.value ?? item.id"></td>
                 <td class="col-cell">
-                  <a :href="adminPath + '/{{ registered.table_name }}/' + item.id"
+                  <a :href="adminPath + '/{{ registered.table_name }}/' + (item.value ?? item.id)"
                      class="text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)] transition-colors"
-                     x-text="item.label"></a>
+                     x-text="item.label ?? item.name ?? item.value ?? item.id"></a>
                 </td>
               </tr>
             </template>

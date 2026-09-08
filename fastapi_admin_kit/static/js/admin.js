@@ -69,6 +69,32 @@ document.addEventListener('alpine:init', () => {
     },
   });
 
+  /* ── Relation option helpers (label/value only, never full JSON) ─── */
+  function _normOption(raw) {
+    if (raw == null) return { id: '', value: '', label: '' };
+    if (typeof raw === 'string') return { id: raw, value: raw, label: raw };
+    const value = raw.value ?? raw.id ?? '';
+    const label = raw.label ?? raw.name ?? raw.title ?? String(value ?? '');
+    return { ...raw, id: value, value: value, label: label };
+  }
+
+  function _normList(data) {
+    if (!Array.isArray(data)) return [];
+    return data.map(_normOption);
+  }
+
+  function _optLabel(opt) {
+    if (opt == null) return '';
+    if (typeof opt === 'string') return opt;
+    return opt.label ?? opt.name ?? opt.title ?? String(opt.value ?? opt.id ?? '');
+  }
+
+  function _optValue(opt) {
+    if (opt == null) return '';
+    if (typeof opt === 'string') return opt;
+    return String(opt.value ?? opt.id ?? '');
+  }
+
   /* ── Relation Picker ─────────────────────────────────────────────── */
 
   Alpine.data('relationPicker', (initialId, initialLabel, searchUrl, fixed = false) => ({
@@ -132,7 +158,7 @@ document.addEventListener('alpine:init', () => {
         try {
           const resp = await fetch(`${searchUrl}?q=${encodeURIComponent(this.searchQuery)}`);
           if (resp.ok) {
-            this.results = await resp.json();
+            this.results = _normList(await resp.json());
             if (this.fixed) this._setPosition();
           }
         } catch (e) {
@@ -142,8 +168,9 @@ document.addEventListener('alpine:init', () => {
     },
 
     select(result) {
-      this.selectedId = result.id;
-      this.searchQuery = result.label;
+      const opt = _normOption(result);
+      this.selectedId = _optValue(opt);
+      this.searchQuery = _optLabel(opt);
       this.results = [];
       this.open = false;
     },
@@ -180,9 +207,9 @@ document.addEventListener('alpine:init', () => {
         try { this.selectedIds = JSON.parse(initialIds); } catch (e) { this.selectedIds = []; }
       }
       if (Array.isArray(initialItems)) {
-        this.selectedItems = initialItems;
+        this.selectedItems = _normList(initialItems);
       } else if (typeof initialItems === 'string' && initialItems) {
-        try { this.selectedItems = JSON.parse(initialItems); } catch (e) { this.selectedItems = []; }
+        try { this.selectedItems = _normList(JSON.parse(initialItems)); } catch (e) { this.selectedItems = []; }
       }
       if (this.selectedIds.length > 0 && this.selectedItems.length === 0) {
         this._loadSelected();
@@ -207,6 +234,9 @@ document.addEventListener('alpine:init', () => {
       return [];
     },
 
+    optLabel(opt) { return _optLabel(opt); },
+    optValue(opt) { return _optValue(opt); },
+
     async _loadSelected() {
       try {
         const ids = this._ensureArray(this.selectedIds);
@@ -216,7 +246,7 @@ document.addEventListener('alpine:init', () => {
         }
         const resp = await fetch(`${searchUrl}?ids=${ids.join(',')}`);
         if (resp.ok) {
-          this.selectedItems = await resp.json();
+          this.selectedItems = _normList(await resp.json());
         }
       } catch (e) {
         console.error('Multi-relation load error:', e);
@@ -231,10 +261,10 @@ document.addEventListener('alpine:init', () => {
           const url = q ? `${searchUrl}?q=${encodeURIComponent(q)}` : `${searchUrl}`;
           const resp = await fetch(url);
           if (resp.ok) {
-            const all = await resp.json();
+            const all = _normList(await resp.json());
             const ids = this._ensureArray(this.selectedIds);
             const idStrs = ids.map(String);
-            this.results = all.filter(r => !idStrs.includes(String(r.id)));
+            this.results = all.filter(r => !idStrs.includes(String(_optValue(r))));
           }
         } catch (e) {
           console.error('Multi-relation search error:', e);
@@ -243,11 +273,13 @@ document.addEventListener('alpine:init', () => {
     },
 
     add(result) {
+      const opt = _normOption(result);
+      const val = _optValue(opt);
       const ids = this._ensureArray(this.selectedIds);
       const idStrs = ids.map(String);
-      if (!idStrs.includes(String(result.id))) {
-        this.selectedIds.push(result.id);
-        this.selectedItems.push(result);
+      if (!idStrs.includes(String(val))) {
+        this.selectedIds.push(val);
+        this.selectedItems.push(opt);
       }
       this.searchQuery = '';
       this.results = [];
@@ -268,11 +300,19 @@ document.addEventListener('alpine:init', () => {
     open: false,
     _debounce: null,
 
+    optLabel(opt) { return opt.label ?? opt.name ?? _optLabel(opt); },
+
     init() {
       if (initialPermData && Array.isArray(initialPermData)) {
-        this.selectedPerms = initialPermData.map(p => ({
-          id: p.id, name: p.name, table_name: p.table_name
-        }));
+        this.selectedPerms = initialPermData.map(p => {
+          const o = _normOption(p);
+          return {
+            id: _optValue(o), value: _optValue(o),
+            label: p.label ?? p.name ?? _optLabel(o),
+            name: p.label ?? p.name ?? _optLabel(o),
+            table_name: p.table_name,
+          };
+        });
       }
     },
 
@@ -284,17 +324,23 @@ document.addEventListener('alpine:init', () => {
           const url = q ? `${searchUrl}?q=${encodeURIComponent(q)}` : searchUrl;
           const resp = await fetch(url);
           if (resp.ok) {
-            const all = await resp.json();
-            const selected = new Set(this.selectedPerms.map(p => p.id));
-            this.results = all.filter(r => !selected.has(r.id));
+            const all = _normList(await resp.json()).map(o => ({
+              ...o,
+              name: o.label ?? o.name,
+            }));
+            const selected = new Set(this.selectedPerms.map(p => String(p.id)));
+            this.results = all.filter(r => !selected.has(String(_optValue(r))));
           }
         } catch (e) { console.error('Permission search error:', e); }
       }, 250);
     },
 
     addPerm(perm) {
-      if (!this.selectedPerms.find(p => p.id === perm.id)) {
-        this.selectedPerms.push({ id: perm.id, name: perm.name, table_name: perm.table_name });
+      const o = _normOption(perm);
+      const val = _optValue(o);
+      const label = perm.label ?? perm.name ?? _optLabel(o);
+      if (!this.selectedPerms.find(p => String(p.id) === String(val))) {
+        this.selectedPerms.push({ id: val, value: val, label: label, name: label, table_name: perm.table_name });
       }
       this.searchQuery = '';
       this.results = [];
@@ -330,12 +376,18 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    optLabel(opt) { return opt.label ?? opt.name ?? _optLabel(opt); },
+    optValue(opt) { return _optValue(opt); },
+
     async _loadSelected() {
       try {
         const ids = this.selectedIds.join(',');
         const resp = await fetch(`${searchUrl}?ids=${ids}`);
         if (resp.ok) {
-          this.selectedItems = await resp.json();
+          this.selectedItems = _normList(await resp.json()).map(o => ({
+            ...o,
+            label: o.label ?? o.name ?? _optLabel(o),
+          }));
         }
       } catch (e) {
         console.error('Permission load error:', e);
@@ -350,9 +402,12 @@ document.addEventListener('alpine:init', () => {
           const url = q ? `${searchUrl}?q=${encodeURIComponent(q)}` : searchUrl;
           const resp = await fetch(url);
           if (resp.ok) {
-            const all = await resp.json();
+            const all = _normList(await resp.json()).map(o => ({
+              ...o,
+              label: o.label ?? o.name ?? _optLabel(o),
+            }));
             const idSet = new Set(this.selectedIds.map(String));
-            this.results = all.filter(r => !idSet.has(String(r.id)));
+            this.results = all.filter(r => !idSet.has(String(_optValue(r))));
           }
         } catch (e) {
           console.error('Permission search error:', e);
@@ -361,9 +416,11 @@ document.addEventListener('alpine:init', () => {
     },
 
     add(result) {
-      if (!this.selectedIds.includes(result.id)) {
-        this.selectedIds.push(result.id);
-        this.selectedItems.push(result);
+      const opt = _normOption(result);
+      const val = _optValue(opt);
+      if (!this.selectedIds.map(String).includes(String(val))) {
+        this.selectedIds.push(val);
+        this.selectedItems.push({ ...opt, label: opt.label ?? opt.name ?? _optLabel(opt) });
       }
       this.searchQuery = '';
       this.results = [];

@@ -347,6 +347,92 @@ class SqlAlchemyIntrospectionAdapter:
         mapper = sa_inspect(model)
         return list(mapper.primary_key)
 
+    # Display candidates in priority order. Only attributes that exist as
+    # real columns are considered, so proxies/deferred loaders on missing
+    # attributes are never triggered.
+    _DISPLAY_CANDIDATES: tuple[str, ...] = ("name", "title", "email", "username", "label")
+
+    def get_display_label(self, obj: Any) -> str | None:
+        """Short label for *obj* (custom ``__str__`` or display column)."""
+        if self._has_custom_str(obj):
+            try:
+                text = str(obj)
+            except Exception:
+                text = ""
+            # Guard against __str__ implementations that still dump fields
+            # (e.g. "id=1 name='x'"): prefer a clean column value instead.
+            if text and "=" not in text:
+                return text
+        try:
+            columns, _ = self.inspect_model(type(obj))
+            available = {c.name for c in columns}
+        except Exception:
+            # Not a mapped model (plain object, memory record, ...):
+            # fall back to a plain attribute probe.
+            available = None
+        for attr in self._DISPLAY_CANDIDATES:
+            if available is not None and attr not in available:
+                continue
+            try:
+                label = getattr(obj, attr, None)
+            except Exception:
+                label = None
+            if label is not None and str(label).strip():
+                return str(label)
+        if self._has_custom_str(obj):
+            try:
+                return str(obj)
+            except Exception:
+                return None
+        return None
+
+    def get_default_search_fields(self, model: type) -> list[str]:
+        """Default ``search_fields`` for *model* (existing candidates first)."""
+        try:
+            columns, _ = self.inspect_model(model)
+        except Exception:
+            return []
+        by_name = {c.name: c for c in columns}
+        found = [a for a in self._DISPLAY_CANDIDATES if a in by_name]
+        if found:
+            return found
+        for col in columns:
+            # ColumnMeta.type may be a type *class* (SQLModel-resolved) or
+            # an instance (plain SQLAlchemy) — handle both.
+            col_type = col.type
+            if col_type is None:
+                continue
+            type_name = (
+                col_type.__name__ if isinstance(col_type, type) else type(col_type).__name__
+            ).lower()
+            if any(hint in type_name for hint in ("string", "text", "char", "unicode")):
+                return [col.name]
+        return []
+
+    @staticmethod
+    def _has_custom_str(obj: Any) -> bool:
+        """True if the model defines a real custom ``__str__``.
+
+        Framework-default ``__str__`` implementations that dump every
+        field (SQLModel/Pydantic ``BaseModel.__str__``) are explicitly
+        ignored so they never leak full row data into labels.
+        """
+        str_fn = type(obj).__str__
+        if str_fn is object.__str__:
+            return False
+        owner = getattr(str_fn, "__objclass__", None)
+        if owner is None:
+            # Plain function defined on a class in the MRO — find it.
+            for klass in type(obj).__mro__:
+                if "__str__" in klass.__dict__:
+                    owner = klass
+                    break
+        if owner is not None:
+            module = getattr(owner, "__module__", "") or ""
+            if module.split(".")[0] in ("sqlmodel", "pydantic"):
+                return False
+        return True
+
     # -- internal helpers ---------------------------------------------------
 
     def _is_sqlmodel(self, model: type) -> bool:

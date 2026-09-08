@@ -133,12 +133,13 @@
                      :style="fixed ? dropdownStyle : ''"
                      :class="fixed ? '' : 'relation-picker-dropdown'"
                      style="background: var(--surface-overlay); border: 1px solid var(--surface-border); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); max-height: 200px; overflow-y: auto; min-width: 200px;">
-                  <template x-for="result in results" :key="result.id">
+                  <template x-for="result in results" :key="result.value ?? result.id">
                     <div @click="select(result)"
                          style="padding: 8px 12px; cursor: pointer; font-size: var(--text-sm); border-bottom: 1px solid var(--surface-border);"
                          @mouseenter="$el.style.background = 'var(--surface-hover)'"
                          @mouseleave="$el.style.background = 'transparent'">
-                      <span x-text="result.label"></span>
+                      <span x-text="result.label ?? result.name ?? result.value ?? result.id"></span>
+                      <span style="font-size: var(--text-xs); color: var(--text-secondary); margin-left: 8px;" x-text="result.value ?? result.id"></span>
                     </div>
                   </template>
                 </div>

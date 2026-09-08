@@ -104,12 +104,18 @@ def is_required(col: ColumnMeta) -> bool:
 def model_display_name(obj: Any) -> str:
     """Return a human-readable label for an ORM object.
 
-    Uses the model's ``__str__`` if it has a custom implementation.
-    Falls back to ``ClassName:pk`` when ``__str__`` is the default
-    ``object.__str__``.
+    Delegates to the introspection backend
+    (``IntrospectionBackend.get_display_label``) so display logic lives
+    behind the multi-ORM seam; falls back to ``ClassName:pk``.
     """
-    if type(obj).__str__ is not object.__str__:
-        return str(obj)
+    from fastapi_admin_kit.backends.sqlalchemy import SqlAlchemyIntrospectionAdapter
+
+    try:
+        label = SqlAlchemyIntrospectionAdapter().get_display_label(obj)
+    except Exception:
+        label = None
+    if label:
+        return label
     pk = getattr(obj, "id", None)
     return f"{type(obj).__name__}:{pk}" if pk is not None else type(obj).__name__
 
