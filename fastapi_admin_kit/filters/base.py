@@ -194,12 +194,21 @@ class ChoiceFilter(Filter):
         label: str = "",
         resolved_column: str | None = None,
         choices: list[str] | None = None,
+        relationship_name: str | None = None,
+        target_model: Any = None,
+        target_pk: str | None = None,
     ) -> None:
         super().__init__(field_name, label)
         self.resolved_column = resolved_column
         self._choices = list(choices or [])
+        self.relationship_name = relationship_name
+        self.target_model = target_model
+        self.target_pk = target_pk
 
     def apply(self, query_adapter: Any, query: Any, model: Any, value: Any) -> Any:
+        if self.relationship_name:
+            return self._apply_membership(query_adapter, model, value)
+
         col_name = self.resolved_column or self.field_name
         col = self._column(model, col_name)
         if col is None:
@@ -220,6 +229,33 @@ class ChoiceFilter(Filter):
         if value:
             return col == value
         return None
+
+    def _apply_membership(self, query_adapter: Any, model: Any, value: Any) -> Any:
+        """Filter by related-object membership (M2M / reverse ONETOMANY).
+
+        Builds ``model.rel.any(target.pk == value)``. Unsupported backends
+        (no ``.any()`` on the relationship) return None and skip the filter.
+        """
+        rel = self._column(model, self.relationship_name or self.field_name)
+        target_col = getattr(self.target_model, self.target_pk, None) if self.target_model else None
+        if rel is None or target_col is None:
+            return None
+        try:
+            conditions: list = []
+            if isinstance(value, dict):
+                exact = value.get("exact", "")
+                if exact:
+                    conditions.append(rel.any(target_col == exact))
+                raw_in = value.get("in")
+                if raw_in:
+                    items = _split_csv(raw_in)
+                    if items:
+                        conditions.append(rel.any(target_col.in_(items)))
+            elif value:
+                return rel.any(target_col == value)
+            return self._combine(conditions, query_adapter)
+        except Exception:
+            return None
 
     def get_choices(self, session: Any = None) -> list[tuple[str, str]]:
         if not self._choices:

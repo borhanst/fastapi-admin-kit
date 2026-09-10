@@ -98,8 +98,7 @@ class FilterRegistry:
                 continue
 
             if field_name in rel_names:
-                resolved_col = self._resolve_fk_column(model, field_name, introspection)
-                filters[field_name] = ChoiceFilter(field_name, resolved_column=resolved_col)
+                filters[field_name] = self._relationship_filter(model, field_name, introspection)
                 continue
 
             type_name = self._get_type_name(model, field_name, introspection)
@@ -133,14 +132,100 @@ class FilterRegistry:
 
         for rel_name in rel_names:
             if rel_name not in filters:
-                resolved_col = self._resolve_fk_column(model, rel_name, introspection)
-                filters[rel_name] = ChoiceFilter(rel_name, resolved_column=resolved_col)
+                filters[rel_name] = self._relationship_filter(model, rel_name, introspection)
 
         return filters
 
     # ------------------------------------------------------------------
     # Internal helpers — all go through IntrospectionBackend when available
     # ------------------------------------------------------------------
+
+    @classmethod
+    def _relationship_filter(
+        cls,
+        model: Any,
+        rel_name: str,
+        introspection: Any | None,
+    ) -> ChoiceFilter:
+        """Build a filter for a relationship, discovered via the backend.
+
+        MANYTOONE relationships filter the local FK column. M2M / ONETOMANY
+        relationships have no local FK — filtering uses related-object
+        membership (``rel.any(target.pk == value)``). Falls back to a plain
+        ``ChoiceFilter`` when the target cannot be resolved (e.g. memory
+        backend, where relation filters aren't supported).
+        """
+        meta = cls._get_relationship_meta(model, rel_name, introspection)
+        direction = meta.direction if meta is not None else None
+        resolved_col = cls._resolve_fk_column(model, rel_name, introspection)
+
+        if direction != "MANYTOONE":
+            target = meta.target_model if meta is not None else None
+            target_pk = (
+                cls._resolve_pk_column(target, introspection)
+                if target is not None
+                else None
+            )
+            if target is not None and target_pk is not None:
+                return ChoiceFilter(
+                    rel_name,
+                    relationship_name=rel_name,
+                    target_model=target,
+                    target_pk=target_pk,
+                )
+        return ChoiceFilter(rel_name, resolved_column=resolved_col)
+
+    @staticmethod
+    def _get_relationship_meta(
+        model: Any,
+        rel_name: str,
+        introspection: Any | None,
+    ) -> Any | None:
+        """Return ORM-agnostic relationship metadata, or None."""
+        if introspection is not None:
+            try:
+                return introspection.get_relationship_meta(model, rel_name)
+            except Exception:
+                return None
+        try:
+            from sqlalchemy import inspect as sa_inspect
+
+            from fastapi_admin_kit.inspection.types import RelationMeta
+
+            rel = sa_inspect(model).relationships.get(rel_name)
+            if rel is None:
+                return None
+            return RelationMeta(
+                name=rel.key,
+                direction=rel.direction.name,
+                target_model=rel.mapper.class_,
+                uselist=rel.uselist,
+                back_populates=rel.back_populates,
+                secondary=rel.secondary,
+            )
+        except Exception:
+            return None
+
+    @staticmethod
+    def _resolve_pk_column(model: Any, introspection: Any | None) -> str | None:
+        """Return the single primary-key column name for *model*, or None."""
+        if introspection is not None:
+            try:
+                cols = introspection.get_pk_columns(model)
+                if cols:
+                    col = cols[0]
+                    return getattr(col, "key", col)
+            except Exception:
+                pass
+        try:
+            from sqlalchemy import inspect as sa_inspect
+
+            mapper = sa_inspect(model)
+            if mapper.primary_key:
+                return mapper.primary_key[0].key
+        except Exception:
+            pass
+        return None
 
     @staticmethod
     def _get_type_name(model: Any, field_name: str, introspection: Any | None) -> str | None:

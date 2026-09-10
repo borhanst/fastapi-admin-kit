@@ -22,7 +22,7 @@ from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
 from fastapi_admin_kit.migrations.models import Role, User
 from fastapi_admin_kit.models.base import Base as AdminBase
 from tests.conftest import SECRET_KEY, create_session_cookie, run_async
-from tests.test_registry import Category, Product
+from tests.test_registry import Article, Category, Product, Tag
 
 
 @pytest.fixture(autouse=True)
@@ -158,6 +158,24 @@ class TestFilterClauses:
         clause = f.apply(self.adapter, None, Product, {"in": "1,2"})
         assert "products.category_id IN" in str(clause)
 
+    def test_m2m_membership_exact(self):
+        from fastapi_admin_kit.filters import ChoiceFilter
+
+        f = ChoiceFilter("tags", relationship_name="tags", target_model=Tag, target_pk="id")
+        clause = f.apply(self.adapter, None, Article, "1")
+        assert clause is not None
+        sql = str(clause)
+        assert "article_tags" in sql
+        assert "tags.id" in sql
+
+    def test_m2m_membership_in(self):
+        from fastapi_admin_kit.filters import ChoiceFilter
+
+        f = ChoiceFilter("tags", relationship_name="tags", target_model=Tag, target_pk="id")
+        clause = f.apply(self.adapter, None, Article, {"in": "1,2"})
+        assert clause is not None
+        assert "tags.id IN" in str(clause)
+
     def test_invalid_value_skipped(self):
         from fastapi_admin_kit.filters import NumericFilter
 
@@ -192,6 +210,32 @@ class TestFilterRegistry:
         # FK column and relationship both auto-generate ChoiceFilter
         assert isinstance(filters["category_id"], ChoiceFilter)
         assert isinstance(filters["category"], ChoiceFilter)
+
+    def test_auto_generate_many_to_one_resolves_fk_column(self):
+        from fastapi_admin_kit.filters import FilterRegistry
+        from fastapi_admin_kit.registry import AdminRegistry
+
+        reg = AdminRegistry()
+        reg.clear()
+        registered = reg.register(Product)
+        filters = FilterRegistry().auto_generate(Product, registered.columns)
+        assert filters["category"].resolved_column == "category_id"
+        assert filters["category"].relationship_name is None
+
+    def test_auto_generate_many_to_many_uses_membership(self):
+        from fastapi_admin_kit.filters import ChoiceFilter, FilterRegistry
+        from fastapi_admin_kit.registry import AdminRegistry
+
+        reg = AdminRegistry()
+        reg.clear()
+        registered = reg.register(Article)
+        filters = FilterRegistry().auto_generate(Article, registered.columns)
+        f = filters["tags"]
+        assert isinstance(f, ChoiceFilter)
+        assert f.relationship_name == "tags"
+        assert f.target_model is Tag
+        assert f.target_pk == "id"
+        assert f.resolved_column is None
 
     def test_auto_generate_memory_backend(self):
         from fastapi_admin_kit.backends import InMemoryBackend
@@ -330,6 +374,86 @@ def api():
     cleanup()
 
 
+def _make_m2m_client():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    sync_engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False})
+    AdminBase.metadata.create_all(sync_engine)
+    Article.metadata.create_all(sync_engine)
+    sync_engine.dispose()
+    async_engine = create_async_engine(
+        f"sqlite+aiosqlite:///{path}",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    async def _seed():
+        async with AsyncSession(async_engine) as session:
+            role = Role(name="SuperAdmin")
+            session.add(role)
+            await session.flush()
+            user = User(
+                email="test@example.com",
+                password="$2b$12$DOXzSwSZYp0Y1pTzEvWjO.KOLQg3wA/Ez1RkN4RHMiLqngoLM2lMG",
+                full_name="Test User",
+                is_superuser=True,
+                is_active=True,
+            )
+            user.roles.append(role)
+            session.add(user)
+
+            python = Tag(name="python")
+            web = Tag(name="web")
+            session.add_all([python, web])
+            await session.flush()
+
+            session.add_all(
+                [
+                    Article(title="Flask guide", tags=[python]),
+                    Article(title="Reflex blog", tags=[python, web]),
+                    Article(title="Figma tricks", tags=[web]),
+                ]
+            )
+            await session.commit()
+
+    run_async(_seed())
+
+    from fastapi_admin_kit.modeladmin import ModelAdmin
+
+    admin_cls = type("ArticleAdmin", (ModelAdmin,), {"list_filter": ["tags"]})
+
+    admin = Admin(
+        engine=async_engine,
+        auth_model=User,
+        auth_backend=BuiltinAuthBackend(),
+        secret_key=SECRET_KEY,
+        auto_discover=False,
+        session_secure=False,
+    )
+    admin.register(Article, admin_cls)
+    app = FastAPI()
+    run_async(admin.setup(app))
+    client = TestClient(app)
+    creds = base64.b64encode(b"test@example.com:secret").decode()
+    token = client.post("/api/auth/token", headers={"Authorization": f"Basic {creds}"}).json()[
+        "access_token"
+    ]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    def cleanup():
+        run_async(async_engine.dispose())
+        os.unlink(path)
+
+    return client, headers, cleanup
+
+
+@pytest.fixture
+def api_m2m():
+    client, headers, cleanup = _make_m2m_client()
+    yield client, headers
+    cleanup()
+
+
 def _names(body):
     return {item["name"] for item in body["items"]}
 
@@ -402,6 +526,26 @@ class TestApiFilters:
             "/api/products/?filter_name__icontains=wid&filter_price__gte=10", headers=headers
         ).json()
         assert _names(body) == {"Widget", "Widglet"}
+
+
+class TestApiM2MFilters:
+    def _titles(self, body):
+        return {item["title"] for item in body["items"]}
+
+    def test_m2m_exact(self, api_m2m):
+        client, headers = api_m2m
+        body = client.get("/api/articles/?filter_tags=1", headers=headers).json()
+        assert self._titles(body) == {"Flask guide", "Reflex blog"}
+
+    def test_m2m_other_tag(self, api_m2m):
+        client, headers = api_m2m
+        body = client.get("/api/articles/?filter_tags=2", headers=headers).json()
+        assert self._titles(body) == {"Reflex blog", "Figma tricks"}
+
+    def test_m2m_in(self, api_m2m):
+        client, headers = api_m2m
+        body = client.get("/api/articles/?filter_tags__in=1", headers=headers).json()
+        assert self._titles(body) == {"Flask guide", "Reflex blog"}
 
 
 class TestAdminUiListFilters:

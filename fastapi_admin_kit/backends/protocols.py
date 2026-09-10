@@ -54,6 +54,10 @@ class IntrospectionBackend(Protocol):
         """Return a single relationship descriptor by name, or None."""
         ...
 
+    def get_relationship_meta(self, model: type, name: str) -> RelationMeta | None:
+        """Return ORM-agnostic metadata for a single relationship, or None."""
+        ...
+
     def get_relationship_local_columns(self, model: type, name: str) -> list[str]:
         """Return the local column key(s) for a relationship.
 

@@ -1,7 +1,7 @@
 """Tests for ModelAdmin base class, AdminRegistry, and @admin.register."""
 
 import pytest
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -28,12 +28,29 @@ class Product(Base):
     category = relationship("Category")
 
 
+article_tags = Table(
+    "article_tags",
+    Base.metadata,
+    Column("article_id", Integer, ForeignKey("articles.id"), primary_key=True),
+    Column("tag_id", Integer, ForeignKey("tags.id"), primary_key=True),
+)
+
+
 class Article(Base):
     __tablename__ = "articles"
 
     id = Column(Integer, primary_key=True)
     title = Column(String(200), nullable=False)
     body = Column(String(5000))
+
+    tags = relationship("Tag", secondary=article_tags)
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False)
 
 
 # ===========================================================================

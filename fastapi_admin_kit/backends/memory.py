@@ -428,6 +428,21 @@ class MemoryIntrospectionAdapter:
     def get_relationship_local_columns(self, model: type, name: str) -> list[str]:
         return []
 
+    def get_relationship_meta(self, model: type, name: str) -> RelationMeta | None:
+        schema: Schema = getattr(model, "__schema__", None)
+        if schema is None:
+            return None
+        r = schema.get_relation(name)
+        if r is None:
+            return None
+        return RelationMeta(
+            name=r.name,
+            direction=r.type.upper(),
+            target_model=None,
+            back_populates=r.back_populates,
+            secondary=r.through,
+        )
+
     def get_column_type_name(self, model: type, field_name: str) -> str | None:
         schema: Schema = getattr(model, "__schema__", None)
         if schema is None:

@@ -323,6 +323,23 @@ class SqlAlchemyIntrospectionAdapter:
             return []
         return [c.key for c in rel.local_columns]
 
+    def get_relationship_meta(self, model: type, name: str) -> RelationMeta | None:
+        """Return ORM-agnostic metadata for a single relationship, or None."""
+        mapper = sa_inspect(model)
+        rel = mapper.relationships.get(name)
+        if rel is None:
+            return None
+        from fastapi_admin_kit.inspection.types import RelationMeta
+
+        return RelationMeta(
+            name=rel.key,
+            direction=rel.direction.name,
+            target_model=rel.mapper.class_,
+            uselist=rel.uselist,
+            back_populates=rel.back_populates,
+            secondary=rel.secondary,
+        )
+
     def get_column_type_name(self, model: type, field_name: str) -> str | None:
         """Return the SQLAlchemy type class name for a column, or None."""
         mapper = sa_inspect(model)
