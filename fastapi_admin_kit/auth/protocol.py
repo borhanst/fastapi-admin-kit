@@ -52,12 +52,20 @@ class AdminUserProtocol(Protocol):
 
     Any user model passed as ``auth_model=`` must satisfy this interface.
     The admin framework only reads these attributes from the user object.
+
+    ``AuthModelMixin`` is behavior-only — the host model must declare the
+    4 data fields (``password``, ``is_active``, ``is_superuser``,
+    ``last_login``) with its own ORM (SQLAlchemy ``Column``, SQLModel
+    ``Field``, Tortoise field, ...). Either a ``roles`` relationship or
+    the ``role_ids`` property satisfies role lookups.
     """
 
     id: Any  # primary key (int, str, UUID, etc.)
     email: str  # used for audit log denormalization
-    is_active: bool  # inactive users are refused login
-    is_superuser: bool  # bypasses all permission checks if True
+    password: str | None  # hashed password; declare with your ORM
+    is_active: bool  # inactive users are refused login; declare with your ORM
+    is_superuser: bool  # bypasses all permission checks if True; declare with your ORM
+    last_login: Any | None  # tz-aware datetime or None; declare with your ORM
 
     # Many-to-many roles — the admin reads this to look up permissions.
     # Must be an iterable of role objects, each with an `id` attribute

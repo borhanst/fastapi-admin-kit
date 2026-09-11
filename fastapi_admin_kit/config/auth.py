@@ -83,27 +83,36 @@ class AuthConfig:
                 f"{', '.join(missing)}. Every auth model must have id and email."
             )
 
-        # Required: is_active, is_superuser (can be provided by AuthModelMixin)
+        # Required: is_active, is_superuser, last_login.
+        # AuthModelMixin is behavior-only — add these 4 fields with your ORM.
         missing_flags = []
         if not hasattr(model, "is_active"):
             missing_flags.append("is_active")
         if not hasattr(model, "is_superuser"):
             missing_flags.append("is_superuser")
+        if not hasattr(model, "last_login"):
+            missing_flags.append("last_login")
         if missing_flags:
             raise ConfigError(
                 f"auth_model {model.__name__!r} is missing: {', '.join(missing_flags)}. "
-                f"Use AuthModelMixin or add these columns to your model."
+                f"Add these 4 fields with your ORM (see docs): "
+                f"password, is_active, is_superuser, last_login."
             )
 
-        # Required: roles or role_ids (for RBAC)
+        # Required: roles or role_ids (for RBAC).
+        # AuthModelMixin provides a defensive role_ids property that returns
+        # [] when the model has no roles relationship (e.g. single-role
+        # enum models). Full RBAC requires a roles relationship.
         if not hasattr(model, "roles") and not hasattr(model, "role_ids"):
             raise ConfigError(
                 f"auth_model {model.__name__!r} has no 'roles' relationship or "
                 f"'role_ids' property. RBAC requires role lookups. "
-                f"Use AuthModelMixin or define a roles relationship on your model."
+                f"Add a roles relationship with your ORM on your model."
             )
 
-        # Check password-related attributes for authentication
+        # Check password-related attributes for authentication.
+        # AuthModelMixin provides verify_password/hash_password behavior —
+        # add the password field itself with your ORM.
         missing_auth = []
         if not hasattr(model, "password"):
             missing_auth.append("password")
@@ -113,6 +122,7 @@ class AuthConfig:
             raise ConfigError(
                 f"auth_model {model.__name__!r} is missing password-related "
                 f"attributes: {', '.join(missing_auth)}. "
-                f"Use AuthModelMixin or implement password (str) and "
-                f"verify_password(password) -> bool."
+                f"Add the password field with your ORM and inherit "
+                f"AuthModelMixin (or implement password (str) and "
+                f"verify_password(password) -> bool)."
             )

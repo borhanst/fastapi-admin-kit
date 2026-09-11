@@ -105,7 +105,12 @@ class User(AuthModelMixin, Base):
     id = Column(Integer, primary_key=True)
     email = Column(String(255), nullable=False, unique=True)
     full_name = Column(String(255), nullable=True)
+    # Required auth fields — AuthModelMixin is behavior-only, declare
+    # these 4 with your ORM.
+    password = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True)
+    is_superuser = Column(Boolean, default=False)
+    last_login = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
