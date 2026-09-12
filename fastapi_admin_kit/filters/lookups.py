@@ -1,18 +1,18 @@
 """Django-style lookup parsing for filter query parameters.
 
-The admin accepts filters as ``filter_<field>`` query parameters with the
-same conventions as ``django-filter``::
+The admin accepts filters as ``<field>`` query parameters with the same
+conventions as ``django-filter``::
 
-    ?filter_name=value                     exact match
-    ?filter_name__icontains=term           case-insensitive contains
-    ?filter_name__startswith=Jo            starts with
-    ?filter_name__endswith=hn              ends with
-    ?filter_price__gt=100                  greater than
-    ?filter_price__gte=100                 greater than or equal
-    ?filter_price__lt=50                   less than
-    ?filter_price__lte=200                 less than or equal
-    ?filter_price__range=10,200            range (inclusive)
-    ?filter_id__in=1,2,3                   in list
+    ?name=value                     exact match
+    ?name__icontains=term           case-insensitive contains
+    ?name__startswith=Jo            starts with
+    ?name__endswith=hn              ends with
+    ?price__gt=100                  greater than
+    ?price__gte=100                 greater than or equal
+    ?price__lt=50                   less than
+    ?price__lte=200                 less than or equal
+    ?price__range=10,200            range (inclusive)
+    ?id__in=1,2,3                   in list
 
 This module owns the (query params -> value) mapping so the HTML list views
 and the JSON API share one source of truth.
@@ -65,7 +65,7 @@ def parse_filter_params(
     parts: dict[str, str] = {}
     active: dict[str, str] = {}
     for lookup, suffix in LOOKUP_SUFFIXES:
-        raw = query_params.get(f"filter_{field_name}{suffix}", "")
+        raw = query_params.get(f"{field_name}{suffix}", "")
         if raw:
             parts[lookup] = raw
             active[f"{field_name}{suffix}"] = raw

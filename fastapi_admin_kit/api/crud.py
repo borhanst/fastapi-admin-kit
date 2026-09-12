@@ -7,12 +7,26 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from fastapi_admin_kit.api.deps import require_api_permission
-from fastapi_admin_kit.api.schema_generator import get_or_build_schemas
+from fastapi_admin_kit.api.schema_generator import (
+    _file_field_names,
+    get_or_build_schemas,
+    has_file_fields,
+)
 from fastapi_admin_kit.views.class_views import (
     CreateView,
     DeleteView,
@@ -149,6 +163,144 @@ def _wrap_item_handler(handler: Any, *, returns_response: bool = False) -> Any:
     return wrapped
 
 
+def _wrap_multipart_handler(
+    handler: Any,
+    payload_schema: type[BaseModel],
+    registered: Any,
+    *,
+    include_item_id: bool = False,
+) -> Any:
+    """Multipart variant of :func:`_wrap_body_handler` for file/image models.
+
+    Declares one ``File()`` param per file column and a ``Form()`` param for
+    every other write-schema field, so Swagger switches to a multipart form
+    with file pickers. Non-file values arrive as raw strings (exactly like the
+    HTML form) and are coerced by ``JSONBodyParser``'s widget pipeline;
+    ``None`` values are dropped to keep partial-update semantics.
+    """
+    from inspect import Parameter, Signature
+
+    file_names = _file_field_names(registered)
+
+    params = [
+        Parameter("request", Parameter.POSITIONAL_OR_KEYWORD, annotation=Request),
+    ]
+    if include_item_id:
+        params.append(Parameter("item_id", Parameter.POSITIONAL_OR_KEYWORD, annotation=Any))
+    for name in payload_schema.model_fields:
+        if name in file_names:
+            param_type = Annotated[UploadFile | None, File()]
+        else:
+            param_type = Annotated[str | None, Form()]
+        # All params optional here — required fields are enforced by the
+        # shared widget/validator pipeline, exactly like the HTML form.
+        params.append(
+            Parameter(name, Parameter.KEYWORD_ONLY, default=None, annotation=param_type)
+        )
+
+    if include_item_id:
+
+        async def wrapped(request: Request, **kwargs: Any) -> Any:
+            item_id = kwargs.pop("item_id", None)
+            request.state._api_payload = {
+                k: v for k, v in kwargs.items() if v is not None
+            }
+            return await handler(request, item_id=item_id)
+
+    else:
+
+        async def wrapped(request: Request, **kwargs: Any) -> Any:
+            request.state._api_payload = {
+                k: v for k, v in kwargs.items() if v is not None
+            }
+            return await handler(request)
+
+    wrapped.__signature__ = Signature(params)
+    wrapped.__name__ = getattr(handler, "__name__", "api_response")
+    wrapped.__doc__ = getattr(handler, "__doc__", None)
+    return wrapped
+
+
+# Lookups each filter field_type supports — mirrors the apply() methods in
+# filters/base.py. Exact uses the bare ``filter_<field>`` param.
+LOOKUPS_BY_TYPE: dict[str, tuple[str, ...]] = {
+    "text": ("exact", "icontains", "startswith", "endswith"),
+    "boolean": ("exact",),
+    "enum": ("exact", "in"),
+    "relation": ("exact",),
+    "integer": ("exact", "gt", "gte", "lt", "lte", "range", "in"),
+    "numeric": ("exact", "gt", "gte", "lt", "lte", "range", "in"),
+    "date": ("exact", "gt", "gte", "lt", "lte", "range", "in", "from", "to"),
+    "datetime": ("exact", "gt", "gte", "lt", "lte", "range", "in", "from", "to"),
+    "time": ("exact", "gt", "gte", "lt", "lte", "range", "in"),
+}
+
+
+def _lookups_for_field_type(field_type: str) -> tuple[str, ...]:
+    """Return the lookup names a filter field_type supports (from base.apply())."""
+    return LOOKUPS_BY_TYPE.get(field_type, ("exact",))
+
+
+def _wrap_list_handler(handler: Any, registered: Any) -> Any:
+    """Document configured list filters as query params in the OpenAPI schema.
+
+    Filtering already works — the query provider reads ``filter_*`` from
+    ``request.query_params``. This wrapper only declares those params so
+    Swagger lists them: it mirrors the handler's own signature (pagination
+    stays documented) and appends one optional string param per filter field
+    for each lookup its type supports. Only the handler's original params are
+    forwarded; the ``filter_*`` values reach the provider through the raw
+    query string.
+    """
+    import inspect
+    from inspect import Parameter, Signature
+
+    from fastapi_admin_kit.filters import Filter, FilterRegistry, SimpleFilter
+    from fastapi_admin_kit.filters.lookups import LOOKUP_SUFFIXES
+
+    suffix = dict(LOOKUP_SUFFIXES)
+    try:
+        auto = FilterRegistry().auto_generate(registered.model, registered.columns)
+    except Exception:
+        auto = {}
+
+    filter_fields: list[tuple[str, str]] = []  # (field_name, field_type)
+    for item in registered.admin.list_filter or []:
+        if isinstance(item, str):
+            f = auto.get(item)
+            filter_fields.append((item, getattr(f, "field_type", "text") if f else "text"))
+        elif isinstance(item, Filter):
+            filter_fields.append((item.field_name, item.field_type))
+        elif isinstance(item, type) and issubclass(item, SimpleFilter):
+            f = item()
+            filter_fields.append((f.field_name, f.field_type))
+        else:
+            continue
+
+    sig = inspect.signature(handler)
+    params = list(sig.parameters.values())
+    for name, field_type in filter_fields:
+        for lookup in _lookups_for_field_type(field_type):
+            qname = f"{name}{suffix[lookup]}"
+            params.append(
+                Parameter(
+                    qname,
+                    Parameter.KEYWORD_ONLY,
+                    default=Query(None, description=f"Filter on '{name}' ({lookup})"),
+                )
+            )
+
+    handler_params = {p.name for p in sig.parameters.values() if p.name != "request"}
+
+    async def wrapped(request: Request, **kwargs: Any) -> Any:
+        return await handler(request, **{k: v for k, v in kwargs.items() if k in handler_params})
+
+    wrapped.__signature__ = Signature(params)
+    wrapped.__name__ = getattr(handler, "__name__", "api_response")
+    wrapped.__doc__ = getattr(handler, "__doc__", None)
+    return wrapped
+
+
 def _register_model_routes(router: APIRouter, registered: Any) -> None:
     """Register CRUD routes for a single model using view classes."""
     table_name = registered.table_name
@@ -167,10 +319,25 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
     create_schema = schemas["create"]
     update_schema = schemas["update"]
 
+    list_handler = list_v.api_response if hasattr(list_v, "api_response") else list_v
+
+    # Models with file/image columns use multipart form bodies (file pickers
+    # in Swagger); everything else keeps the JSON body.
+    use_multipart = has_file_fields(registered)
+
+    def _body_wrapper(
+        handler: Any, payload_schema: type[BaseModel], *, include_item_id: bool = False
+    ) -> Any:
+        if use_multipart:
+            return _wrap_multipart_handler(
+                handler, payload_schema, registered, include_item_id=include_item_id
+            )
+        return _wrap_body_handler(handler, payload_schema, include_item_id=include_item_id)
+
     # Add routes with both "api-crud" and model verbose_name tags
     router.add_api_route(
         "",
-        list_v.api_response if hasattr(list_v, "api_response") else list_v,
+        _wrap_list_handler(list_handler, registered),
         methods=["GET"],
         response_model=list_response_schema,
         tags=["api-crud", registered.verbose_name],
@@ -178,7 +345,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
     )
     router.add_api_route(
         "",
-        _wrap_body_handler(create_v.api_response, create_schema),
+        _body_wrapper(create_v.api_response, create_schema),
         methods=["POST"],
         response_model=response_schema,
         status_code=201,
@@ -195,7 +362,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
     )
     router.add_api_route(
         "/{item_id}",
-        _wrap_body_handler(edit_v.api_response, update_schema, include_item_id=True),
+        _body_wrapper(edit_v.api_response, update_schema, include_item_id=True),
         methods=["PUT"],
         response_model=response_schema,
         tags=["api-crud", registered.verbose_name],
@@ -203,7 +370,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
     )
     router.add_api_route(
         "/{item_id}",
-        _wrap_body_handler(edit_v.api_response, update_schema, include_item_id=True),
+        _body_wrapper(edit_v.api_response, update_schema, include_item_id=True),
         methods=["PATCH"],
         response_model=response_schema,
         tags=["api-crud", registered.verbose_name],

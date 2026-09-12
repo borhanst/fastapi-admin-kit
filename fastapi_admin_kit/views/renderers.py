@@ -289,6 +289,36 @@ class JSONBodyParser:
         allowed |= extra_names
         filtered = {k: v for k, v in body.items() if k in allowed}
 
+        # File/image fields: run raw UploadFile values through the same
+        # storage-backed save used by HTMLFormParser so the multipart API path
+        # replaces them with the saved path before validation. Missing file
+        # values on create default to None, mirroring the HTML submit path.
+        errors: dict[str, list[str]] = {}
+        for field_meta in self.registered.form_fields:
+            if field_meta.name not in allowed:
+                continue
+            widget = self.registered.get_widget(field_meta.name)
+            if not isinstance(widget, _FILE_WIDGET_TYPES):
+                continue
+            if field_meta.name not in filtered:
+                if obj is None:
+                    filtered[field_meta.name] = None
+                continue
+            await _handle_file_field(
+                request,
+                widget,
+                field_meta,
+                filtered,
+                obj=obj,
+                action="replace" if obj is not None else None,
+                parsed=filtered,
+                errors=errors,
+            )
+            if obj is None and field_meta.name not in errors and field_meta.name not in filtered:
+                filtered[field_meta.name] = None
+        if errors:
+            return filtered, errors
+
         # Coerce raw JSON values (ISO date strings etc.) through the same
         # widgets the HTML path uses, so widget validators see typed values.
         for name, value in list(filtered.items()):

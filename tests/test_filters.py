@@ -44,14 +44,14 @@ class TestParseFilterParams:
     def test_exact_match(self):
         from fastapi_admin_kit.filters.lookups import parse_filter_params
 
-        value, active = parse_filter_params({"filter_name": "widget"}, "name")
+        value, active = parse_filter_params({"name": "widget"}, "name")
         assert value == "widget"
         assert active == {"name": "widget"}
 
     def test_icontains(self):
         from fastapi_admin_kit.filters.lookups import parse_filter_params
 
-        value, active = parse_filter_params({"filter_name__icontains": "wid"}, "name")
+        value, active = parse_filter_params({"name__icontains": "wid"}, "name")
         assert value == {"icontains": "wid"}
         assert active == {"name__icontains": "wid"}
 
@@ -59,7 +59,7 @@ class TestParseFilterParams:
         from fastapi_admin_kit.filters.lookups import parse_filter_params
 
         value, _ = parse_filter_params(
-            {"filter_name__startswith": "Jo", "filter_name__endswith": "hn"}, "name"
+            {"name__startswith": "Jo", "name__endswith": "hn"}, "name"
         )
         assert value == {"startswith": "Jo", "endswith": "hn"}
 
@@ -68,10 +68,10 @@ class TestParseFilterParams:
 
         value, active = parse_filter_params(
             {
-                "filter_price__gt": "100",
-                "filter_price__gte": "10",
-                "filter_price__lt": "50",
-                "filter_price__lte": "200",
+                "price__gt": "100",
+                "price__gte": "10",
+                "price__lt": "50",
+                "price__lte": "200",
             },
             "price",
         )
@@ -83,11 +83,11 @@ class TestParseFilterParams:
         from fastapi_admin_kit.filters.lookups import parse_filter_params
 
         value, _ = parse_filter_params(
-            {"filter_price__range": "10,200", "filter_id__in": "1,2,3"}, "price"
+            {"price__range": "10,200", "id__in": "1,2,3"}, "price"
         )
         assert value == {"range": "10,200"}
 
-        value, _ = parse_filter_params({"filter_id__in": "1,2,3"}, "id")
+        value, _ = parse_filter_params({"id__in": "1,2,3"}, "id")
         assert value == {"in": "1,2,3"}
 
     def test_no_params(self):
@@ -525,9 +525,9 @@ class TestApiSimpleFilter:
     def test_bare_class_filters_via_api(self):
         client, headers, cleanup = _make_client([InStockFilter])
         try:
-            body = client.get("/api/products/?filter_is_active=1", headers=headers).json()
+            body = client.get("/api/products/?is_active=1", headers=headers).json()
             assert _names(body) == {"Widget", "Widglet", "Textbook"}
-            body = client.get("/api/products/?filter_is_active=0", headers=headers).json()
+            body = client.get("/api/products/?is_active=0", headers=headers).json()
             assert _names(body) == {"Novel"}
         finally:
             cleanup()
@@ -536,69 +536,69 @@ class TestApiSimpleFilter:
 class TestApiFilters:
     def test_exact_match(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_name=Widget", headers=headers).json()
+        body = client.get("/api/products/?name=Widget", headers=headers).json()
         assert _names(body) == {"Widget"}
 
     def test_icontains(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_name__icontains=wid", headers=headers).json()
+        body = client.get("/api/products/?name__icontains=wid", headers=headers).json()
         assert _names(body) == {"Widget", "Widglet"}
 
     def test_startswith(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_name__startswith=Text", headers=headers).json()
+        body = client.get("/api/products/?name__startswith=Text", headers=headers).json()
         assert _names(body) == {"Textbook"}
 
     def test_endswith(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_name__endswith=glet", headers=headers).json()
+        body = client.get("/api/products/?name__endswith=glet", headers=headers).json()
         assert _names(body) == {"Widglet"}
 
     def test_numeric_gt(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_price__gt=10", headers=headers).json()
+        body = client.get("/api/products/?price__gt=10", headers=headers).json()
         assert _names(body) == {"Widglet", "Textbook"}
 
     def test_numeric_gte(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_price__gte=10", headers=headers).json()
+        body = client.get("/api/products/?price__gte=10", headers=headers).json()
         assert _names(body) == {"Widget", "Widglet", "Textbook"}
 
     def test_numeric_lt(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_price__lt=10", headers=headers).json()
+        body = client.get("/api/products/?price__lt=10", headers=headers).json()
         assert _names(body) == {"Novel"}
 
     def test_numeric_lte(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_price__lte=10", headers=headers).json()
+        body = client.get("/api/products/?price__lte=10", headers=headers).json()
         assert _names(body) == {"Widget", "Novel"}
 
     def test_numeric_range(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_price__range=5,25", headers=headers).json()
+        body = client.get("/api/products/?price__range=5,25", headers=headers).json()
         assert _names(body) == {"Widget", "Widglet", "Novel"}
 
     def test_in_list(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_price__in=5,40", headers=headers).json()
+        body = client.get("/api/products/?price__in=5,40", headers=headers).json()
         assert _names(body) == {"Novel", "Textbook"}
 
     def test_boolean_filter(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_is_active=1", headers=headers).json()
+        body = client.get("/api/products/?is_active=1", headers=headers).json()
         assert _names(body) == {"Widget", "Widglet", "Textbook"}
 
     def test_relation_choice_filter(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_category=1", headers=headers).json()
+        body = client.get("/api/products/?category=1", headers=headers).json()
         # Category id 1 == Gadgets
         assert _names(body) == {"Widget", "Widglet"}
 
     def test_combined_filters(self, api):
         client, headers = api
         body = client.get(
-            "/api/products/?filter_name__icontains=wid&filter_price__gte=10", headers=headers
+            "/api/products/?name__icontains=wid&price__gte=10", headers=headers
         ).json()
         assert _names(body) == {"Widget", "Widglet"}
 
@@ -609,18 +609,42 @@ class TestApiM2MFilters:
 
     def test_m2m_exact(self, api_m2m):
         client, headers = api_m2m
-        body = client.get("/api/articles/?filter_tags=1", headers=headers).json()
+        body = client.get("/api/articles/?tags=1", headers=headers).json()
         assert self._titles(body) == {"Flask guide", "Reflex blog"}
 
     def test_m2m_other_tag(self, api_m2m):
         client, headers = api_m2m
-        body = client.get("/api/articles/?filter_tags=2", headers=headers).json()
+        body = client.get("/api/articles/?tags=2", headers=headers).json()
         assert self._titles(body) == {"Reflex blog", "Figma tricks"}
 
     def test_m2m_in(self, api_m2m):
         client, headers = api_m2m
-        body = client.get("/api/articles/?filter_tags__in=1", headers=headers).json()
+        body = client.get("/api/articles/?tags__in=1", headers=headers).json()
         assert self._titles(body) == {"Flask guide", "Reflex blog"}
+
+
+class TestOpenApiFilterParams:
+    def test_lookups_follow_field_type(self, api):
+        client, _headers = api
+        op = client.get("/openapi.json").json()["paths"]["/api/products"]["get"]
+        names = {p["name"] for p in op.get("parameters", [])}
+        assert "name" in names
+        assert "name__icontains" in names
+        assert "name__startswith" in names
+        assert "name__gt" not in names
+        assert "price__gt" in names
+        assert "price__gte" in names
+        assert "price__icontains" not in names
+        assert "is_active" in names
+        assert "is_active__gte" not in names
+        assert "category" in names
+        assert "category__in" not in names
+
+    def test_pagination_params_still_documented(self, api):
+        client, _headers = api
+        op = client.get("/openapi.json").json()["paths"]["/api/products"]["get"]
+        names = {p["name"] for p in op.get("parameters", [])}
+        assert {"page", "per_page", "q", "order"} <= names
 
 
 class TestAdminUiListFilters:
@@ -628,7 +652,7 @@ class TestAdminUiListFilters:
         client, _headers = api
         cookie = create_session_cookie(1)
         resp = client.get(
-            "/admin/products/?filter_name__icontains=wid",
+            "/admin/products/?name__icontains=wid",
             cookies={"admin_session": cookie},
         )
         assert resp.status_code == 200
@@ -640,7 +664,7 @@ class TestAdminUiListFilters:
         client, _headers = api
         cookie = create_session_cookie(1)
         resp = client.get(
-            "/admin/products/?filter_price__range=5,10",
+            "/admin/products/?price__range=5,10",
             cookies={"admin_session": cookie},
         )
         assert resp.status_code == 200

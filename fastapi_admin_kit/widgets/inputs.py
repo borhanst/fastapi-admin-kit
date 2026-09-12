@@ -148,8 +148,12 @@ class SelectWidget(Widget):
         errors = super().validate(value, field)
         if value and self.choices:
             valid = {c[0] for c in self.choices}
-            check = self._coerce_enum(value)
-            if check not in valid:
+            candidates = {self._coerce_enum(value)}
+            if isinstance(value, enum.Enum):
+                # Choices carry member names while str-enums store values —
+                # accept either so both spellings validate.
+                candidates.add(value.name)
+            if candidates.isdisjoint(valid):
                 errors.append(f"'{value}' is not a valid choice for {field.label}.")
         return errors
 

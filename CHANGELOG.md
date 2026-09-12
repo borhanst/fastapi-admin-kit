@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+- feat: add Django-style `SimpleFilter` base class — class-configured filters, pass the class itself in `list_filter`
+- feat: list filters configured in `list_filter` are documented as query params on the JSON API list endpoint in the OpenAPI/Swagger schema (lookups limited to the field type's supported lookups)
+- change: filter query params dropped the `filter_` prefix — they now use the bare field name and lookup (e.g. `name__icontains=wid`) in both the admin UI and the JSON API
+- feat: enum columns map to real enum types in the API create/update schemas so Swagger shows them as dropdowns; models with file/image fields expose create/update as multipart forms with file pickers, saved through the same storage backend as the HTML form
+- fix: `SelectWidget` validation accepted only member names, rejecting the stored values of str-enum members
+
 ## [0.6.0] - 2026-09-03
 
 - feat: improve form rendering — WYSIWYG and array input widgets ([#59](https://github.com/borhanst/fastapi-admin-kit/pull/59))

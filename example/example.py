@@ -42,8 +42,9 @@ from fastapi_admin_kit.dashboard import (
 from fastapi_admin_kit.inline import StackedInline, TabularInline
 from fastapi_admin_kit.models import Base as AdminBase
 from fastapi_admin_kit.pagination.cursor import CursorPagination
+from fastapi_admin_kit.storage.local import LocalStorageBackend
 from fastapi_admin_kit.types import TabConfig, TableSection
-from fastapi_admin_kit.widgets.inputs import ArrayWidget, WysiwygWidget
+from fastapi_admin_kit.widgets.inputs import ArrayWidget, ImageUploadWidget, WysiwygWidget
 
 # ============================================================================
 # SQLAlchemy Models
@@ -83,6 +84,7 @@ class Product(Base):
     description = Column(Text, nullable=True)
     price = Column(Float, nullable=False)
     stock = Column(Integer, default=0)
+    image = Column(String(500), nullable=True)  # uploaded product photo (path)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
@@ -290,7 +292,7 @@ class CategoryAdmin(ModelAdmin):
         TabConfig(title="All", url="/admin/categories/"),
         TabConfig(
             title="Active",
-            url="/admin/categories/?filter_created_at__gte=2025-01-01",
+            url="/admin/categories/?created_at__gte=2025-01-01",
         ),
     ]
 
@@ -327,6 +329,7 @@ class ProductAdmin(ModelAdmin):
         "category",
         "price",
         "stock",
+        "image",
         "is_active",
     ]
     readonly_fields = ["created_at", "updated_at"]
@@ -349,8 +352,8 @@ class ProductAdmin(ModelAdmin):
     # Tabs
     list_tabs = [
         TabConfig(title="All Products", url="/admin/products/"),
-        TabConfig(title="Active", url="/admin/products/?filter_is_active=1"),
-        TabConfig(title="Out of Stock", url="/admin/products/?filter_stock__lte=0"),
+        TabConfig(title="Active", url="/admin/products/?is_active=1"),
+        TabConfig(title="Out of Stock", url="/admin/products/?stock__lte=0"),
     ]
 
     # Sortable
@@ -380,6 +383,7 @@ class ProductAdmin(ModelAdmin):
     formfield_overrides = {
         "description": WysiwygWidget(),
         # "tags": ArrayWidget(),
+        "image": ImageUploadWidget(max_size_mb=5),  # product photo upload
     }
 
     @action(
@@ -440,7 +444,7 @@ class UserAdmin(ModelAdmin):
     # Tabs
     list_tabs = [
         TabConfig(title="All Users", url="/admin/users/"),
-        TabConfig(title="Active", url="/admin/users/?filter_is_active=1"),
+        TabConfig(title="Active", url="/admin/users/?is_active=1"),
     ]
 
     # Form UX
@@ -496,8 +500,8 @@ class OrderAdmin(ModelAdmin):
     # Tabs
     list_tabs = [
         TabConfig(title="All Orders", url="/admin/orders/"),
-        TabConfig(title="Pending", url="/admin/orders/?filter_status=pending"),
-        TabConfig(title="Completed", url="/admin/orders/?filter_status=completed"),
+        TabConfig(title="Pending", url="/admin/orders/?status=pending"),
+        TabConfig(title="Completed", url="/admin/orders/?status=completed"),
     ]
 
     # Expandable sections
@@ -814,6 +818,9 @@ admin = Admin(
     per_page_default=25,
     secret_key=SECRET_KEY,
     auth_backend=BuiltinAuthBackend(),
+    # File/image uploads (used by the Product image field + the JSON API
+    # multipart endpoints); served from /uploads by admin.setup().
+    storage=LocalStorageBackend(upload_dir=str(EXAMPLE_DIR / "uploads")),
     sidebar_bottom_links=[
         {"label": "Settings", "url": "/admin/users/", "icon": "cog-6-tooth"},
         {"label": "Help", "url": "https://docs.example.com"},

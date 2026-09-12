@@ -177,7 +177,7 @@
          @click="closeDrawer()" aria-hidden="true"></div>
 
     {# Filter drawer panel #}
-    <aside x-show="drawerOpen" x-cloak
+    <aside id="filter-drawer" x-show="drawerOpen" x-cloak
            role="dialog" aria-modal="true" aria-label="Filters"
            class="fixed top-0 right-0 z-[51] flex h-full w-full flex-col bg-white shadow-xl sm:max-w-md dark:bg-slate-900 dark:ring-1 dark:ring-slate-700"
            x-transition:enter="transform transition ease-out duration-300"
@@ -213,7 +213,7 @@
                       x-show='draftFilters[{{ field_name | tojson }}]' x-cloak
                       @click='draftFilters[{{ field_name | tojson }}] = ""'>Clear</button>
             </div>
-            <input id="drawer-filter-{{ field_name }}" type="date" name="filter_{{ field_name }}"
+            <input id="drawer-filter-{{ field_name }}" type="date" name="{{ field_name }}"
                    class="input w-full"
                    x-model='draftFilters[{{ field_name | tojson }}]'>
           </div>
@@ -226,7 +226,7 @@
                       x-show='draftFilters[{{ field_name | tojson }}]' x-cloak
                       @click='draftFilters[{{ field_name | tojson }}] = ""'>Clear</button>
             </div>
-            <input id="drawer-filter-{{ field_name }}" type="datetime-local" name="filter_{{ field_name }}"
+            <input id="drawer-filter-{{ field_name }}" type="datetime-local" name="{{ field_name }}"
                    class="input w-full"
                    x-model='draftFilters[{{ field_name | tojson }}]'>
           </div>
@@ -239,7 +239,7 @@
                       x-show='draftFilters[{{ field_name | tojson }}]' x-cloak
                       @click='draftFilters[{{ field_name | tojson }}] = ""'>Clear</button>
             </div>
-            <input id="drawer-filter-{{ field_name }}" type="time" name="filter_{{ field_name }}"
+            <input id="drawer-filter-{{ field_name }}" type="time" name="{{ field_name }}"
                    class="input w-full"
                    x-model='draftFilters[{{ field_name | tojson }}]'>
           </div>
@@ -253,7 +253,7 @@
                       x-show='draftFilters[{{ _tkey | tojson }}]' x-cloak
                       @click='draftFilters[{{ _tkey | tojson }}] = ""'>Clear</button>
             </div>
-            <input id="drawer-filter-{{ field_name }}" type="text" name="filter_{{ field_name }}__icontains"
+            <input id="drawer-filter-{{ field_name }}" type="text" name="{{ field_name }}__icontains"
                    placeholder="Contains..."
                    class="input w-full"
                    x-model='draftFilters[{{ _tkey | tojson }}]'>
@@ -270,11 +270,11 @@
                       @click='draftFilters[{{ _gtek | tojson }}] = ""; draftFilters[{{ _ltek | tojson }}] = ""'>Clear</button>
             </div>
             <div class="grid grid-cols-2 gap-2">
-              <input type="number" name="filter_{{ field_name }}__gte" placeholder="Min"
+              <input type="number" name="{{ field_name }}__gte" placeholder="Min"
                      aria-label="{{ field_name | replace('_', ' ') | title }} minimum"
                      class="input w-full"
                      x-model='draftFilters[{{ _gtek | tojson }}]'>
-              <input type="number" name="filter_{{ field_name }}__lte" placeholder="Max"
+              <input type="number" name="{{ field_name }}__lte" placeholder="Max"
                      aria-label="{{ field_name | replace('_', ' ') | title }} maximum"
                      class="input w-full"
                      x-model='draftFilters[{{ _ltek | tojson }}]'>
@@ -290,7 +290,7 @@
                       x-show='draftFilters[{{ field_name | tojson }}]' x-cloak
                       @click='draftFilters[{{ field_name | tojson }}] = ""'>Clear</button>
             </div>
-            <select id="drawer-filter-{{ field_name }}" name="filter_{{ field_name }}"
+            <select id="drawer-filter-{{ field_name }}" name="{{ field_name }}"
                     class="input w-full"
                     x-model='draftFilters[{{ field_name | tojson }}]'>
               {% for value, label in field_info.choices %}
@@ -418,12 +418,10 @@ function filterBar() {
     },
     applyFilters() {
       const params = new URLSearchParams(window.location.search);
-      Array.from(params.keys()).forEach((k) => {
-        if (k.startsWith('filter_')) params.delete(k);
-      });
+      document.querySelectorAll('#filter-drawer [name]').forEach((el) => params.delete(el.name));
       Object.entries(this.activeFilters).forEach(([key, val]) => {
-        if (val !== '' && val !== null && val !== undefined) params.set('filter_' + key, val);
-        else params.delete('filter_' + key);
+        if (val !== '' && val !== null && val !== undefined) params.set(key, val);
+        else params.delete(key);
       });
       const search = this.$refs.searchInput?.value;
       if (search) params.set('q', search);

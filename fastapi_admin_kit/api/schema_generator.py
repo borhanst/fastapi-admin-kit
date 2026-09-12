@@ -14,7 +14,6 @@ def _sa_type_to_python(sa_type: Any) -> type:
         Boolean,
         Date,
         DateTime,
-        Enum,
         Float,
         Integer,
         LargeBinary,
@@ -42,15 +41,40 @@ def _sa_type_to_python(sa_type: Any) -> type:
         return datetime.time
     if type_cls in (LargeBinary,):
         return bytes
-    if type_cls is Enum:
-        return str
     return Any
 
 
+def _enum_python_type(sa_type: Any, field_name: str) -> type:
+    """Return the Python type for a SQLAlchemy ``Enum`` column.
+
+    Uses the underlying Python enum class when the column declares one;
+    otherwise builds a dynamic ``Enum`` with one member per stored value so
+    Swagger renders the field as a dropdown either way. Falls back to ``str``
+    when no value list is known.
+    """
+    import enum
+
+    enum_class = getattr(sa_type, "enum_class", None)
+    if isinstance(enum_class, type) and issubclass(enum_class, enum.Enum):
+        return enum_class
+    values = list(getattr(sa_type, "enums", None) or [])
+    if values:
+        # ponytail: member names are generated (values may not be valid
+        # identifiers); two models sharing a field_name with different values
+        # would share one OpenAPI component — scope by model if it ever bites.
+        members = {f"MEMBER_{i}": v for i, v in enumerate(values)}
+        return enum.Enum(f"{field_name}Enum", members)
+    return str
+
+
 def _get_column_python_type(col: Any) -> type:
-    """Get the Python type for a column, handling ForeignKey."""
+    """Get the Python type for a column, handling ForeignKey and Enum."""
     if col.foreign_keys:
         return int
+    from sqlalchemy import Enum
+
+    if isinstance(col.type, Enum):
+        return _enum_python_type(col.type, col.name)
     return _sa_type_to_python(col.type)
 
 
@@ -214,6 +238,38 @@ def build_list_response_schema(registered: Any) -> type[BaseModel]:
         next_cursor=(str | None, Field(default=None)),
         has_next=(bool, Field(default=False)),
     )
+
+
+def _file_field_names(registered: Any) -> set[str]:
+    """Names of file/image upload fields, honoring fields/exclude config.
+
+    Detection is widget-based (same rule as the HTML form's ``has_file_field``):
+    a field is a file field when its widget is a file-upload widget, whether
+    by column type (``LargeBinary``) or a ``formfield_overrides`` entry on a
+    string column (the usual path-storage pattern).
+    """
+    from fastapi_admin_kit.views.file_handler import FILE_WIDGET_TYPES
+
+    names: set[str] = set()
+    admin = registered.admin
+    for col in registered.columns:
+        if col.name == "id":
+            continue
+        if admin.fields is not None and col.name not in admin.fields:
+            continue
+        if admin.exclude and col.name in admin.exclude:
+            continue
+        try:
+            if isinstance(registered.get_widget(col.name), FILE_WIDGET_TYPES):
+                names.add(col.name)
+        except Exception:
+            continue
+    return names
+
+
+def has_file_fields(registered: Any) -> bool:
+    """True when the model's write schemas include file/image upload columns."""
+    return bool(_file_field_names(registered))
 
 
 def get_or_build_schemas(registered: Any) -> dict[str, type[BaseModel]]:
