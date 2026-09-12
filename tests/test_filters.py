@@ -203,6 +203,21 @@ class TestFilterClauses:
         clause = f.apply(self.adapter, None, Product, {"in": "1,2"})
         assert "products.category_id IN" in str(clause)
 
+    def test_choice_filter_coerces_integer_exact_value(self):
+        from sqlalchemy.dialects import postgresql
+
+        from fastapi_admin_kit.filters import ChoiceFilter
+
+        f = ChoiceFilter("category", resolved_column="category_id")
+        clause = f.apply(self.adapter, None, Product, "2")
+        compiled = clause.compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+
+        assert clause.right.value == 2
+        assert "products.category_id = 2" in str(compiled)
+        assert "products.category_id = '2'" not in str(compiled)
+
     def test_m2m_membership_exact(self):
         from fastapi_admin_kit.filters import ChoiceFilter
 

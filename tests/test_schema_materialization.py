@@ -533,6 +533,7 @@ class TestAdminAuthModelValidation:
             email = "test@test.com"
             is_active = True
             is_superuser = False
+            last_login = None
             password = "hash"
             role_ids = None  # has role_ids but it's not a list property
 
@@ -559,6 +560,7 @@ class TestAdminAuthModelValidation:
             email = "u@x.com"
             is_active = True
             is_superuser = False
+            last_login = None
             password = "h"
             role_ids = []
 
@@ -597,7 +599,7 @@ class TestAdminAuthModelValidation:
         ``admin_user_roles`` IS created with its ``user_id`` FK
         retargeted to the custom auth_model's table.
         """
-        from sqlalchemy import Column, Integer, String
+        from sqlalchemy import Column, DateTime, Integer, String
         from sqlalchemy.orm import DeclarativeBase
 
         from fastapi_admin_kit.admin.core import Admin
@@ -612,6 +614,7 @@ class TestAdminAuthModelValidation:
             password = Column(String, nullable=False)
             is_active = Column(Integer, default=True)
             is_superuser = Column(Integer, default=False)
+            last_login = Column(DateTime, nullable=True)
 
             @property
             def role_ids(self) -> list[int]:

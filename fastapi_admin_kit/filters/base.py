@@ -82,6 +82,21 @@ class Filter(ABC):
             return None
 
     @staticmethod
+    def _coerce_column_value(value: Any, col: Any) -> Any | None:
+        if not isinstance(value, str):
+            return value
+        try:
+            python_type = col.type.python_type
+        except (AttributeError, NotImplementedError):
+            return value
+        if python_type is str:
+            return value
+        try:
+            return python_type(value)
+        except (ValueError, TypeError, OverflowError):
+            return None
+
+    @staticmethod
     def _combine(conditions: list, query_adapter: Any = None) -> Any | None:
         """Combine zero or more conditions into a single AND clause."""
         if not conditions:
@@ -236,16 +251,25 @@ class ChoiceFilter(Filter):
             conditions: list = []
             exact = value.get("exact", "")
             if exact:
-                conditions.append(col == exact)
+                converted = self._coerce_column_value(exact, col)
+                if converted is not None:
+                    conditions.append(col == converted)
             raw_in = value.get("in")
             if raw_in:
-                items = _split_csv(raw_in)
+                items = []
+                for item in _split_csv(raw_in):
+                    converted = self._coerce_column_value(item, col)
+                    if converted is not None:
+                        items.append(converted)
                 if items:
                     conditions.append(col.in_(items))
             return self._combine(conditions, query_adapter)
 
         if value:
-            return col == value
+            converted = self._coerce_column_value(value, col)
+            if converted is None:
+                return None
+            return col == converted
         return None
 
     def _apply_membership(self, query_adapter: Any, model: Any, value: Any) -> Any:
@@ -263,14 +287,23 @@ class ChoiceFilter(Filter):
             if isinstance(value, dict):
                 exact = value.get("exact", "")
                 if exact:
-                    conditions.append(rel.any(target_col == exact))
+                    converted = self._coerce_column_value(exact, target_col)
+                    if converted is not None:
+                        conditions.append(rel.any(target_col == converted))
                 raw_in = value.get("in")
                 if raw_in:
-                    items = _split_csv(raw_in)
+                    items = []
+                    for item in _split_csv(raw_in):
+                        converted = self._coerce_column_value(item, target_col)
+                        if converted is not None:
+                            items.append(converted)
                     if items:
                         conditions.append(rel.any(target_col.in_(items)))
             elif value:
-                return rel.any(target_col == value)
+                converted = self._coerce_column_value(value, target_col)
+                if converted is None:
+                    return None
+                return rel.any(target_col == converted)
             return self._combine(conditions, query_adapter)
         except Exception:
             return None
