@@ -141,6 +141,24 @@ class Filter(ABC):
         return conditions
 
 
+class SimpleFilter(Filter):
+    """Class-configured filter (Django ``SimpleListFilter`` style).
+
+    The author declares ``parameter_name`` and ``title`` as class attributes
+    and passes the *class itself* (not an instance) in ``list_filter``.
+    """
+
+    parameter_name: str = ""
+    title: str = ""
+
+    def __init__(self, label: str = "") -> None:
+        if not self.parameter_name:
+            raise TypeError(
+                f"{type(self).__name__} requires a non-empty 'parameter_name' class attribute"
+            )
+        super().__init__(self.parameter_name, label or self.title)
+
+
 class TextFilter(Filter):
     """Text filter — exact match plus icontains/startswith/endswith lookups."""
 

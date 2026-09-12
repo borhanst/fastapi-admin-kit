@@ -13,6 +13,7 @@ from fastapi_admin_kit.filters.base import (
     IntegerFilter,
     NumericFilter,
     RelationFilter,
+    SimpleFilter,
     TextFilter,
     TimeFilter,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "EnumFilter",
     "IntegerFilter",
     "NumericFilter",
+    "SimpleFilter",
     "DateRangeFilter",
     "DatetimeRangeFilter",
     "TimeFilter",

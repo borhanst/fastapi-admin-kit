@@ -123,6 +123,36 @@ class ProductAdmin(ModelAdmin):
     list_filter = ["name", IntegerFilter("price", label="Price")]
 ```
 
+### SimpleFilter
+
+Django `SimpleListFilter` style: declare `parameter_name` + `title` as class
+attributes and pass the *class itself* in `list_filter` — no constructor args,
+no instance:
+
+```python
+from fastapi_admin_kit.filters import SimpleFilter
+
+class InStockFilter(SimpleFilter):
+    parameter_name = "in_stock"
+    title = "Stock Status"
+    field_type = "boolean"
+
+    def apply(self, query_adapter, query, model, value):
+        raw = value.get("exact") if isinstance(value, dict) else value
+        if raw and raw.lower() in ("1", "true"):
+            return model.stock > 0
+        if raw:
+            return model.stock <= 0
+        return None
+
+    def get_choices(self, session=None):
+        return [("", "All"), ("1", "In stock"), ("0", "Out of stock")]
+
+@admin.register(Product)
+class ProductAdmin(ModelAdmin):
+    list_filter = [InStockFilter]   # class itself, no instantiation
+```
+
 ## Query Parameter Lookups
 
 Filters are applied as query parameters in both the admin UI list view and the

@@ -37,7 +37,7 @@ class ListContextBuilder:
         If ``list_filter`` contains Filter instances they are used directly;
         strings are auto-resolved via FilterRegistry.
         """
-        from fastapi_admin_kit.filters import Filter, FilterRegistry
+        from fastapi_admin_kit.filters import Filter, FilterRegistry, SimpleFilter
 
         introspection = self._get_introspection(request)
         registry = FilterRegistry()
@@ -53,6 +53,9 @@ class ListContextBuilder:
                 if item in auto:
                     result[item] = auto[item]
             elif isinstance(item, Filter):
+                result[item.field_name] = item
+            elif isinstance(item, type) and issubclass(item, SimpleFilter):
+                item = item()
                 result[item.field_name] = item
         return result
 

@@ -19,6 +19,7 @@ from sqlalchemy.pool import StaticPool
 
 from fastapi_admin_kit import Admin
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
+from fastapi_admin_kit.filters import SimpleFilter
 from fastapi_admin_kit.migrations.models import Role, User
 from fastapi_admin_kit.models.base import Base as AdminBase
 from tests.conftest import SECRET_KEY, create_session_cookie, run_async
@@ -95,6 +96,50 @@ class TestParseFilterParams:
         value, active = parse_filter_params({"q": "search"}, "name")
         assert value is None
         assert active == {}
+
+
+# ===========================================================================
+# Unit: SimpleFilter class-configuration (Django SimpleListFilter style)
+# ===========================================================================
+
+
+class TestSimpleFilter:
+    def test_class_attrs_derive_field_name_and_label(self):
+        from fastapi_admin_kit.filters import SimpleFilter
+
+        class InStockFilter(SimpleFilter):
+            parameter_name = "in_stock"
+            title = "Stock Status"
+            field_type = "boolean"
+
+            def apply(self, query_adapter, query, model, value):
+                return None
+
+        f = InStockFilter()
+        assert f.field_name == "in_stock"
+        assert f.label == "Stock Status"
+
+    def test_empty_label_falls_back_to_title(self):
+        from fastapi_admin_kit.filters import SimpleFilter
+
+        class ActiveFilter(SimpleFilter):
+            parameter_name = "is_active"
+            title = "Active Status"
+
+            def apply(self, query_adapter, query, model, value):
+                return None
+
+        assert ActiveFilter().label == "Active Status"
+
+    def test_missing_parameter_name_raises_type_error(self):
+        from fastapi_admin_kit.filters import SimpleFilter
+
+        class BrokenFilter(SimpleFilter):
+            def apply(self, query_adapter, query, model, value):
+                return None
+
+        with pytest.raises(TypeError, match="parameter_name"):
+            BrokenFilter()
 
 
 # ===========================================================================
@@ -456,6 +501,36 @@ def api_m2m():
 
 def _names(body):
     return {item["name"] for item in body["items"]}
+
+
+class InStockFilter(SimpleFilter):
+    """Bare-class filter keyed off the Product.is_active boolean column."""
+
+    parameter_name = "is_active"
+    title = "Stock Status"
+    field_type = "boolean"
+
+    def apply(self, query_adapter, query, model, value):
+        raw = value.get("exact") if isinstance(value, dict) else value
+        if not raw:
+            return None
+        in_stock = raw.lower() in ("1", "true")
+        return model.is_active == in_stock
+
+    def get_choices(self, session=None):
+        return [("", "All"), ("1", "In stock"), ("0", "Out of stock")]
+
+
+class TestApiSimpleFilter:
+    def test_bare_class_filters_via_api(self):
+        client, headers, cleanup = _make_client([InStockFilter])
+        try:
+            body = client.get("/api/products/?filter_is_active=1", headers=headers).json()
+            assert _names(body) == {"Widget", "Widglet", "Textbook"}
+            body = client.get("/api/products/?filter_is_active=0", headers=headers).json()
+            assert _names(body) == {"Novel"}
+        finally:
+            cleanup()
 
 
 class TestApiFilters:

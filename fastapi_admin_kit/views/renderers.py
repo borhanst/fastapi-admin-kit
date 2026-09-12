@@ -367,7 +367,7 @@ class DefaultQueryProvider:
         registered: RegisteredModel,
     ) -> list:
         """Build filter clauses via Filter.apply()."""
-        from fastapi_admin_kit.filters import Filter, FilterRegistry
+        from fastapi_admin_kit.filters import Filter, FilterRegistry, SimpleFilter
         from fastapi_admin_kit.filters.lookups import parse_filter_params
 
         query_adapter = self._get_query_adapter(request)
@@ -380,6 +380,9 @@ class DefaultQueryProvider:
             if isinstance(item, str) and item in auto:
                 filters[item] = auto[item]
             elif isinstance(item, Filter):
+                filters[item.field_name] = item
+            elif isinstance(item, type) and issubclass(item, SimpleFilter):
+                item = item()
                 filters[item.field_name] = item
 
         clauses: list = []
