@@ -66,7 +66,7 @@ def _export_endpoint(registered: Any) -> str | None:
 
 def build_api_router(registry: Any) -> APIRouter:
     """Build the CRUD API router for all registered models."""
-    router = APIRouter(tags=["api-crud"])
+    router = APIRouter()
 
     for registered in registry.all():
         # Respect skip_auto_routes (set for internal/built-in tables and any
@@ -83,6 +83,14 @@ def build_api_router(registry: Any) -> APIRouter:
     return router
 
 
+def _api_tags(registered: Any) -> list[str]:
+    """Return OpenAPI tags: admin.tag if set, else verbose_name."""
+    tag = getattr(registered.admin, "tag", None)
+    if tag:
+        return [tag]
+    return [registered.verbose_name]
+
+
 def build_api_router_for_model(registered: Any) -> APIRouter:
     """Build a standalone CRUD router for a single model.
 
@@ -92,7 +100,7 @@ def build_api_router_for_model(registered: Any) -> APIRouter:
     """
     router = APIRouter(
         prefix=f"/{registered.table_name}",
-        tags=["api-crud", registered.verbose_name],
+        tags=_api_tags(registered),
     )
     _register_model_routes(router, registered)
     return router
@@ -334,13 +342,14 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
             )
         return _wrap_body_handler(handler, payload_schema, include_item_id=include_item_id)
 
-    # Add routes with both "api-crud" and model verbose_name tags
+    # Add routes with admin tag(s) or verbose_name fallback
+    api_tags = _api_tags(registered)
     router.add_api_route(
         "",
         _wrap_list_handler(list_handler, registered),
         methods=["GET"],
         response_model=list_response_schema,
-        tags=["api-crud", registered.verbose_name],
+        tags=api_tags,
         dependencies=[Depends(require_api_permission(table_name, "view"))],
     )
     router.add_api_route(
@@ -349,7 +358,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         methods=["POST"],
         response_model=response_schema,
         status_code=201,
-        tags=["api-crud", registered.verbose_name],
+        tags=api_tags,
         dependencies=[Depends(require_api_permission(table_name, "create"))],
     )
     router.add_api_route(
@@ -357,7 +366,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         _wrap_item_handler(edit_v.api_response),
         methods=["GET"],
         response_model=response_schema,
-        tags=["api-crud", registered.verbose_name],
+        tags=api_tags,
         dependencies=[Depends(require_api_permission(table_name, "view"))],
     )
     router.add_api_route(
@@ -365,7 +374,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         _body_wrapper(edit_v.api_response, update_schema, include_item_id=True),
         methods=["PUT"],
         response_model=response_schema,
-        tags=["api-crud", registered.verbose_name],
+        tags=api_tags,
         dependencies=[Depends(require_api_permission(table_name, "edit"))],
     )
     router.add_api_route(
@@ -373,7 +382,7 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         _body_wrapper(edit_v.api_response, update_schema, include_item_id=True),
         methods=["PATCH"],
         response_model=response_schema,
-        tags=["api-crud", registered.verbose_name],
+        tags=api_tags,
         dependencies=[Depends(require_api_permission(table_name, "edit"))],
     )
     router.add_api_route(
@@ -381,6 +390,6 @@ def _register_model_routes(router: APIRouter, registered: Any) -> None:
         _wrap_item_handler(delete_v.api_response, returns_response=True),
         methods=["DELETE"],
         status_code=204,
-        tags=["api-crud", registered.verbose_name],
+        tags=api_tags,
         dependencies=[Depends(require_api_permission(table_name, "delete"))],
     )
