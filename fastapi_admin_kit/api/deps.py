@@ -20,6 +20,8 @@ from fastapi import HTTPException, Request
 from fastapi_admin_kit.api.auth import (
     _get_secret_key,
     decode_access_token,
+    extract_bearer_token,
+    parse_jwt_subject,
     token_predates_password_change,
 )
 
@@ -34,11 +36,10 @@ async def get_api_current_user(request: Request) -> dict[str, Any]:
     if cached is not None:
         return cached
 
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
+    token = extract_bearer_token(request.headers.get("Authorization", ""))
+    if token is None:
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header.")
 
-    token = auth_header[7:]
     secret_key = _get_secret_key(request)
     payload = decode_access_token(token, secret_key)
     if payload is None:
@@ -51,13 +52,12 @@ async def _resolve_live_user(request: Request, user: dict[str, Any]) -> Any | No
 
     Returns ``None`` when the account was deleted or deactivated, so stale
     tokens cannot keep working after the account is removed.
+
+    The subject may be an ``int`` (built-in User) or a ``str``/``UUID``
+    (custom ``auth_model``) — it is passed through unchanged so BYO PKs work.
     """
-    sub = user.get("sub")
-    if sub is None:
-        return None
-    try:
-        user_id: int | str = int(sub)
-    except (TypeError, ValueError):
+    user_id = parse_jwt_subject(user.get("sub"))
+    if user_id is None:
         return None
 
     from fastapi_admin_kit.auth.identity import resolve_user

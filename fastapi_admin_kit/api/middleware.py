@@ -97,6 +97,8 @@ class AccessTokenMiddleware(BaseHTTPMiddleware):
         from fastapi_admin_kit.api.auth import (
             _get_secret_key,
             decode_access_token,
+            extract_bearer_token,
+            parse_jwt_subject,
             token_predates_password_change,
         )
         from fastapi_admin_kit.auth.identity import resolve_user
@@ -106,17 +108,15 @@ class AccessTokenMiddleware(BaseHTTPMiddleware):
         except Exception:  # noqa: BLE001 — app misconfiguration surfaces below
             return await call_next(request)
 
-        payload = decode_access_token(auth_header[7:], secret_key)
+        token = extract_bearer_token(auth_header)
+        if token is None:
+            return _unauthorized("Missing or invalid Authorization header.")
+
+        payload = decode_access_token(token, secret_key)
         if payload is None:
             return _unauthorized("Invalid or expired token.")
 
-        sub = payload.get("sub")
-        user_id: int | str | None = None
-        if sub is not None:
-            try:
-                user_id = int(sub)
-            except (TypeError, ValueError):
-                user_id = None
+        user_id = parse_jwt_subject(payload.get("sub"))
 
         user = await resolve_user(request, user_id) if user_id is not None else None
         if user is None:

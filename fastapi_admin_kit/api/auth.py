@@ -225,6 +225,64 @@ def decode_access_token(token: str, secret_key: str) -> dict[str, Any] | None:
         return None
 
 
+def parse_jwt_subject(sub: Any) -> int | str | None:
+    """Normalize a JWT ``sub`` claim to a DB-usable user id.
+
+    The ``AdminUserProtocol`` allows any PK type (``int``, ``str``, ``UUID``),
+    and :func:`create_access_token` stores ``str(user.id)``. Earlier code did
+    ``int(sub)`` and dropped every non-integer subject, so a valid token
+    minted for a UUID/str-PK user could be issued but never validated
+    (``Account not found or inactive`` on every subsequent call).
+
+    Returns ``int`` for digit strings (keeps integer-PK queries exact),
+    the stripped string otherwise, and ``None`` for missing/empty subjects.
+    """
+    if sub is None:
+        return None
+    if isinstance(sub, bool):
+        return None
+    if isinstance(sub, int):
+        return sub
+    # UUID objects (or any non-str scalar) — stringify; get_user() coerces back.
+    try:
+        text = str(sub).strip()
+    except Exception:
+        return None
+    if not text:
+        return None
+    try:
+        return int(text)
+    except (TypeError, ValueError):
+        return text
+
+
+def extract_bearer_token(auth_header: str | None) -> str | None:
+    """Extract the raw JWT from an ``Authorization`` header value.
+
+    Tolerates the two most common Swagger copy-paste mistakes:
+
+    - pasting ``Bearer <token>`` into the ``BearerAuth`` value field, which
+      Swagger then sends as ``Bearer Bearer <token>``;
+    - surrounding whitespace/quotes from copying a JSON response body.
+    """
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header[7:].strip()
+    if not token:
+        return None
+    # Tolerate a duplicated scheme prefix (case-insensitive).
+    if len(token) > 7 and token[:7].lower() == "bearer ":
+        token = token[7:].strip()
+        if not token:
+            return None
+    # Tolerate surrounding quotes from JSON copy-paste.
+    if len(token) >= 2 and (
+        (token[0] == '"' and token[-1] == '"') or (token[0] == "'" and token[-1] == "'")
+    ):
+        token = token[1:-1].strip()
+    return token or None
+
+
 def _hash_token(token: str) -> str:
     """SHA256 hash of a token for storage."""
     return hashlib.sha256(token.encode()).hexdigest()
@@ -455,22 +513,18 @@ async def get_current_user_info(
     immediately.
     """
     auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
+    token = extract_bearer_token(auth_header)
+    if token is None:
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header.")
 
-    token = auth_header[7:]
     secret_key = _get_secret_key(request)
     payload = decode_access_token(token, secret_key)
     if payload is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token.")
 
-    sub = payload.get("sub")
-    if sub is None:
+    user_id = parse_jwt_subject(payload.get("sub"))
+    if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token.")
-    try:
-        user_id: int | str = int(sub)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=401, detail="Invalid or expired token.") from None
 
     # Resolve through the AuthBackend seam: honours BYO user models and
     # returns None for deleted/deactivated accounts.

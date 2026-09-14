@@ -52,7 +52,7 @@ def _get_db_session(request: Request) -> AsyncSession | None:
         return None
 
 
-async def resolve_user(request: Request, user_id: int | str | None) -> AdminUserProtocol | None:
+async def resolve_user(request: Request, user_id: Any | None) -> AdminUserProtocol | None:
     """Resolve *user_id* to an active user and cache it on the request.
 
     Idempotent for a given request: if ``request.state.admin_user`` is already
@@ -62,7 +62,7 @@ async def resolve_user(request: Request, user_id: int | str | None) -> AdminUser
 
     Always honours the configured ``AuthBackend.get_user`` seam, so BYO user
     models are supported on every transport (cookie *and* JWT), not just the
-    built-in one.
+    built-in one. ``user_id`` may be an ``int``, ``str``, or ``UUID``.
     """
     cached = getattr(request.state, "admin_user", None)
     if cached is not None:
@@ -174,24 +174,24 @@ async def get_current_user_from_bearer(
     honours the ``AuthBackend.get_user`` seam just like the cookie path.
     """
     # Imported lazily to avoid a circular import at module load time.
-    from fastapi_admin_kit.api.auth import _get_secret_key, decode_access_token
+    from fastapi_admin_kit.api.auth import (
+        _get_secret_key,
+        decode_access_token,
+        extract_bearer_token,
+        parse_jwt_subject,
+    )
 
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
+    token = extract_bearer_token(request.headers.get("Authorization", ""))
+    if token is None:
         return None
 
-    token = auth_header[len("Bearer ") :]
     secret_key = _get_secret_key(request)
     payload = decode_access_token(token, secret_key)
     if payload is None:
         return None
 
-    sub = payload.get("sub")
-    if sub is None:
-        return None
-    try:
-        user_id: int | str = int(sub)  # type: ignore[assignment]
-    except (TypeError, ValueError):
+    user_id = parse_jwt_subject(payload.get("sub"))
+    if user_id is None:
         return None
 
     user = await resolve_user(request, user_id)
