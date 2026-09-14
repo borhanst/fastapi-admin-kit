@@ -202,25 +202,19 @@ def _wrap_multipart_handler(
             param_type = Annotated[str | None, Form()]
         # All params optional here — required fields are enforced by the
         # shared widget/validator pipeline, exactly like the HTML form.
-        params.append(
-            Parameter(name, Parameter.KEYWORD_ONLY, default=None, annotation=param_type)
-        )
+        params.append(Parameter(name, Parameter.KEYWORD_ONLY, default=None, annotation=param_type))
 
     if include_item_id:
 
         async def wrapped(request: Request, **kwargs: Any) -> Any:
             item_id = kwargs.pop("item_id", None)
-            request.state._api_payload = {
-                k: v for k, v in kwargs.items() if v is not None
-            }
+            request.state._api_payload = {k: v for k, v in kwargs.items() if v is not None}
             return await handler(request, item_id=item_id)
 
     else:
 
         async def wrapped(request: Request, **kwargs: Any) -> Any:
-            request.state._api_payload = {
-                k: v for k, v in kwargs.items() if v is not None
-            }
+            request.state._api_payload = {k: v for k, v in kwargs.items() if v is not None}
             return await handler(request)
 
     wrapped.__signature__ = Signature(params)

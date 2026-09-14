@@ -162,9 +162,7 @@ class FilterRegistry:
         if direction != "MANYTOONE":
             target = meta.target_model if meta is not None else None
             target_pk = (
-                cls._resolve_pk_column(target, introspection)
-                if target is not None
-                else None
+                cls._resolve_pk_column(target, introspection) if target is not None else None
             )
             if target is not None and target_pk is not None:
                 return ChoiceFilter(
