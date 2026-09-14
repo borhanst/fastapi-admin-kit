@@ -710,34 +710,61 @@ class EditView(BaseView):
     api_renderer_class = ItemAPIRenderer
 
     async def _resolve_rel_labels(self, obj: Any, request: Request) -> dict[str, str]:
-        """Resolve display labels for relationship fields from FK values."""
-        from sqlalchemy import inspect as sa_inspect
+        """Resolve display labels for relationship fields from FK values.
 
+        Relationship metadata comes from the introspection backend
+        (``registered.relationships`` + ``get_relationship_local_columns``)
+        and targets are loaded through the session backend — no direct
+        ORM inspection here.
+        """
         from fastapi_admin_kit.inspection import model_display_name
 
         labels: dict[str, str] = {}
         if obj is None:
             return labels
         try:
-            mapper = sa_inspect(type(obj))
+            introspection = request.app.state.admin_introspection_adapter
         except Exception:
-            return labels
+            introspection = None
         session = get_db_session(request)
-        for rel_key, rel_prop in mapper.relationships.items():
-            local_cols = [c.key for c in rel_prop.local_columns]
+        for rel in self.registered.relationships:
+            if rel.direction == "MANYTOMANY":
+                continue
+            if rel.target_model is None:
+                continue
+            local_cols = self._rel_local_columns(introspection, rel.name)
             if not local_cols:
                 continue
             fk_val = getattr(obj, local_cols[0], None)
             if fk_val is None:
                 continue
-            target_cls = rel_prop.mapper.class_
             try:
-                target = await session.get(target_cls, fk_val)
+                target = await session.get(rel.target_model, fk_val)
                 if target is not None:
-                    labels[rel_key] = model_display_name(target)
+                    labels[rel.name] = model_display_name(target)
             except Exception:
-                labels[rel_key] = str(fk_val)
+                labels[rel.name] = str(fk_val)
         return labels
+
+    def _rel_local_columns(self, introspection: Any, rel_name: str) -> list[str]:
+        """Local FK column key(s) for *rel_name* via the backend (with fallback)."""
+        if introspection is not None:
+            try:
+                cols = introspection.get_relationship_local_columns(self.registered.model, rel_name)
+                if cols:
+                    return list(cols)
+            except Exception:
+                pass
+        try:
+            from sqlalchemy import inspect as sa_inspect
+
+            mapper = sa_inspect(self.registered.model)
+            rel_prop = mapper.relationships.get(rel_name)
+            if rel_prop is not None:
+                return [c.key for c in rel_prop.local_columns]
+        except Exception:
+            pass
+        return []
 
     async def _build_form_context(
         self,
@@ -1042,6 +1069,26 @@ class EditView(BaseView):
             is_create=False,
             rel_labels=rel_labels,
         )
+        # Resolve M2M labels so the read-only detail view shows
+        # "label" chips instead of raw id JSON (e.g. ["1", "2"]).
+        # Relationship names come from the backend-derived registry
+        # metadata — no direct ORM inspection.
+        try:
+            from fastapi_admin_kit.inspection import model_display_name
+
+            m2m_rels = {
+                r.name for r in self.registered.relationships if r.direction == "MANYTOMANY"
+            }
+            if ctx.fieldsets:
+                for f in ctx.fieldsets[0].fields:
+                    if f.widget_macro == "multi_relation" and f.meta.name in m2m_rels:
+                        collection = getattr(obj, f.meta.name, None)
+                        if collection:
+                            f.widget_context["labels"] = [
+                                model_display_name(item) for item in collection
+                            ]
+        except Exception:
+            pass
         template_context = {
             "form_context": ctx,
             "registered": self.registered,
@@ -1477,12 +1524,14 @@ class SearchView(BaseView):
         error: str | None = None,
         results: list | None = None,
     ) -> Any:
+        from fastapi_admin_kit.inspection import get_default_search_fields
+
         templates = request.app.state.admin_jinja_env
         admin_path = request.app.state.admin_config["admin_path"]
-        search_fields = getattr(self.admin, "search_fields", None) or [
-            "name",
-            "title",
-        ]
+        search_fields = getattr(self.admin, "search_fields", None) or get_default_search_fields(
+            self.registered.model,
+            getattr(request.app.state, "admin_introspection_adapter", None),
+        )
         return templates.TemplateResponse(
             request,
             "pages/search.html",
@@ -1539,12 +1588,15 @@ class SearchView(BaseView):
                     return self._render_search_page(request, q, results=[])
                 return JSONResponse([])
             else:
+                from fastapi_admin_kit.inspection import get_default_search_fields
                 from fastapi_admin_kit.search_utils import apply_search_filter
 
-                search_fields = getattr(self.admin, "search_fields", None) or [
-                    "name",
-                    "title",
-                ]
+                search_fields = getattr(
+                    self.admin, "search_fields", None
+                ) or get_default_search_fields(
+                    self.registered.model,
+                    getattr(request.app.state, "admin_introspection_adapter", None),
+                )
                 base = apply_search_filter(
                     request,
                     self.admin.get_queryset(session, request),
@@ -1572,7 +1624,9 @@ class SearchView(BaseView):
                 from fastapi_admin_kit.inspection import model_display_name
 
                 label = model_display_name(row)
-                results.append({"id": str(pk), "label": label})
+                # Standard option shape: label for display, value for
+                # submission. ``id`` is kept for backward compatibility.
+                results.append({"id": str(pk), "value": str(pk), "label": label})
 
             if is_browser:
                 return self._render_search_page(request, q, results=results)

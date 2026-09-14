@@ -73,9 +73,9 @@
           <div x-data='multiRelation({{ selected_role_ids | tojson }}, {{ (admin_path | default("/admin") ~ "/users/roles/search") | tojson }}, {{ selected_role_items | tojson }})'>
             <input type="hidden" name="role_ids" :value="JSON.stringify(selectedIds)">
             <div class="flex flex-wrap gap-2" style="margin-bottom: 8px;">
-              <template x-for="(item, index) in selectedItems" :key="item.id">
+              <template x-for="(item, index) in selectedItems" :key="item.value ?? item.id">
                 <span class="tag-chip">
-                  <span x-text="item.label"></span>
+                  <span x-text="item.label ?? item.name ?? item.value ?? item.id"></span>
                   <button type="button" @click="remove(index)" class="tag-chip__remove">&times;</button>
                 </span>
               </template>
@@ -86,11 +86,12 @@
                      class="form-input">
               <div x-show="open && results.length > 0"
                    style="position: absolute; z-index: 50; width: 100%; margin-top: 4px; background: var(--surface-base); border: 1px solid var(--surface-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); max-height: 200px; overflow-y: auto;">
-                <template x-for="result in results" :key="result.id">
+                <template x-for="result in results" :key="result.value ?? result.id">
                   <div @click="add(result)"
                        style="padding: 8px 12px; cursor: pointer; font-size: 0.875rem;"
                        onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''">
-                    <span x-text="result.label"></span>
+                    <span x-text="result.label ?? result.name ?? result.value ?? result.id"></span>
+                    <span style="font-size: var(--text-xs); color: var(--text-secondary); margin-left: 8px;" x-text="result.value ?? result.id"></span>
                   </div>
                 </template>
               </div>
@@ -116,10 +117,10 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <template x-for="(perm, index) in selectedPerms" :key="perm.id">
+                    <template x-for="(perm, index) in selectedPerms" :key="perm.value ?? perm.id">
                       <tr style="border-bottom: 1px solid var(--surface-border);" onmouseover="this.style.background='var(--surface-inset)'" onmouseout="this.style.background=''">
                         <td style="padding: 12px 16px;">
-                          <span style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);" x-text="perm.name"></span>
+                          <span style="font-size: 0.875rem; font-weight: 500; color: var(--text-primary);" x-text="perm.label ?? perm.name"></span>
                         </td>
                         <td style="padding: 12px 16px;">
                           <span style="font-size: 0.875rem; color: var(--text-secondary);" x-text="perm.table_name"></span>
@@ -152,11 +153,11 @@
                      class="form-input" style="width: 100%;">
               <div x-show="open && results.length > 0" x-cloak
                    style="position: absolute; z-index: 50; width: 100%; margin-top: 4px; background: var(--surface-raised); border: 1px solid var(--surface-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); max-height: 200px; overflow-y: auto;">
-                <template x-for="result in results" :key="result.id">
+                <template x-for="result in results" :key="result.value ?? result.id">
                   <div @click="addPerm(result)"
                        style="padding: 8px 12px; cursor: pointer; font-size: 0.875rem; color: var(--text-primary);"
                        onmouseover="this.style.background='var(--surface-inset)'" onmouseout="this.style.background=''">
-                    <span x-text="result.name"></span>
+                    <span x-text="result.label ?? result.name"></span>
                     <span style="font-size: 0.75rem; color: var(--text-secondary); margin-left: 8px;" x-text="result.table_name"></span>
                   </div>
                 </template>

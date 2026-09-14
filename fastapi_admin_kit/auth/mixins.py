@@ -4,25 +4,44 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
-from sqlalchemy import Boolean, Column, DateTime, String
-
 from fastapi_admin_kit.backends import as_session_backend
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    # Editor-only hints for the 4 ORM-mapped fields the host model must
+    # declare with its own ORM (SQLAlchemy Column, SQLModel Field,
+    # Tortoise field, ...). Declared here only for type checkers —
+    # there are NO runtime attributes for these names on the mixin,
+    # so subclasses never trigger field-shadowing warnings.
+    password: str | None
+    is_active: bool
+    is_superuser: bool
+    last_login: datetime | None
 
 
 class AuthModelMixin:
-    """Mixin for custom user models to work with admin's built-in RBAC.
+    """ORM-agnostic behavior mixin for custom user models.
 
-    Provides: password, is_active, is_superuser, last_login columns,
-    role_ids property, verify_password() and hash_password() methods.
+    The mixin provides **behavior only** — no ORM columns/fields.
+    You must add these 4 fields with your ORM on your auth model::
+
+        password      — hashed password (str, e.g. String(255), NOT NULL)
+        is_active     — bool, recommended default True
+        is_superuser  — bool, recommended default False
+        last_login    — datetime with timezone, nullable (recommended)
+
+    Defaults/nullability beyond presence are per-app; the admin validator
+    only checks that the attributes exist (plus ``verify_password``).
+    Works with SQLAlchemy, SQLModel, and other Python ORMs — each model
+    declares the 4 fields with its own ``Column``/``Field`` type.
 
     Usage::
 
         from fastapi_admin_kit.auth.mixins import AuthModelMixin
-        from fastapi_admin_kit.auth.models import admin_user_roles, Role
-        from sqlalchemy.orm import relationship
+        from sqlalchemy import Boolean, Column, DateTime, String
 
         class MyUser(AuthModelMixin, Base):
             __tablename__ = "my_users"
@@ -31,16 +50,18 @@ class AuthModelMixin:
             username = Column(String(255), unique=True)
             email = Column(String(255), unique=True)
 
+            # Required: declare these 4 with your ORM
+            password = Column(String(255), nullable=False)
+            is_active = Column(Boolean, default=True)
+            is_superuser = Column(Boolean, default=False)
+            last_login = Column(DateTime(timezone=True), nullable=True)
+
             # Define roles relationship yourself (FK must match your table)
             roles = relationship(
                 "Role", secondary=admin_user_roles, back_populates="users"
             )
 
     The mixin provides:
-    - ``password`` column (String 255) — stores the hashed password
-    - ``is_active`` column (Boolean, default True)
-    - ``is_superuser`` column (Boolean, default False)
-    - ``last_login`` column (DateTime with timezone, nullable)
     - ``role_ids`` property → ``list[int]`` (reads from ``self.roles``)
     - ``verify_password(password)`` → bool
     - ``hash_password(password)`` → str (classmethod)
@@ -49,11 +70,6 @@ class AuthModelMixin:
     """
 
     _hasher: ClassVar[type | None] = None
-
-    password = Column(String(255))
-    is_active = Column(Boolean, default=True)
-    is_superuser = Column(Boolean, default=False)
-    last_login = Column(DateTime(timezone=True), nullable=True)
 
     @property
     def role_ids(self) -> list[int]:

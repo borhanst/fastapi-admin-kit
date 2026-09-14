@@ -54,6 +54,10 @@ class IntrospectionBackend(Protocol):
         """Return a single relationship descriptor by name, or None."""
         ...
 
+    def get_relationship_meta(self, model: type, name: str) -> RelationMeta | None:
+        """Return ORM-agnostic metadata for a single relationship, or None."""
+        ...
+
     def get_relationship_local_columns(self, model: type, name: str) -> list[str]:
         """Return the local column key(s) for a relationship.
 
@@ -73,6 +77,30 @@ class IntrospectionBackend(Protocol):
 
     def get_pk_columns(self, model: type) -> list[Any]:
         """Return the primary key column(s) for a model."""
+        ...
+
+    def get_display_label(self, obj: Any) -> str | None:
+        """Return a short human-readable label for *obj*, or None.
+
+        Used for relation-picker options, list/detail relation values, and
+        anywhere a related object must render as ``label`` instead of full
+        row data. Backends must ignore framework-default ``__str__``
+        implementations that dump every field (e.g. SQLModel/Pydantic
+        ``BaseModel.__str__``) and prefer a custom ``__str__``, falling
+        back to ``name`` / ``title`` / ``email`` / ``username`` attributes.
+        Callers apply their own final fallback (``#id``, ``ClassName:pk``).
+        """
+        ...
+
+    def get_default_search_fields(self, model: type) -> list[str]:
+        """Return default searchable field names for *model*.
+
+        Used when ``ModelAdmin.search_fields`` is unset. Backends return
+        the ``name`` / ``title`` / ``email`` / ``username`` columns that
+        actually exist on the model, falling back to the first text-like
+        column so models without those fields (e.g. feedback/comment
+        tables) are still searchable instead of silently unfiltered.
+        """
         ...
 
 

@@ -168,6 +168,20 @@ Auto-generated JSON schemas are available for each model:
 curl http://localhost:8000/admin/api/schema/products/
 ```
 
+### Enum fields render as dropdowns
+
+`Enum` columns map to real enum types in the create/update schemas, so
+Swagger shows them as dropdowns (both Python-enum classes and plain
+`Enum("a", "b")` columns).
+
+### File/image fields use multipart forms
+
+When a model has file/image upload fields (`LargeBinary` columns or
+`formfield_overrides` with `FileUploadWidget`/`ImageUploadWidget`), the
+create/update endpoints accept `multipart/form-data` instead of JSON so files
+can be picked directly in Swagger. Uploads go through the same storage
+backend as the admin HTML form.
+
 ## Next Steps
 
 - [Authentication & RBAC](auth-rbac.md) — Set up permissions

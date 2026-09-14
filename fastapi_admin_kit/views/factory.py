@@ -146,36 +146,64 @@ def _resolve_rel_keys(parsed: dict[str, Any], registered: RegisteredModel) -> di
     return resolved
 
 
+def _rel_local_columns(registered: RegisteredModel, request: Any, rel_name: str) -> list[str]:
+    """Local FK column key(s) for *rel_name* via the introspection backend."""
+    try:
+        introspection = request.app.state.admin_introspection_adapter
+    except Exception:
+        introspection = None
+    if introspection is not None:
+        try:
+            cols = introspection.get_relationship_local_columns(registered.model, rel_name)
+            if cols:
+                return list(cols)
+        except Exception:
+            pass
+    try:
+        from sqlalchemy import inspect as sa_inspect
+
+        mapper = sa_inspect(registered.model)
+        rel_prop = mapper.relationships.get(rel_name)
+        if rel_prop is not None:
+            return [c.key for c in rel_prop.local_columns]
+    except Exception:
+        pass
+    return []
+
+
 async def _resolve_rel_labels(
     obj: Any, registered: RegisteredModel, request: Any
 ) -> dict[str, str]:
-    """Resolve display labels for relationship fields from FK values."""
-    from sqlalchemy import inspect as sa_inspect
+    """Resolve display labels for relationship fields from FK values.
 
+    Relationship metadata comes from the introspection backend
+    (``registered.relationships`` + ``get_relationship_local_columns``)
+    and targets are loaded through the session backend — no direct
+    ORM inspection in the main path.
+    """
     from fastapi_admin_kit.inspection import model_display_name
 
     labels: dict[str, str] = {}
     if obj is None:
         return labels
-    try:
-        mapper = sa_inspect(registered.model)
-    except Exception:
-        return labels
     session = get_db_session(request)
-    for rel_key, rel_prop in mapper.relationships.items():
-        local_cols = [c.key for c in rel_prop.local_columns]
+    for rel in registered.relationships:
+        if rel.direction == "MANYTOMANY":
+            continue
+        if rel.target_model is None:
+            continue
+        local_cols = _rel_local_columns(registered, request, rel.name)
         if not local_cols:
             continue
         fk_val = getattr(obj, local_cols[0], None)
         if fk_val is None:
             continue
-        target_cls = rel_prop.mapper.class_
         try:
-            target = await session.get(target_cls, fk_val)
+            target = await session.get(rel.target_model, fk_val)
             if target is not None:
-                labels[rel_key] = model_display_name(target)
+                labels[rel.name] = model_display_name(target)
         except Exception:
-            labels[rel_key] = str(fk_val)
+            labels[rel.name] = str(fk_val)
     return labels
 
 

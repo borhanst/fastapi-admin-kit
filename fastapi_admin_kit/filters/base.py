@@ -82,6 +82,21 @@ class Filter(ABC):
             return None
 
     @staticmethod
+    def _coerce_column_value(value: Any, col: Any) -> Any | None:
+        if not isinstance(value, str):
+            return value
+        try:
+            python_type = col.type.python_type
+        except (AttributeError, NotImplementedError):
+            return value
+        if python_type is str:
+            return value
+        try:
+            return python_type(value)
+        except (ValueError, TypeError, OverflowError):
+            return None
+
+    @staticmethod
     def _combine(conditions: list, query_adapter: Any = None) -> Any | None:
         """Combine zero or more conditions into a single AND clause."""
         if not conditions:
@@ -141,6 +156,24 @@ class Filter(ABC):
         return conditions
 
 
+class SimpleFilter(Filter):
+    """Class-configured filter (Django ``SimpleListFilter`` style).
+
+    The author declares ``parameter_name`` and ``title`` as class attributes
+    and passes the *class itself* (not an instance) in ``list_filter``.
+    """
+
+    parameter_name: str = ""
+    title: str = ""
+
+    def __init__(self, label: str = "") -> None:
+        if not self.parameter_name:
+            raise TypeError(
+                f"{type(self).__name__} requires a non-empty 'parameter_name' class attribute"
+            )
+        super().__init__(self.parameter_name, label or self.title)
+
+
 class TextFilter(Filter):
     """Text filter — exact match plus icontains/startswith/endswith lookups."""
 
@@ -194,12 +227,21 @@ class ChoiceFilter(Filter):
         label: str = "",
         resolved_column: str | None = None,
         choices: list[str] | None = None,
+        relationship_name: str | None = None,
+        target_model: Any = None,
+        target_pk: str | None = None,
     ) -> None:
         super().__init__(field_name, label)
         self.resolved_column = resolved_column
         self._choices = list(choices or [])
+        self.relationship_name = relationship_name
+        self.target_model = target_model
+        self.target_pk = target_pk
 
     def apply(self, query_adapter: Any, query: Any, model: Any, value: Any) -> Any:
+        if self.relationship_name:
+            return self._apply_membership(query_adapter, model, value)
+
         col_name = self.resolved_column or self.field_name
         col = self._column(model, col_name)
         if col is None:
@@ -209,17 +251,62 @@ class ChoiceFilter(Filter):
             conditions: list = []
             exact = value.get("exact", "")
             if exact:
-                conditions.append(col == exact)
+                converted = self._coerce_column_value(exact, col)
+                if converted is not None:
+                    conditions.append(col == converted)
             raw_in = value.get("in")
             if raw_in:
-                items = _split_csv(raw_in)
+                items = []
+                for item in _split_csv(raw_in):
+                    converted = self._coerce_column_value(item, col)
+                    if converted is not None:
+                        items.append(converted)
                 if items:
                     conditions.append(col.in_(items))
             return self._combine(conditions, query_adapter)
 
         if value:
-            return col == value
+            converted = self._coerce_column_value(value, col)
+            if converted is None:
+                return None
+            return col == converted
         return None
+
+    def _apply_membership(self, query_adapter: Any, model: Any, value: Any) -> Any:
+        """Filter by related-object membership (M2M / reverse ONETOMANY).
+
+        Builds ``model.rel.any(target.pk == value)``. Unsupported backends
+        (no ``.any()`` on the relationship) return None and skip the filter.
+        """
+        rel = self._column(model, self.relationship_name or self.field_name)
+        target_col = getattr(self.target_model, self.target_pk, None) if self.target_model else None
+        if rel is None or target_col is None:
+            return None
+        try:
+            conditions: list = []
+            if isinstance(value, dict):
+                exact = value.get("exact", "")
+                if exact:
+                    converted = self._coerce_column_value(exact, target_col)
+                    if converted is not None:
+                        conditions.append(rel.any(target_col == converted))
+                raw_in = value.get("in")
+                if raw_in:
+                    items = []
+                    for item in _split_csv(raw_in):
+                        converted = self._coerce_column_value(item, target_col)
+                        if converted is not None:
+                            items.append(converted)
+                    if items:
+                        conditions.append(rel.any(target_col.in_(items)))
+            elif value:
+                converted = self._coerce_column_value(value, target_col)
+                if converted is None:
+                    return None
+                return rel.any(target_col == converted)
+            return self._combine(conditions, query_adapter)
+        except Exception:
+            return None
 
     def get_choices(self, session: Any = None) -> list[tuple[str, str]]:
         if not self._choices:

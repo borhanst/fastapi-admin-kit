@@ -123,35 +123,70 @@ class ProductAdmin(ModelAdmin):
     list_filter = ["name", IntegerFilter("price", label="Price")]
 ```
 
+### SimpleFilter
+
+Django `SimpleListFilter` style: declare `parameter_name` + `title` as class
+attributes and pass the *class itself* in `list_filter` — no constructor args,
+no instance:
+
+```python
+from fastapi_admin_kit.filters import SimpleFilter
+
+class InStockFilter(SimpleFilter):
+    parameter_name = "in_stock"
+    title = "Stock Status"
+    field_type = "boolean"
+
+    def apply(self, query_adapter, query, model, value):
+        raw = value.get("exact") if isinstance(value, dict) else value
+        if raw and raw.lower() in ("1", "true"):
+            return model.stock > 0
+        if raw:
+            return model.stock <= 0
+        return None
+
+    def get_choices(self, session=None):
+        return [("", "All"), ("1", "In stock"), ("0", "Out of stock")]
+
+@admin.register(Product)
+class ProductAdmin(ModelAdmin):
+    list_filter = [InStockFilter]   # class itself, no instantiation
+```
+
 ## Query Parameter Lookups
 
 Filters are applied as query parameters in both the admin UI list view and the
-JSON API. Lookups follow the `django-filter` convention (`filter_<field>__<lookup>`):
+JSON API. Lookups follow the field-name convention (`<field>__<lookup>`):
 
 ```
-filter_name=value              exact match
-filter_name__icontains=term    case-insensitive contains
-filter_name__startswith=Jo     starts with
-filter_name__endswith=hn       ends with
-filter_price__gt=100           greater than
-filter_price__gte=100          greater than or equal
-filter_price__lt=50            less than
-filter_price__lte=200          less than or equal
-filter_price__range=10,200     range (inclusive)
-filter_id__in=1,2,3            in list
-filter_is_active=1             boolean (1/true/yes, 0/false/no)
-filter_category=1              relation exact match
+name=value                     exact match
+name__icontains=term           case-insensitive contains
+name__startswith=Jo            starts with
+name__endswith=hn              ends with
+price__gt=100                  greater than
+price__gte=100                 greater than or equal
+price__lt=50                   less than
+price__lte=200                 less than or equal
+price__range=10,200            range (inclusive)
+id__in=1,2,3                   in list
+is_active=1                    boolean (1/true/yes, 0/false/no)
+category=1                     relation exact match
 ```
 
 Examples:
 
 ```
-/admin/products/?filter_name__icontains=phone&filter_price__gte=100
-/api/products/?filter_category=2&filter_price__range=10,200
+/admin/products/?name__icontains=phone&price__gte=100
+/api/products/?category=2&price__range=10,200
 ```
 
 Multiple filters are AND'd together. Range values are comma-separated pairs;
 `in` values are comma-separated lists.
+
+On the JSON API, the list endpoint documents every configured filter as
+optional query parameters in the OpenAPI/Swagger schema — add a filter to
+`list_filter` and it (plus the lookups its field type supports) shows up in
+`/openapi.json` automatically.
 
 ## Per-Filter UI Options
 

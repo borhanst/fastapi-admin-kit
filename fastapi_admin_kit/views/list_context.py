@@ -37,7 +37,7 @@ class ListContextBuilder:
         If ``list_filter`` contains Filter instances they are used directly;
         strings are auto-resolved via FilterRegistry.
         """
-        from fastapi_admin_kit.filters import Filter, FilterRegistry
+        from fastapi_admin_kit.filters import Filter, FilterRegistry, SimpleFilter
 
         introspection = self._get_introspection(request)
         registry = FilterRegistry()
@@ -53,6 +53,9 @@ class ListContextBuilder:
                 if item in auto:
                     result[item] = auto[item]
             elif isinstance(item, Filter):
+                result[item.field_name] = item
+            elif isinstance(item, type) and issubclass(item, SimpleFilter):
+                item = item()
                 result[item.field_name] = item
         return result
 
@@ -170,13 +173,11 @@ class ListContextBuilder:
                     else sa_inspect(target).primary_key[0]
                 )
                 q = select(target).order_by(order_col or pk).limit(100)
+            from fastapi_admin_kit.inspection import model_display_name
+
             for obj in await session.all(q):
-                label = str(
-                    getattr(obj, "name", None)
-                    or getattr(obj, "title", None)
-                    or f"#{getattr(obj, 'id', '?')}"
-                )
-                choices.append((str(obj.id), label))
+                # Label via the introspection backend.
+                choices.append((str(obj.id), model_display_name(obj)))
         except Exception:
             pass
         return choices

@@ -23,7 +23,7 @@
                   hx-get="{{ admin_path }}/{{ table_name }}/"
                   hx-target="#table-wrapper"
                   hx-swap="outerHTML"
-                  hx-include="[name='q'], [name^='filter_']">
+                  hx-include="[name='q'], #filter-drawer [name]">
             Cancel
           </button>
         </div>

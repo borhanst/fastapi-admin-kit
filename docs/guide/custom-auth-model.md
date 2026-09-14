@@ -20,7 +20,7 @@ import uuid
 from typing import Optional
 
 from fastapi import FastAPI
-from sqlalchemy import Column, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import DeclarativeBase, relationship
 from sqlalchemy.types import Uuid
 
@@ -37,11 +37,15 @@ class User(AuthModelMixin, Base):
 
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     email = Column(String(255), unique=True, nullable=False, index=True)
-    hashed_password = Column(String(255), nullable=False)
     name = Column(String(255), nullable=True)
 
-    # AuthModelMixin provides the rest of the protocol surface
-    # (is_active, is_superuser, role_ids, verify_password, etc.).
+    # Required: AuthModelMixin is behavior-only — add these 4 fields
+    # with your ORM (SQLAlchemy shown; SQLModel/Tortoise declare the
+    # same 4 names with their own Field types).
+    password = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True)
+    is_superuser = Column(Boolean, default=False)
+    last_login = Column(DateTime(timezone=True), nullable=True)
 
 
 app = FastAPI()
@@ -124,16 +128,19 @@ Your `auth_model` must satisfy `AdminUserProtocol` (validated at
 |-----------|------|-------|
 | `id` | any | The PK type — `int`, `UUID`, etc. |
 | `email` | `str` | Used as the login identifier |
-| `is_active` | `bool` | Inactive users cannot log in |
-| `is_superuser` | `bool` | Bypasses all RBAC checks |
-| `hashed_password` | `str` | bcrypt / argon2 hash |
-| `role_ids` | `list[int]` | Property that returns role IDs |
-| `roles` | relationship | M2M to `Role` model |
-| `verify_password(plain)` | method | Returns `bool` |
+| `password` | `str` | Hashed password (bcrypt / argon2), `String(255)`, `nullable=False` recommended |
+| `is_active` | `bool` | Inactive users cannot log in (`default=True` recommended) |
+| `is_superuser` | `bool` | Bypasses all RBAC checks (`default=False` recommended) |
+| `last_login` | `datetime \| None` | Tz-aware, nullable |
+| `role_ids` | `list[int]` | Property that returns role IDs (provided by mixin) |
+| `roles` | relationship | M2M to `Role` model (optional if you only need `role_ids`) |
+| `verify_password(plain)` | method | Returns `bool` (provided by mixin) |
 
-`fastapi_admin_kit.auth.mixins.AuthModelMixin` provides all of the
-above for SQLAlchemy declarative models — inherit from it to get
-`is_active`, `is_superuser`, `role_ids`, and password helpers for free.
+`fastapi_admin_kit.auth.mixins.AuthModelMixin` is behavior-only — it
+provides `role_ids`, `verify_password`, `hash_password`, `has_perm`, etc.
+You must add the 4 fields (`password`, `is_active`, `is_superuser`,
+`last_login`) with your ORM on your model. The same 4 names apply to
+SQLAlchemy, SQLModel, Tortoise, and other Python ORMs.
 
 ## Troubleshooting
 

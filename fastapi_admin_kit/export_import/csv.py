@@ -98,12 +98,13 @@ class CSVExport(ExportBase):
 
         # Apply search filter
         if q:
+            from fastapi_admin_kit.inspection import get_default_search_fields
             from fastapi_admin_kit.search_utils import apply_search_filter
 
-            search_fields = getattr(self.admin, "search_fields", None) or [
-                "name",
-                "title",
-            ]
+            search_fields = getattr(self.admin, "search_fields", None) or get_default_search_fields(
+                self.registered.model,
+                getattr(request.app.state, "admin_introspection_adapter", None),
+            )
             from sqlalchemy import select
 
             queryset = apply_search_filter(

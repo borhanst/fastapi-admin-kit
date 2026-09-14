@@ -19,10 +19,11 @@ from sqlalchemy.pool import StaticPool
 
 from fastapi_admin_kit import Admin
 from fastapi_admin_kit.auth.backend import BuiltinAuthBackend
+from fastapi_admin_kit.filters import SimpleFilter
 from fastapi_admin_kit.migrations.models import Role, User
 from fastapi_admin_kit.models.base import Base as AdminBase
 from tests.conftest import SECRET_KEY, create_session_cookie, run_async
-from tests.test_registry import Category, Product
+from tests.test_registry import Article, Category, Product, Tag
 
 
 @pytest.fixture(autouse=True)
@@ -43,14 +44,14 @@ class TestParseFilterParams:
     def test_exact_match(self):
         from fastapi_admin_kit.filters.lookups import parse_filter_params
 
-        value, active = parse_filter_params({"filter_name": "widget"}, "name")
+        value, active = parse_filter_params({"name": "widget"}, "name")
         assert value == "widget"
         assert active == {"name": "widget"}
 
     def test_icontains(self):
         from fastapi_admin_kit.filters.lookups import parse_filter_params
 
-        value, active = parse_filter_params({"filter_name__icontains": "wid"}, "name")
+        value, active = parse_filter_params({"name__icontains": "wid"}, "name")
         assert value == {"icontains": "wid"}
         assert active == {"name__icontains": "wid"}
 
@@ -58,7 +59,7 @@ class TestParseFilterParams:
         from fastapi_admin_kit.filters.lookups import parse_filter_params
 
         value, _ = parse_filter_params(
-            {"filter_name__startswith": "Jo", "filter_name__endswith": "hn"}, "name"
+            {"name__startswith": "Jo", "name__endswith": "hn"}, "name"
         )
         assert value == {"startswith": "Jo", "endswith": "hn"}
 
@@ -67,10 +68,10 @@ class TestParseFilterParams:
 
         value, active = parse_filter_params(
             {
-                "filter_price__gt": "100",
-                "filter_price__gte": "10",
-                "filter_price__lt": "50",
-                "filter_price__lte": "200",
+                "price__gt": "100",
+                "price__gte": "10",
+                "price__lt": "50",
+                "price__lte": "200",
             },
             "price",
         )
@@ -82,11 +83,11 @@ class TestParseFilterParams:
         from fastapi_admin_kit.filters.lookups import parse_filter_params
 
         value, _ = parse_filter_params(
-            {"filter_price__range": "10,200", "filter_id__in": "1,2,3"}, "price"
+            {"price__range": "10,200", "id__in": "1,2,3"}, "price"
         )
         assert value == {"range": "10,200"}
 
-        value, _ = parse_filter_params({"filter_id__in": "1,2,3"}, "id")
+        value, _ = parse_filter_params({"id__in": "1,2,3"}, "id")
         assert value == {"in": "1,2,3"}
 
     def test_no_params(self):
@@ -95,6 +96,50 @@ class TestParseFilterParams:
         value, active = parse_filter_params({"q": "search"}, "name")
         assert value is None
         assert active == {}
+
+
+# ===========================================================================
+# Unit: SimpleFilter class-configuration (Django SimpleListFilter style)
+# ===========================================================================
+
+
+class TestSimpleFilter:
+    def test_class_attrs_derive_field_name_and_label(self):
+        from fastapi_admin_kit.filters import SimpleFilter
+
+        class InStockFilter(SimpleFilter):
+            parameter_name = "in_stock"
+            title = "Stock Status"
+            field_type = "boolean"
+
+            def apply(self, query_adapter, query, model, value):
+                return None
+
+        f = InStockFilter()
+        assert f.field_name == "in_stock"
+        assert f.label == "Stock Status"
+
+    def test_empty_label_falls_back_to_title(self):
+        from fastapi_admin_kit.filters import SimpleFilter
+
+        class ActiveFilter(SimpleFilter):
+            parameter_name = "is_active"
+            title = "Active Status"
+
+            def apply(self, query_adapter, query, model, value):
+                return None
+
+        assert ActiveFilter().label == "Active Status"
+
+    def test_missing_parameter_name_raises_type_error(self):
+        from fastapi_admin_kit.filters import SimpleFilter
+
+        class BrokenFilter(SimpleFilter):
+            def apply(self, query_adapter, query, model, value):
+                return None
+
+        with pytest.raises(TypeError, match="parameter_name"):
+            BrokenFilter()
 
 
 # ===========================================================================
@@ -158,6 +203,39 @@ class TestFilterClauses:
         clause = f.apply(self.adapter, None, Product, {"in": "1,2"})
         assert "products.category_id IN" in str(clause)
 
+    def test_choice_filter_coerces_integer_exact_value(self):
+        from sqlalchemy.dialects import postgresql
+
+        from fastapi_admin_kit.filters import ChoiceFilter
+
+        f = ChoiceFilter("category", resolved_column="category_id")
+        clause = f.apply(self.adapter, None, Product, "2")
+        compiled = clause.compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+
+        assert clause.right.value == 2
+        assert "products.category_id = 2" in str(compiled)
+        assert "products.category_id = '2'" not in str(compiled)
+
+    def test_m2m_membership_exact(self):
+        from fastapi_admin_kit.filters import ChoiceFilter
+
+        f = ChoiceFilter("tags", relationship_name="tags", target_model=Tag, target_pk="id")
+        clause = f.apply(self.adapter, None, Article, "1")
+        assert clause is not None
+        sql = str(clause)
+        assert "article_tags" in sql
+        assert "tags.id" in sql
+
+    def test_m2m_membership_in(self):
+        from fastapi_admin_kit.filters import ChoiceFilter
+
+        f = ChoiceFilter("tags", relationship_name="tags", target_model=Tag, target_pk="id")
+        clause = f.apply(self.adapter, None, Article, {"in": "1,2"})
+        assert clause is not None
+        assert "tags.id IN" in str(clause)
+
     def test_invalid_value_skipped(self):
         from fastapi_admin_kit.filters import NumericFilter
 
@@ -192,6 +270,32 @@ class TestFilterRegistry:
         # FK column and relationship both auto-generate ChoiceFilter
         assert isinstance(filters["category_id"], ChoiceFilter)
         assert isinstance(filters["category"], ChoiceFilter)
+
+    def test_auto_generate_many_to_one_resolves_fk_column(self):
+        from fastapi_admin_kit.filters import FilterRegistry
+        from fastapi_admin_kit.registry import AdminRegistry
+
+        reg = AdminRegistry()
+        reg.clear()
+        registered = reg.register(Product)
+        filters = FilterRegistry().auto_generate(Product, registered.columns)
+        assert filters["category"].resolved_column == "category_id"
+        assert filters["category"].relationship_name is None
+
+    def test_auto_generate_many_to_many_uses_membership(self):
+        from fastapi_admin_kit.filters import ChoiceFilter, FilterRegistry
+        from fastapi_admin_kit.registry import AdminRegistry
+
+        reg = AdminRegistry()
+        reg.clear()
+        registered = reg.register(Article)
+        filters = FilterRegistry().auto_generate(Article, registered.columns)
+        f = filters["tags"]
+        assert isinstance(f, ChoiceFilter)
+        assert f.relationship_name == "tags"
+        assert f.target_model is Tag
+        assert f.target_pk == "id"
+        assert f.resolved_column is None
 
     def test_auto_generate_memory_backend(self):
         from fastapi_admin_kit.backends import InMemoryBackend
@@ -330,78 +434,232 @@ def api():
     cleanup()
 
 
+def _make_m2m_client():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    sync_engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False})
+    AdminBase.metadata.create_all(sync_engine)
+    Article.metadata.create_all(sync_engine)
+    sync_engine.dispose()
+    async_engine = create_async_engine(
+        f"sqlite+aiosqlite:///{path}",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    async def _seed():
+        async with AsyncSession(async_engine) as session:
+            role = Role(name="SuperAdmin")
+            session.add(role)
+            await session.flush()
+            user = User(
+                email="test@example.com",
+                password="$2b$12$DOXzSwSZYp0Y1pTzEvWjO.KOLQg3wA/Ez1RkN4RHMiLqngoLM2lMG",
+                full_name="Test User",
+                is_superuser=True,
+                is_active=True,
+            )
+            user.roles.append(role)
+            session.add(user)
+
+            python = Tag(name="python")
+            web = Tag(name="web")
+            session.add_all([python, web])
+            await session.flush()
+
+            session.add_all(
+                [
+                    Article(title="Flask guide", tags=[python]),
+                    Article(title="Reflex blog", tags=[python, web]),
+                    Article(title="Figma tricks", tags=[web]),
+                ]
+            )
+            await session.commit()
+
+    run_async(_seed())
+
+    from fastapi_admin_kit.modeladmin import ModelAdmin
+
+    admin_cls = type("ArticleAdmin", (ModelAdmin,), {"list_filter": ["tags"]})
+
+    admin = Admin(
+        engine=async_engine,
+        auth_model=User,
+        auth_backend=BuiltinAuthBackend(),
+        secret_key=SECRET_KEY,
+        auto_discover=False,
+        session_secure=False,
+    )
+    admin.register(Article, admin_cls)
+    app = FastAPI()
+    run_async(admin.setup(app))
+    client = TestClient(app)
+    creds = base64.b64encode(b"test@example.com:secret").decode()
+    token = client.post("/api/auth/token", headers={"Authorization": f"Basic {creds}"}).json()[
+        "access_token"
+    ]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    def cleanup():
+        run_async(async_engine.dispose())
+        os.unlink(path)
+
+    return client, headers, cleanup
+
+
+@pytest.fixture
+def api_m2m():
+    client, headers, cleanup = _make_m2m_client()
+    yield client, headers
+    cleanup()
+
+
 def _names(body):
     return {item["name"] for item in body["items"]}
+
+
+class InStockFilter(SimpleFilter):
+    """Bare-class filter keyed off the Product.is_active boolean column."""
+
+    parameter_name = "is_active"
+    title = "Stock Status"
+    field_type = "boolean"
+
+    def apply(self, query_adapter, query, model, value):
+        raw = value.get("exact") if isinstance(value, dict) else value
+        if not raw:
+            return None
+        in_stock = raw.lower() in ("1", "true")
+        return model.is_active == in_stock
+
+    def get_choices(self, session=None):
+        return [("", "All"), ("1", "In stock"), ("0", "Out of stock")]
+
+
+class TestApiSimpleFilter:
+    def test_bare_class_filters_via_api(self):
+        client, headers, cleanup = _make_client([InStockFilter])
+        try:
+            body = client.get("/api/products/?is_active=1", headers=headers).json()
+            assert _names(body) == {"Widget", "Widglet", "Textbook"}
+            body = client.get("/api/products/?is_active=0", headers=headers).json()
+            assert _names(body) == {"Novel"}
+        finally:
+            cleanup()
 
 
 class TestApiFilters:
     def test_exact_match(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_name=Widget", headers=headers).json()
+        body = client.get("/api/products/?name=Widget", headers=headers).json()
         assert _names(body) == {"Widget"}
 
     def test_icontains(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_name__icontains=wid", headers=headers).json()
+        body = client.get("/api/products/?name__icontains=wid", headers=headers).json()
         assert _names(body) == {"Widget", "Widglet"}
 
     def test_startswith(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_name__startswith=Text", headers=headers).json()
+        body = client.get("/api/products/?name__startswith=Text", headers=headers).json()
         assert _names(body) == {"Textbook"}
 
     def test_endswith(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_name__endswith=glet", headers=headers).json()
+        body = client.get("/api/products/?name__endswith=glet", headers=headers).json()
         assert _names(body) == {"Widglet"}
 
     def test_numeric_gt(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_price__gt=10", headers=headers).json()
+        body = client.get("/api/products/?price__gt=10", headers=headers).json()
         assert _names(body) == {"Widglet", "Textbook"}
 
     def test_numeric_gte(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_price__gte=10", headers=headers).json()
+        body = client.get("/api/products/?price__gte=10", headers=headers).json()
         assert _names(body) == {"Widget", "Widglet", "Textbook"}
 
     def test_numeric_lt(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_price__lt=10", headers=headers).json()
+        body = client.get("/api/products/?price__lt=10", headers=headers).json()
         assert _names(body) == {"Novel"}
 
     def test_numeric_lte(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_price__lte=10", headers=headers).json()
+        body = client.get("/api/products/?price__lte=10", headers=headers).json()
         assert _names(body) == {"Widget", "Novel"}
 
     def test_numeric_range(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_price__range=5,25", headers=headers).json()
+        body = client.get("/api/products/?price__range=5,25", headers=headers).json()
         assert _names(body) == {"Widget", "Widglet", "Novel"}
 
     def test_in_list(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_price__in=5,40", headers=headers).json()
+        body = client.get("/api/products/?price__in=5,40", headers=headers).json()
         assert _names(body) == {"Novel", "Textbook"}
 
     def test_boolean_filter(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_is_active=1", headers=headers).json()
+        body = client.get("/api/products/?is_active=1", headers=headers).json()
         assert _names(body) == {"Widget", "Widglet", "Textbook"}
 
     def test_relation_choice_filter(self, api):
         client, headers = api
-        body = client.get("/api/products/?filter_category=1", headers=headers).json()
+        body = client.get("/api/products/?category=1", headers=headers).json()
         # Category id 1 == Gadgets
         assert _names(body) == {"Widget", "Widglet"}
 
     def test_combined_filters(self, api):
         client, headers = api
         body = client.get(
-            "/api/products/?filter_name__icontains=wid&filter_price__gte=10", headers=headers
+            "/api/products/?name__icontains=wid&price__gte=10", headers=headers
         ).json()
         assert _names(body) == {"Widget", "Widglet"}
+
+
+class TestApiM2MFilters:
+    def _titles(self, body):
+        return {item["title"] for item in body["items"]}
+
+    def test_m2m_exact(self, api_m2m):
+        client, headers = api_m2m
+        body = client.get("/api/articles/?tags=1", headers=headers).json()
+        assert self._titles(body) == {"Flask guide", "Reflex blog"}
+
+    def test_m2m_other_tag(self, api_m2m):
+        client, headers = api_m2m
+        body = client.get("/api/articles/?tags=2", headers=headers).json()
+        assert self._titles(body) == {"Reflex blog", "Figma tricks"}
+
+    def test_m2m_in(self, api_m2m):
+        client, headers = api_m2m
+        body = client.get("/api/articles/?tags__in=1", headers=headers).json()
+        assert self._titles(body) == {"Flask guide", "Reflex blog"}
+
+
+class TestOpenApiFilterParams:
+    def test_lookups_follow_field_type(self, api):
+        client, _headers = api
+        op = client.get("/openapi.json").json()["paths"]["/api/products"]["get"]
+        names = {p["name"] for p in op.get("parameters", [])}
+        assert "name" in names
+        assert "name__icontains" in names
+        assert "name__startswith" in names
+        assert "name__gt" not in names
+        assert "price__gt" in names
+        assert "price__gte" in names
+        assert "price__icontains" not in names
+        assert "is_active" in names
+        assert "is_active__gte" not in names
+        assert "category" in names
+        assert "category__in" not in names
+
+    def test_pagination_params_still_documented(self, api):
+        client, _headers = api
+        op = client.get("/openapi.json").json()["paths"]["/api/products"]["get"]
+        names = {p["name"] for p in op.get("parameters", [])}
+        assert {"page", "per_page", "q", "order"} <= names
 
 
 class TestAdminUiListFilters:
@@ -409,7 +667,7 @@ class TestAdminUiListFilters:
         client, _headers = api
         cookie = create_session_cookie(1)
         resp = client.get(
-            "/admin/products/?filter_name__icontains=wid",
+            "/admin/products/?name__icontains=wid",
             cookies={"admin_session": cookie},
         )
         assert resp.status_code == 200
@@ -421,7 +679,7 @@ class TestAdminUiListFilters:
         client, _headers = api
         cookie = create_session_cookie(1)
         resp = client.get(
-            "/admin/products/?filter_price__range=5,10",
+            "/admin/products/?price__range=5,10",
             cookies={"admin_session": cookie},
         )
         assert resp.status_code == 200

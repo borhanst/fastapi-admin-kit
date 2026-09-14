@@ -29,7 +29,7 @@ class AuthBackend(ABC):
         ...
 
     @abstractmethod
-    async def get_user(self, user_id: int | str, session: Any) -> AdminUserProtocol | None:
+    async def get_user(self, user_id: Any, session: Any) -> AdminUserProtocol | None:
         """Load user by PK. Return ``None`` if not found or inactive."""
         ...
 
@@ -173,20 +173,60 @@ class BuiltinAuthBackend(AuthBackend):
             return None
         return user
 
-    async def get_user(
+    def _candidate_user_ids(self, user_id: Any) -> list[Any]:
+        """Return DB lookup candidates for *user_id* covering int/str/UUID PKs.
+
+        JWT ``sub`` arrives as ``str`` (``create_access_token`` stores
+        ``str(user.id)``), while the DB PK may be an ``int``, a ``str``, or a
+        ``UUID`` object. Strict ``==`` comparison (SQLAlchemy or the in-memory
+        backend) fails on type mismatch, so we try the original value plus
+        its int/UUID reinterpretations in order.
+        """
+        if user_id is None or isinstance(user_id, bool):
+            return []
+        candidates: list[Any] = [user_id]
+        seen = {(type(user_id).__name__, str(user_id))}
+
+        def _add(value: Any) -> None:
+            key = (type(value).__name__, str(value))
+            if key not in seen:
+                seen.add(key)
+                candidates.append(value)
+
+        if isinstance(user_id, int):
+            _add(str(user_id))
+            return candidates
+        if isinstance(user_id, str):
+            text = user_id.strip()
+            if text != user_id:
+                _add(text)
+                user_id = text
+            try:
+                _add(int(text))
+            except (TypeError, ValueError):
+                pass
+            try:
+                import uuid as _uuid
+
+                _add(_uuid.UUID(text))
+            except Exception:
+                pass
+            return candidates
+        # UUID objects (or any other scalar PK): also try their string form.
+        try:
+            _add(str(user_id))
+        except Exception:
+            pass
+        return candidates
+
+    async def _lookup_user_by_id(
         self,
-        user_id: int | str,
+        query_backend_resolved: Any,
         session: Any,
-        query_adapter: Any | None = None,
-        query_backend: Any | None = None,
-        **kwargs: Any,
-    ) -> AdminUserProtocol | None:
-        qb = query_adapter if query_adapter is not None else query_backend
-        if qb is None:
-            qb = kwargs.get("query_adapter") or kwargs.get("query_backend")
-        query_backend_resolved = self._resolve_query_backend(qb)
-        session = self._resolve_session(session)
-        model = self._get_model()
+        model: type,
+        candidate: Any,
+    ) -> Any | None:
+        """Run a single PK + is_active lookup for *candidate*."""
         query = query_backend_resolved.select(model)
         is_active_col = getattr(model, "is_active", None)
         id_col = getattr(model, "id", None)
@@ -195,13 +235,12 @@ class BuiltinAuthBackend(AuthBackend):
         if is_active_col is not None:
             query = query_backend_resolved.where(
                 query,
-                id_col == user_id,
+                id_col == candidate,
                 is_active_col == True,  # noqa: E712
             )
         else:
-            query = query_backend_resolved.where(query, id_col == user_id)
+            query = query_backend_resolved.where(query, id_col == candidate)
 
-        # Eagerly load roles if the model has a roles relationship
         if hasattr(model, "roles"):
             try:
                 if query_backend_resolved.__class__.__name__ == "SqlAlchemyQueryAdapter":
@@ -213,6 +252,28 @@ class BuiltinAuthBackend(AuthBackend):
 
         result = session.scalar_one_or_none(query)
         return await result if hasattr(result, "__await__") else result
+
+    async def get_user(
+        self,
+        user_id: Any,
+        session: Any,
+        query_adapter: Any | None = None,
+        query_backend: Any | None = None,
+        **kwargs: Any,
+    ) -> AdminUserProtocol | None:
+        qb = query_adapter if query_adapter is not None else query_backend
+        if qb is None:
+            qb = kwargs.get("query_adapter") or kwargs.get("query_backend")
+        query_backend_resolved = self._resolve_query_backend(qb)
+        session = self._resolve_session(session)
+        model = self._get_model()
+        if getattr(model, "id", None) is None:
+            return None
+        for candidate in self._candidate_user_ids(user_id):
+            user = await self._lookup_user_by_id(query_backend_resolved, session, model, candidate)
+            if user is not None:
+                return user
+        return None
 
     async def on_logout(self, user_id: int | str | None = None) -> None:
         """No-op for built-in backend."""

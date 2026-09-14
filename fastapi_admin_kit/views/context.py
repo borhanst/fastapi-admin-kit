@@ -52,7 +52,11 @@ class DisplayColumn:
             from fastapi_admin_kit.inspection import model_display_name
 
             # M2M relations return a list/InstrumentedList — join each item's name
-            if isinstance(val, list) or (hasattr(val, "__iter__") and not isinstance(val, str)):
+            if isinstance(val, list) or (
+                hasattr(val, "__iter__")
+                and not isinstance(val, str)
+                and not hasattr(val, "__table__")
+            ):
                 parts = [model_display_name(item) for item in val]
                 return ", ".join(parts) if parts else "-"
             return model_display_name(val)
@@ -166,13 +170,11 @@ class ViewContextBuilder:
                     else:
                         pk = sa_inspect(target_model).primary_key[0]
                         q = sa_select(target_model).order_by(pk).limit(100)
+                    from fastapi_admin_kit.inspection import model_display_name
+
                     for obj in await session.all(q):
-                        label = str(
-                            getattr(obj, "name", None)
-                            or getattr(obj, "title", None)
-                            or f"#{getattr(obj, 'id', '?')}"
-                        )
-                        choices.append((str(obj.id), label))
+                        # Label via the introspection backend.
+                        choices.append((str(obj.id), model_display_name(obj)))
                 except Exception:
                     pass
             return {"field_type": field_type, "choices": choices}

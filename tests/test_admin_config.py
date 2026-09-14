@@ -65,6 +65,7 @@ class TestAuthConfig:
             email = None
             is_active = None
             is_superuser = None
+            last_login = None
             roles = None
             password = ""
 
