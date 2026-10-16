@@ -133,8 +133,10 @@
 
     <input type="hidden" name="_save_action" x-ref="saveActionInput" value="save">
     {% block form_submit_line %}
-    <div class="sticky bottom-0 flex items-center justify-between p-4" style="background: var(--surface-base); border: 1px solid var(--surface-border); border-radius: var(--radius-lg);">
-      <div class="text-sm" style="color: var(--text-secondary);" x-show="unsaved" x-transition>
+    <div class="sticky bottom-0 z-20 flex items-center justify-between gap-4 rounded-xl p-3.5 pl-5"
+         style="background: color-mix(in srgb, var(--surface-raised) 88%, transparent); backdrop-filter: blur(10px); border: 1px solid var(--surface-border); box-shadow: var(--shadow-lg);">
+      <div class="flex items-center gap-2 text-sm" style="color: var(--text-secondary);" x-show="unsaved" x-transition x-cloak>
+        <span class="inline-block size-1.5 rounded-full" style="background: var(--warning-500);"></span>
         You have unsaved changes
       </div>
       <div class="flex items-center gap-3 ml-auto">

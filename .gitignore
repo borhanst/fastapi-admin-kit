@@ -81,3 +81,4 @@ node_modules/
 # Compiled Tailwind bundle IS tracked (exception to dist/ above)
 !fastapi_admin_kit/static/css/dist/
 !fastapi_admin_kit/static/css/dist/**
+.opencode/

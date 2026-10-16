@@ -324,11 +324,17 @@
   {% endblock %}
 
   {% block list_bulk_actions %}
-  {# Bulk Actions Bar — Django-style: always visible above table #}
+  {# Bulk Actions Bar — revealed once rows are selected (see list_scripts) #}
   {% if permissions.can_delete or list_actions %}
-  <div class="flex min-h-12 flex-col gap-3 rounded-xl bg-slate-100 px-4 py-3 ring-1 ring-slate-200 sm:flex-row sm:items-center dark:bg-slate-800/60 dark:ring-slate-700">
-    <div class="flex flex-wrap items-center gap-2">
-      <label class="text-sm font-medium text-slate-900 dark:text-slate-100" for="bulk-action-select">Action:</label>
+  <div id="bulk-bar"
+       class="hidden min-h-12 flex-col gap-3 rounded-xl bg-slate-100 px-4 py-3 ring-1 ring-slate-200 sm:flex-row sm:items-center dark:bg-slate-800/60 dark:ring-slate-700">
+    <div class="flex flex-wrap items-center gap-3">
+      <span class="inline-flex items-center gap-2 text-sm font-medium text-slate-900 dark:text-slate-100">
+        <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900 px-1.5 font-mono text-[11px] font-semibold text-white dark:bg-white dark:text-slate-900"
+              data-bulk-count>0</span>
+        selected
+      </span>
+      <label class="sr-only" for="bulk-action-select">Action</label>
       <select id="bulk-action-select" name="bulk_action" class="bulk-bar-select">
         <option value="">---------</option>
         {% if list_actions %}
@@ -353,6 +359,33 @@
 
 {% block list_scripts %}
 <script>
+/* Bulk-actions bar: only appears while rows are selected */
+function updateBulkBar() {
+  var bar = document.getElementById('bulk-bar');
+  if (!bar) return;
+  var boxes = document.querySelectorAll('input[name="ids[]"]');
+  var checked = document.querySelectorAll('input[name="ids[]"]:checked');
+  var countEl = bar.querySelector('[data-bulk-count]');
+  if (countEl) countEl.textContent = checked.length;
+
+  var any = checked.length > 0;
+  bar.classList.toggle('hidden', !any);
+  bar.classList.toggle('flex', any);
+
+  var selectAll = document.getElementById('select-all');
+  if (selectAll) {
+    selectAll.checked = boxes.length > 0 && checked.length === boxes.length;
+    selectAll.indeterminate = checked.length > 0 && checked.length < boxes.length;
+  }
+}
+document.addEventListener('change', function (e) {
+  var t = e.target;
+  if (t && t.matches && (t.matches('input[name="ids[]"]') || t.id === 'select-all')) updateBulkBar();
+});
+document.body.addEventListener('htmx:afterSwap', updateBulkBar);
+if (document.readyState !== 'loading') { updateBulkBar(); }
+else { document.addEventListener('DOMContentLoaded', updateBulkBar); }
+
 function filterBar() {
   return {
     hasSearch: {{ 'true' if search_query else 'false' }},

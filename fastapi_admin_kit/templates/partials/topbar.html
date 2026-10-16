@@ -106,12 +106,13 @@
     {# User avatar dropdown #}
     <div class="topbar-user" x-data="{ open: false }">
       <button @click="open = !open" @click.outside="open = false"
-              class="topbar-user-btn">
+              class="topbar-user-btn"
+              aria-haspopup="menu" :aria-expanded="open">
         <div class="user-avatar">
-          {{ current_user.full_name[0] | upper if current_user is defined and current_user and current_user.full_name else "A" }}
+          {{ ((current_user.full_name or current_user.email or "A")[0] | upper) if current_user is defined and current_user else "A" }}
         </div>
         <div class="topbar-user-info hidden lg:flex">
-          <span class="topbar-user-name">{{ current_user.full_name if current_user is defined and current_user else "Admin" }}</span>
+          <span class="topbar-user-name">{{ (current_user.full_name or current_user.email or "Admin") if current_user is defined and current_user else "Admin" }}</span>
           <span class="topbar-user-role">{{ "Superuser" if current_user is defined and current_user and current_user.is_superuser else "Admin" }}</span>
         </div>
         {{ icon("chevron-down", size="14px") }}

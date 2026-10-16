@@ -17,35 +17,44 @@
 
   <style>
     :root {
-      --primary-500: {{ admin_config.primary_color | default('') }};
-      --primary-600: {{ admin_config.primary_color_dark | default('') }};
+      --primary-500: {{ admin_config.primary_color | default('#10B981') }};
+      --primary-600: {{ admin_config.primary_color_dark | default('#059669') }};
     }
+    body {
+      background:
+        radial-gradient(48rem 48rem at 12% -12%, color-mix(in srgb, var(--primary-500) 14%, transparent), transparent 62%),
+        radial-gradient(40rem 40rem at 108% 112%, color-mix(in srgb, var(--primary-500) 9%, transparent), transparent 60%),
+        var(--surface-base);
+    }
+    [x-cloak] { display: none !important; }
   </style>
 </head>
-<body class="bg-[var(--surface-overlay)] text-[var(--text-primary)] font-sans antialiased min-h-screen flex items-center justify-center p-4">
+<body class="font-sans antialiased min-h-screen flex items-center justify-center p-4 text-slate-900 dark:text-slate-100">
 
-  <div class="w-full max-w-md">
-    <div class="text-center mb-6">
+  <main class="w-full max-w-[26rem]">
+    {# ─── Brand ─── #}
+    <div class="text-center mb-8">
       {% if logo_url %}
-      <img src="{{ logo_url }}" alt="Logo" class="h-10 mx-auto mb-2">
+      <img src="{{ logo_url }}" alt="Logo" class="h-11 mx-auto mb-4">
       {% else %}
-      <div class="w-10 h-10 mx-auto mb-2 rounded-lg bg-[var(--primary-500)] flex items-center justify-center">
-        {{ icon("home", css_class="text-white", size="20px") }}
+      <div class="w-12 h-12 mx-auto mb-4 rounded-2xl flex items-center justify-center text-white shadow-lg"
+           style="background: var(--primary-500); box-shadow: 0 12px 24px -12px color-mix(in srgb, var(--primary-500) 70%, transparent);">
+        {{ icon("shield-check", size="26px") }}
       </div>
       {% endif %}
-      <h1 class="text-xl font-bold text-[var(--text-primary)]" style="margin: 0;">{{ title | default("Admin") }}</h1>
-      <p class="text-sm text-[var(--text-secondary)] mt-0.5">Sign in to your account</p>
+      <h1 class="text-xl font-bold tracking-tight">{{ title | default("Admin") }}</h1>
+      <p class="text-sm mt-1 text-slate-500 dark:text-slate-400">Sign in to your account to continue</p>
     </div>
 
     {% set messages = get_flash_messages(request) | default([]) %}
     {% if messages %}
     <div class="mb-4 space-y-2">
       {% for msg in messages %}
-      <div class="p-3 rounded-lg text-sm
-                  {% if msg.level == 'error' %}bg-[var(--danger-50)] text-[var(--danger-500)] border border-[var(--danger-100)]
-                  {% elif msg.level == 'success' %}bg-[var(--success-50)] text-[var(--success-500)] border border-[var(--success-100)]
-                  {% elif msg.level == 'warning' %}bg-[var(--warning-50)] text-[var(--warning-500)] border border-[var(--warning-100)]
-                  {% else %}bg-[var(--info-50)] text-[var(--info-500)] border border-[var(--info-100)]{% endif %}">
+      <div class="p-3 rounded-xl text-sm
+                  {% if msg.level == 'error' %}bg-[var(--danger-50)] text-[var(--danger-700)] border border-[var(--danger-100)]
+                  {% elif msg.level == 'success' %}bg-[var(--success-50)] text-[var(--success-700)] border border-[var(--success-100)]
+                  {% elif msg.level == 'warning' %}bg-[var(--warning-50)] text-[var(--warning-700)] border border-[var(--warning-100)]
+                  {% else %}bg-[var(--info-50)] text-[var(--info-700)] border border-[var(--info-100)]{% endif %}">
         {{ msg.text }}
       </div>
       {% endfor %}
@@ -53,45 +62,76 @@
     {% endif %}
 
     <form method="post" action="{{ admin_path | default('/admin') }}/login{% if next %}?next={{ next }}{% endif %}"
-          class="bg-white rounded-xl shadow-md border border-[var(--surface-border)] p-8">
+          x-data="{ showPassword: false }"
+          class="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-overlay)] p-8 shadow-sm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       {% if error %}
-      <div class="mb-4 p-3 rounded-lg bg-[var(--danger-50)] text-[var(--danger-500)] text-sm border border-[var(--danger-100)]">
-        {{ error }}
+      <div class="mb-5 flex items-start gap-2.5 p-3 rounded-xl bg-[var(--danger-50)] text-[var(--danger-700)] text-sm border border-[var(--danger-100)]"
+           role="alert">
+        {{ icon("exclamation-triangle", size="18px", css_class="shrink-0 mt-0.5") }}
+        <span>{{ error }}</span>
       </div>
       {% endif %}
 
-    {% set login_field = admin_config.login_field | default('email') %}
-    {% if login_field == 'username' %}
-    {% set field_label = 'Username' %}
-    {% set field_type = 'text' %}
-    {% set field_placeholder = 'Enter your username' %}
-    {% else %}
-    {% set field_label = 'Email address' %}
-    {% set field_type = 'email' %}
-    {% set field_placeholder = 'admin@example.com' %}
-    {% endif %}
+      {% set login_field = admin_config.login_field | default('email') %}
+      {% if login_field == 'username' %}
+      {% set field_label = 'Username' %}
+      {% set field_type = 'text' %}
+      {% set field_placeholder = 'Enter your username' %}
+      {% set field_icon = 'person' %}
+      {% set field_autocomplete = 'username' %}
+      {% else %}
+      {% set field_label = 'Email address' %}
+      {% set field_type = 'email' %}
+      {% set field_placeholder = 'admin@example.com' %}
+      {% set field_icon = 'mail' %}
+      {% set field_autocomplete = 'email' %}
+      {% endif %}
 
-      <div class="mb-4">
-        <label for="username" class="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">{{ field_label }}</label>
-        <input type="{{ field_type }}" id="username" name="username" required autofocus
-               class="form-input w-full px-4 py-2.5 rounded-lg border border-[var(--surface-border)] bg-white text-[var(--text-primary)] placeholder-[var(--text-disabled)] focus:ring-2 focus:ring-[var(--primary-500)] focus:border-[var(--primary-500)] transition-all"
-               placeholder="{{ field_placeholder }}">
+      <div class="mb-5">
+        <label for="username" class="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">{{ field_label }}</label>
+        <div class="relative">
+          <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500">
+            {{ icon(field_icon, size="18px") }}
+          </span>
+          <input type="{{ field_type }}" id="username" name="username" required autofocus
+                 autocomplete="{{ field_autocomplete }}"
+                 class="form-input h-11 pl-10"
+                 placeholder="{{ field_placeholder }}">
+        </div>
       </div>
 
       <div class="mb-6">
-        <label for="password" class="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">Password</label>
-        <input type="password" id="password" name="password" required
-               class="form-input w-full px-4 py-2.5 rounded-lg border border-[var(--surface-border)] bg-white text-[var(--text-primary)] placeholder-[var(--text-disabled)] focus:ring-2 focus:ring-[var(--primary-500)] focus:border-[var(--primary-500)] transition-all"
-               placeholder="Enter your password">
+        <label for="password" class="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">Password</label>
+        <div class="relative">
+          <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500">
+            {{ icon("lock", size="18px") }}
+          </span>
+          <input :type="showPassword ? 'text' : 'password'" id="password" name="password" required
+                 autocomplete="current-password"
+                 class="form-input h-11 pl-10 pr-11"
+                 placeholder="Enter your password">
+          <button type="button"
+                  @click="showPassword = !showPassword"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 inline-flex size-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                  :aria-label="showPassword ? 'Hide password' : 'Show password'"
+                  :title="showPassword ? 'Hide password' : 'Show password'">
+            <span x-show="!showPassword">{{ icon("eye", size="18px") }}</span>
+            <span x-show="showPassword" x-cloak style="font-family: 'Material Symbols Outlined'; font-size: 18px;">visibility_off</span>
+          </button>
+        </div>
       </div>
 
       <button type="submit"
-              class="w-full px-4 py-3 rounded-lg bg-[var(--primary-500)] text-white font-medium hover:bg-[var(--primary-600)] focus:ring-2 focus:ring-[var(--primary-500)] focus:ring-offset-2 transition-all cursor-pointer">
+              class="btn btn-primary w-full h-11 text-sm font-semibold">
         Sign in
       </button>
     </form>
-  </div>
+
+    <p class="mt-6 text-center text-xs text-slate-400 dark:text-slate-500">
+      Protected area — authorized access only
+    </p>
+  </main>
 
 </body>
 </html>

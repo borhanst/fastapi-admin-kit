@@ -2617,13 +2617,11 @@ img { max-width: 100%; display: block; }
 .ease-out { transition-timing-function: var(--easing-out); }
 .ease-in { transition-timing-function: var(--easing-in); }
 
-.rotate-90 { transform: rotate(90deg); }
-.rotate-180 { transform: rotate(180deg); }
-.-rotate-90 { transform: rotate(-90deg); }
-.translate-y-2 { transform: translateY(var(--space-2)); }
-.-translate-y-1\/2 { transform: translateY(-50%); }
-.translate-x-1 { transform: translateX(var(--space-1)); }
-.translate-x-6 { transform: translateX(1.5rem); }
+/* Transform utilities (rotate-*, translate-*) are generated natively by
+   Tailwind v4 using the independent `rotate:` / `translate:` properties.
+   The legacy `transform:`-based duplicates that used to live here caused
+   DOUBLE application (transform + translate), shifting elements twice.
+   Do not re-add them — let Tailwind own these utilities. */
 
 .hover\:bg-gray-50:hover, [class*="hover:bg-"][class*="gray-50"]:hover { background: var(--surface-inset); }
 .hover\:text-primary-600:hover, [class*="hover:text-primary-600"]:hover { color: var(--primary-600); }

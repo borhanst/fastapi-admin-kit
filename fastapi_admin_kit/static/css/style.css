@@ -559,3 +559,138 @@
     @apply block rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200 transition hover:shadow-md dark:bg-slate-900 dark:ring-slate-800;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   UI POLISH PASS — visual + interaction refinements.
+   Behaviour (JS / Python) is unchanged. Accents here follow the runtime
+   --primary-* ramp set by the Admin config, so a blue / emerald / indigo
+   brand stays internally consistent (the legacy Tailwind `primary-*` ramp
+   resolves to a fixed indigo, while the shell uses the runtime ramp).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --primary-ink:          color-mix(in srgb, var(--primary-500) 76%, #000);
+  --primary-tint:         color-mix(in srgb, var(--primary-500) 10%, var(--surface-raised));
+  --primary-tint-strong:  color-mix(in srgb, var(--primary-500) 18%, var(--surface-raised));
+  --primary-glow:         color-mix(in srgb, var(--primary-500) 40%, transparent);
+}
+
+@layer components {
+  /* ── Affordance + accessible focus ─────────────────────────────────────── */
+  a, button:not(:disabled), [role="button"]:not([aria-disabled="true"]),
+  summary, .btn:not(:disabled), .nav-link, .toggle-switch { cursor: pointer; }
+  button:disabled, .btn:disabled, [aria-disabled="true"] { cursor: not-allowed; }
+
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--primary-500);
+    outline-offset: 2px;
+  }
+  /* Keep the softer Tailwind ring on the elements that already style it */
+  .btn:focus-visible,
+  .form-input:focus-visible,
+  .form-select:focus-visible,
+  .form-textarea:focus-visible,
+  .input:focus-visible,
+  .nav-link:focus-visible { outline: none; }
+
+  /* ── Buttons: one consistent primary across every shell ─────────────────── */
+  .btn { @apply select-none; }
+  .btn-primary {
+    background-color: var(--primary-500);
+    border-color: var(--primary-500);
+    color: #fff;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.12);
+  }
+  .btn-primary:hover {
+    background-color: var(--primary-ink);
+    border-color: var(--primary-ink);
+    box-shadow: 0 10px 22px -10px var(--primary-glow);
+  }
+  .btn-primary:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.12);
+  }
+  .btn-secondary:hover { background-color: var(--surface-inset); }
+
+  /* ── Sidebar navigation: clearer active state ───────────────────────────── */
+  .nav-link.active {
+    background: var(--primary-tint);
+    color: var(--primary-ink);
+  }
+  .nav-link.active::before {
+    background: var(--primary-500);
+    top: 7px;
+    bottom: 7px;
+    width: 3px;
+  }
+  .nav-link.active svg,
+  .nav-link.active .material-symbols-outlined {
+    color: var(--primary-500);
+    opacity: 1;
+  }
+  .nav-link--child.active {
+    background: var(--primary-tint);
+    color: var(--primary-ink);
+  }
+  .sidebar-section-label { color: var(--text-disabled); }
+  .sidebar-section-toggle {
+    border-radius: var(--radius-md);
+    color: var(--text-disabled);
+    transition: color var(--duration-fast) var(--easing-out),
+                background var(--duration-fast) var(--easing-out);
+  }
+  .sidebar-section-toggle:hover { color: var(--text-secondary); }
+  .sidebar-section-toggle svg { transition: transform var(--duration-base) var(--easing-out); }
+
+  /* ── Page header: quiet divider instead of a heavy rule ─────────────────── */
+  .page-header,
+  .page-header--form {
+    border-bottom: 1px solid var(--surface-border);
+    padding-bottom: var(--space-4);
+  }
+  .page-header__title,
+  .page-header-title {
+    @apply font-bold tracking-tight;
+  }
+
+  /* ── Form surfaces ─────────────────────────────────────────────────────── */
+  .fieldset { @apply shadow-xs; }
+  .fieldset__header { border-bottom-color: var(--surface-border); }
+  .form-input:focus,
+  .form-select:focus,
+  .form-textarea:focus,
+  .input:focus,
+  .filter-input:focus {
+    --tw-ring-color: var(--primary-500);
+  }
+  .field-wrapper.has-error .form-input,
+  .field-wrapper.has-error .form-select,
+  .field-wrapper.has-error .form-textarea {
+    border-color: var(--danger-500);
+    --tw-ring-color: var(--danger-500);
+  }
+
+  /* Toggle switch: brand-adaptive + focusable ring */
+  .toggle-switch:focus-within {
+    box-shadow: 0 0 0 3px var(--primary-glow);
+  }
+
+  /* ── Tables: calmer header, clearer link affordance on first column ─────── */
+  .table-wrapper thead th { color: var(--text-secondary); }
+  .table-wrapper tbody tr td:first-child a { border-radius: var(--radius-sm); }
+
+  /* ── Toasts: slide in from the right edge ───────────────────────────────── */
+  .toast { @apply shadow-lg; }
+}
+
+/* Respect users who prefer reduced motion (WCAG 2.3.3) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
