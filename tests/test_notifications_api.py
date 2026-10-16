@@ -41,7 +41,8 @@ def client(app):
     return TestClient(app)
 
 
-def test_send_endpoint(client):
+def test_send_requires_auth(client):
+    """The send API is gated: anonymous callers must not trigger outbound sends."""
     resp = client.post(
         "/api/notifications/send",
         json={
@@ -51,13 +52,11 @@ def test_send_endpoint(client):
             "email": "user@example.com",
         },
     )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["user_id"] == "user-1"
-    assert any(c["channel"] == "email" and c["success"] for c in body["channels"])
+    assert resp.status_code == 401, resp.text
 
 
 def test_send_in_app_and_list(client):
+    # send is gated behind authentication
     resp = client.post(
         "/api/notifications/send",
         json={
@@ -67,15 +66,14 @@ def test_send_in_app_and_list(client):
             "title": "Hi",
         },
     )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["notification_id"] is not None
+    assert resp.status_code == 401, resp.text
 
     # list requires auth — should 401 without a session
     resp = client.get("/api/notifications/")
     assert resp.status_code in (401,)
 
 
-def test_send_batch(client):
+def test_send_batch_requires_auth(client):
     resp = client.post(
         "/api/notifications/send/batch",
         json={
@@ -87,8 +85,7 @@ def test_send_batch(client):
             "channels": ["email"],
         },
     )
-    assert resp.status_code == 200, resp.text
-    assert len(resp.json()) == 2
+    assert resp.status_code == 401, resp.text
 
 
 def test_sse_stream_requires_auth(client):
@@ -96,12 +93,22 @@ def test_sse_stream_requires_auth(client):
     assert resp.status_code == 401
 
 
+def test_sse_stream_ignores_user_id_query_param(client):
+    """A client-supplied user_id must never authenticate the SSE stream (IDOR)."""
+    resp = client.get("/api/notifications/stream?user_id=victim")
+    assert resp.status_code == 401
+
+
 def test_unconfigured_service_returns_500():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
+    from fastapi_admin_kit.notifications.router import _require_send_authorization
+
     app = FastAPI()
     app.include_router(notifications_router, prefix="/api/notifications")
+    # Bypass the auth gate to exercise the "service not configured" path.
+    app.dependency_overrides[_require_send_authorization] = lambda: "test-admin"
     client = TestClient(app)
 
     resp = client.post(

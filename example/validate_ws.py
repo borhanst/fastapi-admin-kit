@@ -67,8 +67,11 @@ async def main() -> None:
     await probe("bare /ws (no cookie)")
     # Authenticated (session cookie) -> must stay open
     await probe("bare /ws (+ session cookie)", {"Cookie": f"admin_session={cookie}"})
-    # Bypassed user_id -> must be rejected with 4401
-    await probe("/ws?user_id=null", {"Cookie": f"admin_session={cookie}"})
+    # A spoofed user_id with no credential -> must be rejected with 4401
+    await probe("/ws?user_id=1 (no cookie)")
+    # Authenticated, with a bogus user_id -> still stays open as the cookie
+    # user (the query param is ignored, never trusted)
+    await probe("/ws?user_id=1 (+ session cookie)", {"Cookie": f"admin_session={cookie}"})
 
 
 asyncio.run(main())

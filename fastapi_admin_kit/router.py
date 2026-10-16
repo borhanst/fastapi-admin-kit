@@ -898,8 +898,6 @@ def build_model_router(
         _: None = Depends(require_permission(registered.table_name, "edit")),
     ):
         """Inline field update — used by toggle switches in list view."""
-        from fastapi_admin_kit.auth.csrf import _get_secret_key, generate_csrf_token
-
         content_type = request.headers.get("content-type", "")
         if "application/json" in content_type:
             body = await request.json()
@@ -939,8 +937,9 @@ def build_model_router(
             raise
 
         val = getattr(obj, field_name)
-        secret = _get_secret_key(request) or ""
-        csrf_token = generate_csrf_token(secret)
+        # Reuse the per-request token so the hx-header matches the CSRF cookie —
+        # the double-submit check requires the two to be identical.
+        csrf_token = getattr(request.state, "csrf_token", "")
         admin_path = request.app.state.admin_config["admin_path"]
 
         if val:

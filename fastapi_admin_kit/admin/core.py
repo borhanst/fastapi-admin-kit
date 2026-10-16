@@ -1277,9 +1277,12 @@ class Admin:
         }
 
         def _icon(name: str, size: str = "", **kwargs) -> str:
-            from markupsafe import Markup
+            from markupsafe import Markup, escape
 
-            ms_name = _icon_map.get(name, name)
+            # Escape the fallback: ``name`` is normally a literal from a
+            # template, but if a caller ever passes a user-controlled value the
+            # icon must not become an XSS vector.
+            ms_name = escape(_icon_map.get(name, name))
             css_class = kwargs.get("class", kwargs.get("css_class", ""))
             size_style = f' style="font-size: {size};"' if size else ""
             cls = f"material-symbols-outlined {css_class}".strip()

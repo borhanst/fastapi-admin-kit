@@ -113,7 +113,6 @@ async def handle_file_field(
     storage = get_storage(request)
     field_name = field_meta.name
     raw = form_data.get(field_name)
-    print("file raw", raw, form_data)
     if isinstance(raw, UploadFile) and raw.filename:
         # New file uploaded — enforce the size limit before reading content
         if not await _enforce_size_limit(raw, widget.max_size_mb, field_name, errors):
@@ -125,7 +124,6 @@ async def handle_file_field(
 
         try:
             path = await storage.save(raw, directory=_safe_directory_name(field_meta.name))
-            print("file path", path)
         except ValueError as exc:
             errors[field_name] = [str(exc)]
             return

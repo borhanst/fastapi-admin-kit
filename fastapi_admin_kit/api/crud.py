@@ -13,7 +13,6 @@ from fastapi import (
     Depends,
     File,
     Form,
-    HTTPException,
     Query,
     Request,
     UploadFile,
@@ -34,29 +33,6 @@ from fastapi_admin_kit.views.class_views import (
     ListView,
     _resolve_view_class,
 )
-
-
-async def _get_current_user(request: Request) -> dict[str, Any]:
-    """Extract and validate the current user from a Bearer token."""
-    from fastapi_admin_kit.api.deps import get_api_current_user
-
-    return await get_api_current_user(request)
-
-
-async def _check_permission(
-    request: Request, user: dict[str, Any], table_name: str, action: str
-) -> None:
-    """Check if user has permission from JWT payload."""
-    if user.get("is_superuser"):
-        return
-
-    permissions = user.get("permissions", {})
-    table_perms = permissions.get(table_name, [])
-    if action not in table_perms:
-        raise HTTPException(
-            status_code=403,
-            detail=f"You do not have permission to {action} {table_name}.",
-        )
 
 
 def _export_endpoint(registered: Any) -> str | None:

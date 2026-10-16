@@ -127,13 +127,12 @@ def validate_csrf_token(request: Request, csrf_token: str | None = None) -> None
 
     # Verify both tokens have valid HMAC signatures.
     # Both the form token and the cookie token must be independently valid —
-    # i.e. signed by the same secret key.  This is the security invariant of
-    # the double-submit cookie pattern.  We do NOT require the two tokens to
-    # carry identical payloads: the form embeds the token generated at GET
-    # time, while the browser may legitimately send a slightly older (but
-    # still valid) cookie if it was already present before the GET response.
-    # Requiring payload equality caused spurious "Invalid CSRF cookie" errors
-    # when the browser held a cookie from the previous page load.
+    # i.e. signed by the same secret key — AND carry an identical payload.
+    # That equality is the second guarantee of the double-submit cookie
+    # pattern: an attacker who cannot read the cookie cannot forge a matching
+    # form token.  The CSRFMiddleware keeps them in sync by reusing the
+    # existing valid cookie instead of rotating it on every GET, so legitimate
+    # browser flows always submit back the same value.
     if not _verify_csrf_token(secret_key, form_token):
         raise HTTPException(
             status_code=403,
@@ -143,6 +142,11 @@ def validate_csrf_token(request: Request, csrf_token: str | None = None) -> None
         raise HTTPException(
             status_code=403,
             detail="Invalid CSRF cookie. Please refresh the page and try again.",
+        )
+    if not hmac.compare_digest(form_token, cookie_token):
+        raise HTTPException(
+            status_code=403,
+            detail="CSRF token mismatch. Please refresh the page and try again.",
         )
 
 

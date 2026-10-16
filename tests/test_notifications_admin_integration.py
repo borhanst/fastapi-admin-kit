@@ -174,6 +174,60 @@ def test_unauthenticated_list_401(app):
     assert resp.status_code == 401
 
 
+def test_send_requires_authentication(app):
+    client = TestClient(app)
+    resp = client.post(
+        "/admin/notifications/send",
+        json={"user_id": "u1", "message": "x", "channels": ["in_app"]},
+    )
+    assert resp.status_code == 401
+
+
+def test_send_requires_superuser(app, engine, async_session_factory):
+    """A merely-authenticated non-superuser must not be able to send."""
+    from fastapi_admin_kit.migrations.models import User  # noqa: F811
+
+    async def _create():
+        async with async_session_factory() as session:
+            user = User(
+                email="staff@test.com",
+                password="x",
+                full_name="Staff",
+                is_superuser=False,
+                is_active=True,
+            )
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            return user
+
+    staff = run_async(_create())
+    client = TestClient(app)
+    client.cookies.set("admin_session", create_session_cookie(staff.id))
+    resp = client.post(
+        "/admin/notifications/send",
+        json={"user_id": staff.id, "message": "x", "channels": ["in_app"]},
+    )
+    assert resp.status_code == 403, resp.text
+
+
+def test_ws_rejects_anonymous_spoofed_user_id(app):
+    """An anonymous client cannot subscribe by passing ?user_id= (IDOR fix)."""
+    from starlette.websockets import WebSocketDisconnect
+
+    client = TestClient(app)
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect("/admin/notifications/ws?user_id=1") as ws:
+            ws.receive_text()
+    assert exc.value.code == 4401
+
+
+def test_sse_rejects_anonymous_spoofed_user_id(app):
+    client = TestClient(app)
+    resp = client.get("/admin/notifications/stream?user_id=1")
+    assert resp.status_code == 401
+
+
 @pytest.fixture
 def api_prefix_app(engine, async_session_factory, admin_user):
     """Admin app with notifications mounted under a non-default prefix."""

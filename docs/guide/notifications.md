@@ -115,9 +115,11 @@ await service.notify(
 
 Clients connect via:
 
-- **WebSocket**: `WS /api/notifications/ws?user_id=1234` (or with a JWT
-  `?token=...`)
-- **SSE fallback**: `GET /api/notifications/stream` (authenticated)
+- **WebSocket**: `WS /api/notifications/ws` — the connection is authenticated
+  from the signed admin session cookie (browsers send it automatically) or a
+  validated JWT (`?token=...`). A `user_id` query parameter is never trusted.
+- **SSE fallback**: `GET /api/notifications/stream` (authenticated from the
+  session cookie or a validated bearer JWT)
 
 The hub handles connection drops during publish and supports heartbeat /
 stale-connection pruning. Fallback to polling: `GET /api/notifications` lists
@@ -182,15 +184,19 @@ await service.notify_many(
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `/notifications/send` | Send a notification |
-| `POST` | `/notifications/send/batch` | Batch send |
+| `POST` | `/notifications/send` | Send a notification (superuser auth) |
+| `POST` | `/notifications/send/batch` | Batch send (superuser auth) |
 | `GET` | `/notifications/` | List in-app notifications (auth) |
 | `GET` | `/notifications/unread-count` | Unread badge count (auth) |
 | `PUT` | `/notifications/{id}/read` | Mark as read (auth) |
 | `PUT` | `/notifications/preferences` | Update channel preferences (auth) |
 | `GET` | `/notifications/preferences` | Read channel preferences (auth) |
-| `WS` | `/notifications/ws` | Realtime WebSocket stream |
+| `WS` | `/notifications/ws` | Realtime WebSocket stream (auth) |
 | `GET` | `/notifications/stream` | SSE fallback stream (auth) |
+
+Server-side code should call `NotificationService.notify()` directly rather
+than going through the HTTP send endpoints, which are gated to authenticated
+superusers.
 
 ## History / logs
 

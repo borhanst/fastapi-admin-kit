@@ -12,6 +12,7 @@ from pydantic_ai import RunContext
 
 from fastapi_admin_kit.ai.deps import AdminDeps
 from fastapi_admin_kit.ai.tools import tool
+from fastapi_admin_kit.inspection.types import SENSITIVE_FIELDS
 
 
 class QueryResult(BaseModel):
@@ -42,9 +43,14 @@ async def query_database(
 
     rows = await deps.data_access.query(registered.model, filters, limit)
 
+    # Never serialize secret columns (password hashes, tokens, ...) to the LLM.
+    # Every other serializer filters against SENSITIVE_FIELDS; this tool is no
+    # exception.
+    columns = [c for c in registered.columns if c.name not in SENSITIVE_FIELDS]
+
     return QueryResult(
         row_count=len(rows),
-        rows=[{c.name: getattr(row, c.name, None) for c in registered.columns} for row in rows],
+        rows=[{c.name: getattr(row, c.name, None) for c in columns} for row in rows],
     )
 
 

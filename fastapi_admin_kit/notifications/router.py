@@ -21,7 +21,15 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import StreamingResponse
 
 from fastapi_admin_kit.auth.identity import (
@@ -84,13 +92,38 @@ async def _current_user_id(request: Request) -> str:
     return str(getattr(user, "id", user))
 
 
+async def _require_send_authorization(request: Request) -> str:
+    """Authorize a call to the notification *send* endpoints.
+
+    Sending can reach arbitrary recipients over email/SMS/in-app with
+    caller-controlled content, so the HTTP send API is restricted to
+    authenticated superusers.  Before this gate ``POST /send`` and
+    ``POST /send/batch`` were fully unauthenticated, letting any anonymous
+    client trigger phishing and SMS/email cost abuse (broken access control).
+    Server-side callers should invoke ``NotificationService.notify()``
+    directly instead of going through the HTTP endpoint.
+    """
+    user = await get_current_user_from_cookie(request)
+    if user is None:
+        user = await get_current_user_from_bearer(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated.")
+    if not getattr(user, "is_superuser", False):
+        raise HTTPException(status_code=403, detail="Superuser access required.")
+    return str(getattr(user, "id", user))
+
+
 # ---------------------------------------------------------------------------
 # Send
 # ---------------------------------------------------------------------------
 
 
 @router.post("/send", response_model=NotificationResult)
-async def send_notification(request: Request, body: SendRequest) -> Any:
+async def send_notification(
+    request: Request,
+    body: SendRequest,
+    _auth: str = Depends(_require_send_authorization),
+) -> Any:
     """Send a notification to a user via the requested channels."""
     service = _service(request)
     session = _session(request, service)
@@ -123,7 +156,11 @@ async def send_notification(request: Request, body: SendRequest) -> Any:
 
 
 @router.post("/send/batch", response_model=list[NotificationResult])
-async def send_batch(request: Request, body: BatchSendRequest) -> Any:
+async def send_batch(
+    request: Request,
+    body: BatchSendRequest,
+    _auth: str = Depends(_require_send_authorization),
+) -> Any:
     """Send a notification to many recipients in one call."""
     service = _service(request)
     session = _session(request, service)
@@ -237,29 +274,17 @@ async def get_preferences(request: Request) -> dict[str, bool]:
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, user_id: str | None = None) -> None:
+async def websocket_endpoint(websocket: WebSocket) -> None:
     """Realtime notification stream over WebSocket.
 
-    The user may be identified via a ``user_id`` query parameter or (fallback)
-    ``?token=<jwt>``.  When neither is provided the endpoint accepts the
-    connection but delivers nothing (safe fallback).
+    Identity is resolved **exclusively** from a trusted credential: the signed
+    admin session cookie or a validated ``?token=<jwt>``. Any client-supplied
+    ``?user_id=`` is ignored — trusting it let any anonymous client subscribe
+    to another user's private notification stream (broken access control /
+    IDOR).
     """
     hub = _hub(websocket)
-    if user_id is None or user_id == "null":
-        token = websocket.query_params.get("token")
-        if token:
-            try:
-                from fastapi_admin_kit.api.auth import _get_secret_key, decode_access_token
-
-                secret_key = _get_secret_key(websocket)
-                payload = decode_access_token(token, secret_key)
-                if payload:
-                    user_id = str(payload.get("sub"))
-            except Exception:
-                user_id = None
-        else:
-            cookie_user = await _current_user_from_ws_cookie(websocket)
-            user_id = str(getattr(cookie_user, "id", cookie_user)) if cookie_user else None
+    user_id = await _resolve_ws_user_id(websocket)
 
     await websocket.accept()
     if not user_id:
@@ -278,6 +303,36 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str | None = None) -
         hub.disconnect_ws(user_id, websocket)
 
 
+async def _resolve_ws_user_id(websocket: WebSocket) -> str | None:
+    """Resolve the authenticated user id for a WebSocket connection.
+
+    Accepts a validated bearer JWT (``?token=``) or the signed session cookie.
+    A ``user_id`` query parameter is deliberately **never** consulted.
+    """
+    token = websocket.query_params.get("token")
+    if token:
+        try:
+            from fastapi_admin_kit.api.auth import (
+                _get_secret_key,
+                decode_access_token,
+                parse_jwt_subject,
+                token_predates_password_change,
+            )
+
+            secret_key = _get_secret_key(websocket)
+            payload = decode_access_token(token, secret_key)
+            if payload:
+                user = await _load_ws_user(websocket, parse_jwt_subject(payload.get("sub")))
+                if user is not None and not token_predates_password_change(payload, user):
+                    return str(getattr(user, "id", user))
+        except Exception:
+            logger.debug("WebSocket token authentication failed", exc_info=True)
+        return None
+
+    user = await _current_user_from_ws_cookie(websocket)
+    return str(getattr(user, "id", user)) if user else None
+
+
 async def _current_user_from_ws_cookie(websocket: WebSocket) -> Any:
     """Resolve the current user from the session cookie on a WebSocket.
 
@@ -287,8 +342,7 @@ async def _current_user_from_ws_cookie(websocket: WebSocket) -> Any:
     (``Starlette.Request`` asserts ``scope["type"] == "http"`` and rejects
     WebSocket scopes with an exception that surfaces as a 403).
     """
-    app = websocket.app
-    session_backend = getattr(app.state, "admin_session_backend", None)
+    session_backend = getattr(websocket.app.state, "admin_session_backend", None)
     if session_backend is None:
         return None
     cookie_name = getattr(session_backend, "cookie_name", "admin_session")
@@ -296,10 +350,19 @@ async def _current_user_from_ws_cookie(websocket: WebSocket) -> Any:
     payload = session_backend.decode(token)
     if not payload:
         return None
-    user_id = payload.get("user_id")
+    return await _load_ws_user(websocket, payload.get("user_id"))
+
+
+async def _load_ws_user(websocket: WebSocket, user_id: Any) -> Any:
+    """Load an active user by id via the configured auth backend + DB session.
+
+    Returns ``None`` when the auth backend/database is unavailable, the user
+    no longer exists, or the account is inactive.
+    """
     if user_id is None:
         return None
 
+    app = websocket.app
     auth_backend = getattr(app.state, "admin_auth_backend", None)
     if auth_backend is None:
         return None
@@ -313,7 +376,11 @@ async def _current_user_from_ws_cookie(websocket: WebSocket) -> Any:
             session = getattr(app.state, "admin_db_session", None)
         if session is None or not hasattr(session, "execute"):
             return None
-        user = await auth_backend.get_user(user_id, session)
+        query_adapter = getattr(app.state, "admin_query_adapter", None)
+        try:
+            user = await auth_backend.get_user(user_id, session, query_adapter=query_adapter)
+        except TypeError:
+            user = await auth_backend.get_user(user_id, session)
         if user is None or not getattr(user, "is_active", False):
             return None
         return user
@@ -332,24 +399,20 @@ def _hub(websocket: WebSocket) -> Any:
 
 
 @router.get("/stream")
-async def sse_stream(request: Request, user_id: str | None = None) -> StreamingResponse:
+async def sse_stream(request: Request) -> StreamingResponse:
     """SSE fallback stream for realtime notifications.
 
-    Clients with no WebSocket support can connect here and receive Server-Sent
-    Events.  Connection drops are handled by the client reconnecting.
+    Identity comes exclusively from the session cookie or a validated bearer
+    JWT; a client-supplied ``user_id`` query parameter is ignored (it was an
+    authentication bypass / IDOR). Clients with no WebSocket support can
+    connect here and receive Server-Sent Events.
     """
-    if user_id is None or user_id == "null":
-        from fastapi_admin_kit.auth.identity import (
-            get_current_user_from_bearer,
-            get_current_user_from_cookie,
-        )
-
-        user = await get_current_user_from_cookie(request)
-        if user is None:
-            user = await get_current_user_from_bearer(request)
-        if user is None:
-            raise HTTPException(status_code=401, detail="Not authenticated.")
-        user_id = str(getattr(user, "id", user))
+    user = await get_current_user_from_cookie(request)
+    if user is None:
+        user = await get_current_user_from_bearer(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated.")
+    user_id = str(getattr(user, "id", user))
 
     hub = _hub_for_request(request)
     queue: asyncio.Queue = asyncio.Queue(maxsize=100)
